@@ -39,6 +39,11 @@ subprojects {
     apply(plugin = "io.spring.dependency-management")
     apply(plugin = "jacoco")
 
+    // Docker Engine 29+ 는 최소 클라이언트 API 버전을 1.44로 올렸는데, Spring Boot 3.4.4가 관리하는
+    // testcontainers 1.20.x 는 이보다 낮은 버전을 보내 400을 받는다(https://github.com/testcontainers/testcontainers-java/issues/11212).
+    // 이 문제는 testcontainers 2.0.2 에서 기본 API 버전을 1.44로 올리며 해결됨.
+    extra["testcontainers.version"] = "2.0.2"
+
     dependencyManagement {
         imports {
             mavenBom("org.springframework.cloud:spring-cloud-dependencies:${project.properties["springCloudDependenciesVersion"]}")
@@ -66,7 +71,7 @@ subprojects {
         // Testcontainers
         testImplementation("org.springframework.boot:spring-boot-testcontainers")
         testImplementation("org.testcontainers:testcontainers")
-        testImplementation("org.testcontainers:junit-jupiter")
+        testImplementation("org.testcontainers:testcontainers-junit-jupiter")
     }
 
     tasks.withType(Jar::class) { enabled = true }
