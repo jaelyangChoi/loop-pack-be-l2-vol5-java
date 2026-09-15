@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew *)",
+      "Bash(git *)",
+      "Bash(docker-compose *)",
+      "Bash(docker *)"
+    ],
+    "ask": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -f*)",
+      "Bash(git branch -D*)",
+      "Bash(git checkout -- *)",
+      "Bash(git restore*)",
+      "Bash(git rebase*)",
+      "Bash(docker-compose down -v*)",
+      "Bash(docker compose down -v*)",
+      "Bash(docker volume rm*)",
+      "Bash(docker system prune*)"
+    ]
+  }
+}
