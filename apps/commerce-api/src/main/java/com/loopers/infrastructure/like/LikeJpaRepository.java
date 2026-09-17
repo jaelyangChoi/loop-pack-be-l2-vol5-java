@@ -3,4 +3,12 @@ package com.loopers.infrastructure.like;
 import com.loopers.domain.like.Like;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface LikeJpaRepository extends JpaRepository<Like, Long> {}
+import java.util.Optional;
+
+public interface LikeJpaRepository extends JpaRepository<Like, Long> {
+    long countByProductId(Long productId);
+
+    boolean existsByUserIdAndProductId(Long userId, Long productId);
+
+    Optional<Like> findByUserIdAndProductId(Long userId, Long productId);
+}
