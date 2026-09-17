@@ -41,7 +41,7 @@ public class ProductRepositoryImpl implements ProductRepository {
             .select(product, likeCount)
             .from(product)
             .leftJoin(like).on(like.productId.eq(product.id))
-            .where(searchFilter(condition))
+            .where(activeFilter(condition.brandId()))
             .groupBy(product.id)
             .orderBy(primaryOrder(condition.sort(), likeCount), product.name.asc(), product.id.asc())
             .offset(condition.page().offset())
@@ -54,10 +54,26 @@ public class ProductRepositoryImpl implements ProductRepository {
 
     @Override
     public long count(ProductSearchCondition condition) {
+        return countActive(condition.brandId());
+    }
+
+    @Override
+    public List<Product> findActiveLatest(Long brandId, PageCondition page) {
+        return queryFactory
+            .selectFrom(product)
+            .where(activeFilter(brandId))
+            .orderBy(product.createdAt.desc(), product.id.desc())
+            .offset(page.offset())
+            .limit(page.size())
+            .fetch();
+    }
+
+    @Override
+    public long countActive(Long brandId) {
         return queryFactory
             .select(product.count())
             .from(product)
-            .where(searchFilter(condition))
+            .where(activeFilter(brandId))
             .fetchOne();
     }
 
@@ -94,10 +110,20 @@ public class ProductRepositoryImpl implements ProductRepository {
         return productJpaRepository.findAllById(ids);
     }
 
-    private BooleanBuilder searchFilter(ProductSearchCondition condition) {
+    @Override
+    public boolean existsActiveByBrandId(Long brandId) {
+        return productJpaRepository.existsByBrandIdAndDeletedAtIsNull(brandId);
+    }
+
+    @Override
+    public Product save(Product product) {
+        return productJpaRepository.save(product);
+    }
+
+    private BooleanBuilder activeFilter(Long brandId) {
         BooleanBuilder filter = new BooleanBuilder(product.deletedAt.isNull());
-        if (condition.brandId() != null) {
-            filter.and(product.brandId.eq(condition.brandId()));
+        if (brandId != null) {
+            filter.and(product.brandId.eq(brandId));
         }
         return filter;
     }

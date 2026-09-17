@@ -13,4 +13,8 @@ public interface OrderRepository {
     List<Order> findByUserId(Long userId, PageCondition page);
 
     long countByUserId(Long userId);
+
+    List<Order> findAll(Long userId, PageCondition page);
+
+    long countAll(Long userId);
 }

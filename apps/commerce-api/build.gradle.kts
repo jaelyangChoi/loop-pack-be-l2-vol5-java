@@ -22,6 +22,9 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:${project.properties["springDocOpenApiVersion"]}")
 
+    // security (관리자 경로 접근 제한)
+    implementation("org.springframework.boot:spring-boot-starter-security")
+
     // querydsl
     annotationProcessor("com.querydsl:querydsl-apt::jakarta")
     annotationProcessor("jakarta.persistence:jakarta.persistence-api")
@@ -30,6 +33,9 @@ dependencies {
     // test-fixtures
     testImplementation(testFixtures(project(":modules:jpa")))
     testImplementation(testFixtures(project(":modules:redis")))
+
+    // security test
+    testImplementation("org.springframework.security:spring-security-test")
 
     // architecture
     testImplementation("com.tngtech.archunit:archunit:1.5.0")

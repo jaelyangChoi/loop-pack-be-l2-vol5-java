@@ -13,6 +13,10 @@ public interface ProductRepository {
 
     long count(ProductSearchCondition condition);
 
+    List<Product> findActiveLatest(Long brandId, PageCondition page);
+
+    long countActive(Long brandId);
+
     List<Product> findActiveLikedBy(Long userId, PageCondition page);
 
     long countActiveLikedBy(Long userId);
@@ -20,4 +24,8 @@ public interface ProductRepository {
     List<Product> findAllActive(Collection<Long> ids);
 
     List<Product> findAll(Collection<Long> ids);
+
+    boolean existsActiveByBrandId(Long brandId);
+
+    Product save(Product product);
 }

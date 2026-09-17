@@ -7,4 +7,6 @@ import java.util.Optional;
 
 public interface BrandJpaRepository extends JpaRepository<Brand, Long> {
     Optional<Brand> findByIdAndDeletedAtIsNull(Long id);
+
+    long countByDeletedAtIsNull();
 }

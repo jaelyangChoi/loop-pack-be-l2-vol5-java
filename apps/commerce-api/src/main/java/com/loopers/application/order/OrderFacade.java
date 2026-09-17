@@ -62,7 +62,7 @@ public class OrderFacade {
         userService.getUser(userId);
 
         List<Order> orders = orderService.getOrders(userId, pageCondition);
-        Map<Long, String> productNames = productNamesOf(orders.stream().flatMap(order -> order.getProductIds().stream()).toList());
+        Map<Long, String> productNames = productService.getProductNamesIncludingDeleted(orders.stream().flatMap(order -> order.getProductIds().stream()).toList());
         List<OrderInfo> content = orders.stream().map(order -> OrderInfo.of(order, productNames)).toList();
 
         return PageInfo.of(content, page, size, orderService.countOrders(userId));
@@ -72,7 +72,7 @@ public class OrderFacade {
     public OrderInfo getOrder(Long userId, Long orderId) {
         userService.getUser(userId);
         Order order = orderService.getOrderOf(userId, orderId);
-        return OrderInfo.of(order, productNamesOf(order.getProductIds()));
+        return OrderInfo.of(order, productService.getProductNamesIncludingDeleted(order.getProductIds()));
     }
 
     private Map<Long, Product> activeProductsById(Collection<Long> productIds) {
@@ -86,11 +86,6 @@ public class OrderFacade {
             throw new DomainException(DomainErrorType.NOT_FOUND, "[productId = " + productId + "] 상품을 찾을 수 없습니다.");
         }
         return product.getPrice();
-    }
-
-    // 주문 내역에는 삭제된 상품의 이름도 보여준다(DEL-003, T-5)
-    private Map<Long, String> productNamesOf(Collection<Long> productIds) {
-        return namesOf(productService.getProductsIncludingDeleted(productIds));
     }
 
     private Map<Long, String> namesOf(Collection<Product> products) {

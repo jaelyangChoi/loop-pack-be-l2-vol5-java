@@ -37,4 +37,22 @@ public class OrderService {
     public long countOrders(Long userId) {
         return orderRepository.countByUserId(userId);
     }
+
+    // 관리자 조회: 구매자와 관계없이 조회한다
+    @Transactional(readOnly = true)
+    public Order getOrder(Long orderId) {
+        return orderRepository.find(orderId)
+            .orElseThrow(() -> new DomainException(DomainErrorType.NOT_FOUND, "[orderId = " + orderId + "] 주문을 찾을 수 없습니다."));
+    }
+
+    // userId가 null이면 모든 구매자의 주문을 조회한다
+    @Transactional(readOnly = true)
+    public List<Order> getAllOrders(Long userId, PageCondition page) {
+        return orderRepository.findAll(userId, page);
+    }
+
+    @Transactional(readOnly = true)
+    public long countAllOrders(Long userId) {
+        return orderRepository.countAll(userId);
+    }
 }

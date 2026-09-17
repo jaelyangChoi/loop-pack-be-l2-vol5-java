@@ -90,7 +90,7 @@ public class Product extends BaseEntity {
         this.stock -= quantity;
     }
 
-    public void changeStock(long stock) {
+    public void changeStock(Long stock) {
         validateStock(stock);
         this.stock = stock;
     }
