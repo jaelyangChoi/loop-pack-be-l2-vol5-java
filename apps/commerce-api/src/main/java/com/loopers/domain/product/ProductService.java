@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.List;
 
 @RequiredArgsConstructor
@@ -44,5 +45,17 @@ public class ProductService {
     @Transactional(readOnly = true)
     public long countLikedProducts(Long userId) {
         return productRepository.countActiveLikedBy(userId);
+    }
+
+    // 주문 생성·확정용: 삭제되지 않은 상품만 조회한다
+    @Transactional(readOnly = true)
+    public List<Product> getActiveProducts(Collection<Long> ids) {
+        return productRepository.findAllActive(ids);
+    }
+
+    // 주문 내역 조회용: 삭제된 상품도 포함한다(DEL-003)
+    @Transactional(readOnly = true)
+    public List<Product> getProductsIncludingDeleted(Collection<Long> ids) {
+        return productRepository.findAll(ids);
     }
 }

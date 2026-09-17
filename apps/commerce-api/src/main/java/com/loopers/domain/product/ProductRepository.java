@@ -2,6 +2,7 @@ package com.loopers.domain.product;
 
 import com.loopers.domain.common.PageCondition;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -15,4 +16,8 @@ public interface ProductRepository {
     List<Product> findActiveLikedBy(Long userId, PageCondition page);
 
     long countActiveLikedBy(Long userId);
+
+    List<Product> findAllActive(Collection<Long> ids);
+
+    List<Product> findAll(Collection<Long> ids);
 }

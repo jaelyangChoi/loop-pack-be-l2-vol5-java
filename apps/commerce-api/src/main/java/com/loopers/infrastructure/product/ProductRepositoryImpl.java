@@ -15,6 +15,7 @@ import com.querydsl.jpa.impl.JPAQueryFactory;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -81,6 +82,16 @@ public class ProductRepositoryImpl implements ProductRepository {
             .join(product).on(product.id.eq(like.productId))
             .where(like.userId.eq(userId), product.deletedAt.isNull())
             .fetchOne();
+    }
+
+    @Override
+    public List<Product> findAllActive(Collection<Long> ids) {
+        return productJpaRepository.findAllByIdInAndDeletedAtIsNull(ids);
+    }
+
+    @Override
+    public List<Product> findAll(Collection<Long> ids) {
+        return productJpaRepository.findAllById(ids);
     }
 
     private BooleanBuilder searchFilter(ProductSearchCondition condition) {
