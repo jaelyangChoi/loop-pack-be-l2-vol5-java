@@ -10,6 +10,7 @@ import com.loopers.domain.like.LikeService;
 import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductService;
 import com.loopers.domain.product.ProductWithLikeCount;
+import com.loopers.domain.user.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -22,14 +23,17 @@ public class LikeFacade {
     private final LikeService likeService;
     private final ProductService productService;
     private final ProductInfoAssembler productInfoAssembler;
+    private final UserService userService;
 
     public LikeInfo like(Long userId, Long productId) {
+        userService.getUser(userId);
         productService.verifyActive(productId);
         likeService.like(userId, productId);
         return new LikeInfo(productId, true, likeService.countLikes(productId));
     }
 
     public LikeInfo unlike(Long userId, Long productId) {
+        userService.getUser(userId);
         likeService.unlike(userId, productId);
         return new LikeInfo(productId, false, likeService.countLikes(productId));
     }
@@ -38,6 +42,7 @@ public class LikeFacade {
         if (!requesterId.equals(userId)) {
             throw new DomainException(DomainErrorType.NOT_FOUND, "[userId = " + userId + "] 좋아요 목록을 찾을 수 없습니다.");
         }
+        userService.getUser(userId);
         PageCondition pageCondition = new PageCondition(page, size);
 
         List<Product> products = productService.getLikedProducts(userId, pageCondition);
