@@ -3,6 +3,7 @@ package com.loopers.interfaces.api;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
+import com.loopers.domain.error.DomainException;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +28,17 @@ public class ApiControllerAdvice {
     public ResponseEntity<ApiResponse<?>> handle(CoreException e) {
         log.warn("CoreException : {}", e.getCustomMessage() != null ? e.getCustomMessage() : e.getMessage(), e);
         return failureResponse(e.getErrorType(), e.getCustomMessage());
+    }
+
+    @ExceptionHandler
+    public ResponseEntity<ApiResponse<?>> handle(DomainException e) {
+        log.warn("DomainException : {}", e.getMessage(), e);
+        ErrorType errorType = switch (e.getType()) {
+            case INVALID_VALUE -> ErrorType.BAD_REQUEST;
+            case NOT_FOUND -> ErrorType.NOT_FOUND;
+            case CONFLICT -> ErrorType.CONFLICT;
+        };
+        return failureResponse(errorType, e.getMessage());
     }
 
     @ExceptionHandler

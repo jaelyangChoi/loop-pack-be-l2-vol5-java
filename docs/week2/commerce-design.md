@@ -209,7 +209,7 @@ TDD 대표 규칙으로 고를 후보는 `대표` 열에 표시했다.
 - **요청자 구분**: 좋아요·포인트·주문 API는 "본인·자신"의 데이터만 다룬다(원문 3절). 요청자를 **어떻게 식별하는지**는 4. 실행·제출 단계에서 정하므로 아래 표에서는 "요청자"로만 표기한다.
 - **응답 형식**: 기존 `ApiResponse`를 그대로 쓴다. 성공은 `meta.result = SUCCESS`와 `data`, 실패는 `meta.result = FAIL`, `meta.errorCode`, `meta.message`, `data = null`.
 - **성공 상태**: 등록·수정·삭제를 포함해 모두 `200`으로 응답한다. 삭제처럼 돌려줄 값이 없으면 `data = null`.
-- **오류 표현**: 1주차 결정 1(`docs/week1/order-discount-contract.md`)을 잇는다. `ErrorType`은 기존 `BAD_REQUEST`·`NOT_FOUND`·`CONFLICT` 세 가지만 쓰고, 같은 분류 안의 원인 차이는 `meta.message`로 전달한다. 새 `ErrorType`은 추가하지 않는다.
+- **오류 표현**: 1주차 결정 1(`docs/week1/order-discount-contract.md`)을 잇는다. 도메인·application은 HTTP를 모르는 `DomainException`(종류: `INVALID_VALUE`·`NOT_FOUND`·`CONFLICT`)을 던지고, `ApiControllerAdvice`가 이를 기존 `ErrorType`의 `BAD_REQUEST`·`NOT_FOUND`·`CONFLICT`로 바꿔 응답한다([결정 4](#결정-4-도메인-실패-표현)). 같은 분류 안의 원인 차이는 `meta.message`로 전달한다. 새 `ErrorType`은 추가하지 않는다.
 - **고객·관리자 응답 필드 구분**(QRY-002): 고객 응답에는 판매에 필요한 값만 둔다. 재고 수량과 등록·수정 시각은 관리자 응답에만 둔다.
 - **입력 검증 위치**: 누락·타입 오류는 요청 변환 단계(`ApiControllerAdvice`가 이미 `400`으로 변환)에서, 값의 범위·업무 조건은 도메인 모델에서 거절한다(6절 PNT-001).
 
@@ -347,3 +347,19 @@ TDD 대표 규칙으로 고를 후보는 `대표` 열에 표시했다.
 - **버린 대안**: 도메인별 Service에만 트랜잭션을 둔다(Facade는 트랜잭션 없이 Service를 순서대로 호출).
 - **이유**: 대안에서는 각 Service 호출이 끝날 때마다 커밋된다. 재고 차감이 커밋된 뒤 포인트 부족으로 확정이 거절되면 재고만 줄어든 상태가 남는다. 여러 도메인의 변경을 하나로 묶어야 하는 곳은 그 순서를 조율하는 Facade이므로 경계도 Facade에 둔다. `application`이 `domain`에 의존하는 방향이라 2-2 허용 의존 방향도 지킨다.
 - **다시 검토할 조건**: 확정 흐름에 외부 결제 등 트랜잭션으로 되돌릴 수 없는 호출이 추가될 때.
+
+#### 결정 4. 도메인 실패 표현
+
+상황: starter의 `CoreException`은 `ErrorType`을 갖고, `ErrorType`은 `HttpStatus`를 갖는다. 도메인이 `CoreException(ErrorType.CONFLICT)`를 던지면 "이 실패는 409다"라는 전송 계층의 결정을 도메인이 내리게 된다. 2-1은 HTTP 오류 매핑을 `interfaces`의 책임으로 정했다.
+
+| 위치 | 구성 | 역할 |
+|---|---|---|
+| `domain.error` | `DomainException(DomainErrorType type, String message)` | 도메인·application이 던지는 실패. HTTP를 모른다 |
+| `domain.error` | `DomainErrorType`: `INVALID_VALUE`, `NOT_FOUND`, `CONFLICT` | 업무상 실패 종류. 6절 분류(입력 오류·대상 없음·상태 충돌)와 같다 |
+| `interfaces.api` | `ApiControllerAdvice` | `INVALID_VALUE→400`, `NOT_FOUND→404`, `CONFLICT→409`로 한곳에서 변환 |
+
+- **선택한 방식**: 위 구조. 규칙마다 예외 클래스를 만들지 않고, 원인은 메시지로 구분한다.
+- **버린 대안**: starter `ExampleModel`처럼 도메인이 `CoreException(ErrorType)`을 직접 던진다.
+- **이유**: 도메인 규칙과 전송 방식은 바뀌는 이유가 다르다. HTTP 대신 배치·이벤트에서 같은 도메인을 써도 HTTP 타입을 끌고 가지 않는다. 도메인 테스트도 상태 코드가 아니라 업무 의미(예: 재고 부족 → `CONFLICT`)를 검증한다. 종류 이름이 HTTP 분류와 거의 1:1이라 겉보기는 비슷하지만 의존 방향이 다르다.
+- **지키는 방법**: `ArchitectureTest.domainDoesNotKnowHttp`가 `domain`이 `org.springframework.http`와 `support.error`에 의존하지 않는지 검사한다. starter 예시(`domain.example`)는 기존 방식을 쓰므로 검사에서 제외하고 수정하지 않는다(범위 밖 개편).
+- **다시 검토할 조건**: 같은 종류 안에서 요청자가 원인별로 다르게 대응해야 해서 메시지만으로 부족할 때.
