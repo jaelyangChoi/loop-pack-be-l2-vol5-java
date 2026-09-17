@@ -103,6 +103,20 @@ Root
 
 `BaseEntity`(`modules:jpa`)는 모든 JPA Entity가 상속하는 `@MappedSuperclass`로, `id`/`createdAt`/`updatedAt`/`deletedAt`과 멱등한 `delete()`/`restore()`를 제공하며 `guard()`를 오버라이드해 `@PrePersist`/`@PreUpdate` 시점 검증을 넣을 수 있습니다. 재사용성을 위해 이 외의 컬럼/동작은 추가하지 않는 것이 원칙입니다.
 
+## AI 작업 규칙
+
+- 합의한 계약·기대값·패키지 의존을 따른다. 미정 정책은 먼저 질문한다.
+- 이번 기능에서 변경할 책임·파일·관련 테스트를 먼저 제안한다.
+- 작은 기능을 구현하고 diff와 관련 테스트·lint·ArchUnit 결과를 확인한다.
+- 검사를 통과시키기 위한 테스트·기대값·규칙 삭제나 완화는 하지 않는다.
+- 정책·검사 기준 변경이나 범위 밖 개편은 이유와 영향을 설명하고 확인을 받는다.
+
+## 개발 규칙 검사
+
+- **Checkstyle**: `apps/commerce-api`에 적용. 규칙은 `config/checkstyle/checkstyle.xml`(`AvoidStarImport`, `UnusedImports`)이며 경고 0개를 요구한다. `check` task에 연결되어 있다.
+- **ArchUnit**: `apps/commerce-api/src/test/java/com/loopers/architecture/ArchitectureTest.java`가 계층 의존 방향을 검사한다 — `domain`은 `interfaces`·`application`·`infrastructure`에, `application`은 `interfaces`·`infrastructure`에, `interfaces`는 `infrastructure`에 의존하지 않는다.
+- 최종 검사: `./gradlew :apps:commerce-api:check` (Checkstyle + 전체 테스트)
+
 ## 테스트 컨벤션
 
 - 테스트는 `@Nested` 클래스로 시나리오(예: `Get`, `Create`)를 그룹화하고, `@DisplayName`을 한국어로 작성해 테스트 트리를 문서처럼 읽히게 합니다. 메소드명은 `동작_when조건` 형태의 영어(예: `returnsExampleInfo_whenValidIdIsProvided`)를 사용합니다.
