@@ -10,36 +10,12 @@ Loopers 에서 제공하는 Spring Boot(Java 21) 멀티 모듈 커머스 템플�
 
 ## 로컬 개발 환경
 
-`local` 프로필로 애플리케이션을 실행하려면 먼저 인프라(MySQL, Redis)를 띄워야 합니다.
+실행·빌드 명령어와 모듈 구조 전체는 `docs/guide/development-environment.md`를 참고합니다.
 
-```shell
-docker-compose -f ./docker/infra-compose.yml up
-```
-
-작업이 끝나면 종료합니다.
-
-```shell
-docker-compose -f ./docker/infra-compose.yml down
-```
-
-모니터링(Prometheus + Grafana)이 필요하면 별도로 실행합니다. 실행 후 http://localhost:3000 (admin/admin) 으로 접속합니다.
-
-```shell
-docker-compose -f ./docker/monitoring-compose.yml up
-```
-
-모니터링도 사용이 끝나면 종료합니다.
-
-```shell
-docker-compose -f ./docker/monitoring-compose.yml down
-```
+`local` 프로필 실행 전에 `docker/infra-compose.yml`로 인프라(MySQL, Redis)를 먼저 띄웁니다. 모니터링(Prometheus + Grafana)은 `docker/monitoring-compose.yml`로 별도 실행하며 http://localhost:3000 (admin/admin) 으로 접속합니다.
 
 ## 빌드 및 테스트 명령어
 
-- 전체 빌드: `./gradlew build`
-- 특정 앱 실행: `./gradlew :apps:commerce-api:bootRun` (`commerce-batch`, `commerce-streamer` 도 동일한 패턴)
-- 전체 테스트: `./gradlew test`
-- 특정 모듈 테스트: `./gradlew :apps:commerce-api:test`
 - 특정 테스트 클래스만 실행: `./gradlew :apps:commerce-api:test --tests "com.loopers.interfaces.api.ErrorTypeHttpStatusMapperTest"`
 - 특정 테스트 메소드만 실행: `./gradlew :apps:commerce-api:test --tests "com.loopers.interfaces.api.ErrorTypeHttpStatusMapperTest.<메소드명>"`
 - 최종 검사(Checkstyle + 테스트): `./gradlew :apps:commerce-api:check`
@@ -52,21 +28,7 @@ docker-compose -f ./docker/monitoring-compose.yml down
 
 ## 멀티 모듈 구조
 
-```
-Root
-├── apps      (실행 가능한 SpringBootApplication, 서로 독립적)
-│   ├── commerce-api        - REST API. domain/application/infrastructure 4계층 예시(example)가 구현되어 있음
-│   ├── commerce-batch      - 배치 작업(spring-boot-starter-batch). 현재는 데모 Job만 있고 도메인 레이어는 비어있음
-│   └── commerce-streamer   - Kafka Consumer 애플리케이션. 현재는 데모 Consumer만 있고 도메인 레이어는 비어있음
-├── modules   (특정 구현/도메인에 의존하지 않는 재사용 가능한 설정 + 테스트 환경)
-│   ├── jpa    - DataSource/JPA/QueryDSL 설정, BaseEntity
-│   ├── redis  - Redis 설정
-│   └── kafka  - Kafka 설정
-└── supports  (부가 기능 add-on)
-    ├── jackson    - Jackson(Kotlin/JSR310) 모듈 설정
-    ├── logging    - 로깅, Slack Appender
-    └── monitoring - Actuator/Micrometer(Prometheus)
-```
+`apps`(commerce-api/batch/streamer, 서로 독립), `modules`(jpa/redis/kafka), `supports`(jackson/logging/monitoring) 구조입니다. 현재 `commerce-batch`·`commerce-streamer`는 데모 코드만 있고 도메인 레이어가 비어 있습니다.
 
 - `apps` 하위 모듈만 `BootJar`가 활성화되고(실행 가능한 jar), `modules`/`supports`는 일반 `Jar`로 라이브러리처럼 소비됩니다.
 - 각 `apps` 모듈은 필요한 `modules`/`supports`를 `build.gradle.kts`의 `dependencies`에서 명시적으로 `implementation(project(":modules:..."))`로 선언합니다. 새 앱이나 도메인 기능을 추가할 때 어떤 모듈이 필요한지는 이 패턴을 따라 판단하면 됩니다.
