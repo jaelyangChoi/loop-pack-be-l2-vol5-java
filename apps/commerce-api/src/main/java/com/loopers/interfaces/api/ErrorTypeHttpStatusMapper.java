@@ -20,7 +20,12 @@ public final class ErrorTypeHttpStatusMapper {
             case INTERNAL_ERROR -> HttpStatus.INTERNAL_SERVER_ERROR;
             case INVALID_INPUT -> HttpStatus.BAD_REQUEST;
             case NOT_FOUND -> HttpStatus.NOT_FOUND;
-            case CONFLICT -> HttpStatus.CONFLICT;
+            case FORBIDDEN -> HttpStatus.FORBIDDEN;
+            case CONFLICT,
+                 ORDER_ALREADY_CONFIRMED,
+                 OUT_OF_STOCK,
+                 INSUFFICIENT_POINT,
+                 PRODUCT_UNAVAILABLE -> HttpStatus.CONFLICT;
         };
     }
 }
