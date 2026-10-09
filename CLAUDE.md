@@ -42,6 +42,8 @@ docker-compose -f ./docker/monitoring-compose.yml down
 - 특정 모듈 테스트: `./gradlew :apps:commerce-api:test`
 - 특정 테스트 클래스만 실행: `./gradlew :apps:commerce-api:test --tests "com.loopers.domain.example.ExampleServiceIntegrationTest"`
 - 특정 테스트 메소드만 실행: `./gradlew :apps:commerce-api:test --tests "com.loopers.domain.example.ExampleServiceIntegrationTest.returnsExampleInfo_whenValidIdIsProvided"`
+- 최종 검사(Checkstyle + 테스트): `./gradlew :apps:commerce-api:check`
+- 아키텍처(ArchUnit) 테스트만 실행: `./gradlew :apps:commerce-api:test --tests '*ArchitectureTest'`
 - Jacoco 커버리지 리포트: `./gradlew :apps:commerce-api:jacocoTestReport` (XML만 생성됨, HTML/CSV는 비활성화)
 
 테스트는 `apps`, `modules`, `supports` 등 컨테이너 프로젝트 자체에서는 실행되지 않습니다(루트 `build.gradle.kts`에서 해당 프로젝트들의 모든 task를 비활성화함). 반드시 하위 모듈(`:apps:commerce-api` 등)을 지정해서 실행해야 합니다.
@@ -110,3 +112,16 @@ Root
 - API E2E 테스트는 `@SpringBootTest(webEnvironment = RANDOM_PORT)` + `TestRestTemplate`로 실제 HTTP 요청을 보내고, 응답을 공통 `ApiResponse<T>`로 역직렬화해 검증합니다.
 - MySQL/Redis가 필요한 테스트는 각 모듈의 testFixtures에 있는 Testcontainers 설정(`MySqlTestContainersConfig`, `RedisTestContainersConfig`)을 사용합니다(Docker 필요). Kafka는 위에서 설명한 대로 testFixtures가 아직 구현되어 있지 않으므로 필요 시 직접 구성해야 합니다.
 - `*Test.java` 파일은 `.editorconfig`에서 `max_line_length` 제한이 해제되어 있습니다.
+
+## 개발 규칙 (lint · ArchUnit)
+
+- `commerce-api`는 Checkstyle(`config/checkstyle/checkstyle.xml`, `AvoidStarImport`·`UnusedImports`)을 `check`에 연결해 사용합니다. 경고도 허용하지 않습니다(`maxWarnings = 0`).
+- `ArchitectureTest`가 레이어 의존 방향(`interfaces → application → domain`, `infrastructure → domain`)을 검사합니다. domain은 다른 레이어에, application은 interfaces·infrastructure에, interfaces는 infrastructure에 의존할 수 없습니다.
+
+## AI 작업 규칙
+
+- 합의한 계약·기대값·패키지 의존을 따른다. 미정 정책은 먼저 질문한다.
+- 이번 기능에서 변경할 책임·파일·관련 테스트를 먼저 제안한다.
+- 작은 기능을 구현하고 diff와 관련 테스트·lint·ArchUnit 결과를 확인한다.
+- 검사를 통과시키기 위한 테스트·기대값·규칙 삭제나 완화는 하지 않는다.
+- 정책·검사 기준 변경이나 범위 밖 개편은 이유와 영향을 설명하고 확인을 받는다.
