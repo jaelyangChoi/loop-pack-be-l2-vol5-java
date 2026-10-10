@@ -2,6 +2,7 @@ package com.loopers.domain.common;
 
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
+import jakarta.persistence.Embeddable;
 
 import java.util.function.LongSupplier;
 
@@ -13,6 +14,7 @@ import java.util.function.LongSupplier;
  * 충전액이 양수여야 한다거나 잔액을 넘는 결제를 막는 것처럼 행동에 따른 조건은
  * 이 값을 사용하는 객체가 판단한다.
  */
+@Embeddable
 public record Money(long amount) {
 
     public Money {

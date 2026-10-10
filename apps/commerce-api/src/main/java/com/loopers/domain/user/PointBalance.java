@@ -3,6 +3,7 @@ package com.loopers.domain.user;
 import com.loopers.domain.common.Money;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
+import jakarta.persistence.Embeddable;
 
 /**
  * 사용자의 포인트 잔액을 나타내는 불변 값 객체. 1포인트는 1원이다.
@@ -13,6 +14,7 @@ import com.loopers.support.error.ErrorType;
  *
  * <p>0원은 유효한 금액이지만 충전·결제 행동에는 맞지 않으므로 여기서 거절한다.
  */
+@Embeddable
 public record PointBalance(Money balance) {
 
     public PointBalance charge(Money amount) {

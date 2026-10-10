@@ -22,10 +22,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:${project.properties["springDocOpenApiVersion"]}")
 
-    // querydsl
-    annotationProcessor("com.querydsl:querydsl-apt::jakarta")
-    annotationProcessor("jakarta.persistence:jakarta.persistence-api")
-    annotationProcessor("jakarta.annotation:jakarta.annotation-api")
+    // querydsl 어노테이션 프로세서(querydsl-apt 5.1.0)는 @Embeddable record 를 처리하지 못해 두지 않는다.
+    // QueryDSL 쿼리가 필요해지면 record 를 지원하는 OpenFeign 포크(io.github.openfeign.querydsl)로 교체한다.
 
     // test-fixtures
     testImplementation(testFixtures(project(":modules:jpa")))

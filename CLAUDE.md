@@ -32,7 +32,7 @@ Loopers 에서 제공하는 Spring Boot(Java 21) 멀티 모듈 커머스 템플�
 
 - `apps` 하위 모듈만 `BootJar`가 활성화되고(실행 가능한 jar), `modules`/`supports`는 일반 `Jar`로 라이브러리처럼 소비됩니다.
 - 각 `apps` 모듈은 필요한 `modules`/`supports`를 `build.gradle.kts`의 `dependencies`에서 명시적으로 `implementation(project(":modules:..."))`로 선언합니다. 새 앱이나 도메인 기능을 추가할 때 어떤 모듈이 필요한지는 이 패턴을 따라 판단하면 됩니다.
-- `annotationProcessor`(QueryDSL Q-타입 생성 등) 설정은 모듈 간에 전이(transitive)되지 않습니다. `modules:jpa`가 자신을 위해 선언한 `querydsl-apt`/`jakarta.persistence-api`/`jakarta.annotation-api` annotationProcessor는 이를 사용하는 `apps` 모듈에 자동으로 전파되지 않으므로, 자체 엔티티를 갖는 앱(`commerce-api`, `commerce-batch`, `commerce-streamer` 모두 해당)은 동일한 3줄을 자신의 `build.gradle.kts`에도 반복 선언해야 합니다.
+- `annotationProcessor`(QueryDSL Q-타입 생성 등) 설정은 모듈 간에 전이(transitive)되지 않습니다. `modules:jpa`가 자신을 위해 선언한 `querydsl-apt`/`jakarta.persistence-api`/`jakarta.annotation-api` annotationProcessor는 이를 사용하는 `apps` 모듈에 자동으로 전파되지 않으므로, 자체 엔티티를 갖는 앱(`commerce-api`, `commerce-batch`, `commerce-streamer` 모두 해당)은 동일한 3줄을 자신의 `build.gradle.kts`에도 반복 선언해야 합니다. 단, `commerce-api`는 예외입니다. `querydsl-apt` 5.1.0이 `@Embeddable` record를 처리하지 못해(`Illegal type`) 이 3줄을 두지 않고 값 객체를 `@Embedded` record로 매핑합니다. `commerce-api`에서 QueryDSL 쿼리가 필요해지면 record를 지원하는 OpenFeign 포크(`io.github.openfeign.querydsl`)로 교체하는 것을 먼저 검토합니다.
 
 ### 앱 실행과 포트
 

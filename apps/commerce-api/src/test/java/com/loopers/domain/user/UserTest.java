@@ -19,7 +19,7 @@ class UserTest {
         @Test
         void startsWithZeroBalance() {
             // act
-            User user = new User();
+            User user = User.create();
 
             // assert
             assertThat(user.getPointBalance()).isEqualTo(new PointBalance(new Money(0)));
@@ -33,7 +33,7 @@ class UserTest {
         @Test
         void increasesBalance_whenAmountIsValid() {
             // arrange
-            User user = new User();
+            User user = User.create();
 
             // act
             user.chargePoint(new Money(10_000));
@@ -46,7 +46,7 @@ class UserTest {
         @Test
         void rejectsWithInvalidInput_andKeepsBalance_whenAmountIsZero() {
             // arrange
-            User user = new User();
+            User user = User.create();
             user.chargePoint(new Money(5_000));
 
             // act
@@ -65,7 +65,7 @@ class UserTest {
         @Test
         void decreasesBalance_whenAmountIsValid() {
             // arrange
-            User user = new User();
+            User user = User.create();
             user.chargePoint(new Money(10_000));
 
             // act
@@ -79,7 +79,7 @@ class UserTest {
         @Test
         void rejectsWithInsufficientPoint_andKeepsBalance_whenAmountIsGreaterThanBalance() {
             // arrange
-            User user = new User();
+            User user = User.create();
             user.chargePoint(new Money(3_000));
 
             // act
