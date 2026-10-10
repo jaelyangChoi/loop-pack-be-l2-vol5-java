@@ -121,6 +121,39 @@ class MoneyTest {
         }
     }
 
+    @DisplayName("금액이 0인지 확인할 때,")
+    @Nested
+    class IsZero {
+        @DisplayName("0이면 true 를 반환한다.")
+        @Test
+        void returnsTrue_whenAmountIsZero() {
+            assertThat(new Money(0).isZero()).isTrue();
+        }
+
+        @DisplayName("0이 아니면 false 를 반환한다.")
+        @Test
+        void returnsFalse_whenAmountIsNotZero() {
+            assertThat(new Money(1).isZero()).isFalse();
+        }
+    }
+
+    @DisplayName("금액을 비교할 때,")
+    @Nested
+    class IsLessThan {
+        @DisplayName("더 작은 금액이면 true 를 반환한다.")
+        @Test
+        void returnsTrue_whenAmountIsLess() {
+            assertThat(new Money(3_000).isLessThan(new Money(7_000))).isTrue();
+        }
+
+        @DisplayName("같거나 더 큰 금액이면 false 를 반환한다.")
+        @Test
+        void returnsFalse_whenAmountIsEqualOrGreater() {
+            assertThat(new Money(7_000).isLessThan(new Money(7_000))).isFalse();
+            assertThat(new Money(7_001).isLessThan(new Money(7_000))).isFalse();
+        }
+    }
+
     @DisplayName("금액이 같으면 같은 값으로 취급한다.")
     @Test
     void isEqual_whenAmountsAreSame() {

@@ -33,6 +33,14 @@ public record Money(long amount) {
         return new Money(exact(() -> Math.multiplyExact(amount, (long) quantity)));
     }
 
+    public boolean isZero() {
+        return amount == 0;
+    }
+
+    public boolean isLessThan(Money other) {
+        return amount < other.amount;
+    }
+
     // long 범위를 넘는 계산은 ArithmeticException 대신 도메인 예외로 바꾼다.
     private static long exact(LongSupplier calculation) {
         try {
