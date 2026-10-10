@@ -83,12 +83,12 @@ feature: `brand`, `product`, `like`, `order`, `user`. 포인트 API는 `interfac
 
 ### 2-2. 계층의 역할
 
-| 계층 | 맡는 일 | 현재 코드의 예 (example) | 직접 의존하지 않을 것 |
+| 계층 | 맡는 일 | 현재 코드의 예 (user·point) | 직접 의존하지 않을 것 |
 |---|---|---|---|
-| **interfaces** | 요청 파싱·입력 변환, 응답 변환, 에러의 HTTP 매핑 | `ExampleV1Controller`, `ExampleV1ApiSpec`, `ExampleV1Dto`, `ApiControllerAdvice` | infrastructure |
-| **application** | 유스케이스 순서 조율, 트랜잭션 경계(`@Transactional`), 도메인 → `Info` 변환, 조회 결과 조합 | `ExampleFacade`, `ExampleInfo` | interfaces, infrastructure |
-| **domain** | 상태·업무 규칙(생성자·행동에서 `CoreException`), Repository 인터페이스 | `ExampleModel`, `ExampleService`, `ExampleRepository` | interfaces, application, infrastructure |
-| **infrastructure** | domain Repository의 JPA 구현 (위임 어댑터) | `ExampleRepositoryImpl`, `ExampleJpaRepository` | 업무 규칙 중복 |
+| **interfaces** | 요청 파싱·입력 변환, 응답 변환, 에러의 HTTP 매핑 | `PointController`, `PointApiSpec`, `PointDto`, `ApiControllerAdvice` | infrastructure |
+| **application** | 유스케이스 순서 조율, 트랜잭션 경계(`@Transactional`), 도메인 → `Info` 변환, 조회 결과 조합 | `PointFacade`, `PointInfo` | interfaces, infrastructure |
+| **domain** | 상태·업무 규칙(생성자·행동에서 `CoreException`), Repository 인터페이스 | `User`, `UserService`, `UserRepository` | interfaces, application, infrastructure |
+| **infrastructure** | domain Repository의 JPA 구현 (위임 어댑터) | `UserRepositoryImpl`, `UserJpaRepository` | 업무 규칙 중복 |
 
 ### 2-3. 의존 방향과 ArchUnit 규칙
 
@@ -240,7 +240,7 @@ Order[userId] ── OrderItem[productId, qty, unitPrice:Money] ── PaymentRe
 | Aggregate 안 | 객체 참조 | `Order` → `OrderItem` 컬렉션 |
 
 - Repository는 Aggregate 단위이다: `BrandRepository`, `ProductRepository`, `LikeRepository`, `OrderRepository`, `UserRepository`. `Stock`, `PointBalance`, `OrderItem`, `PaymentResult`는 자체 Repository가 없다.
-- domain Service는 템플릿 패턴(`ExampleService`)대로 Aggregate별 저장 위임과 단순 조율을 맡는다. 여러 Aggregate를 엮는 유스케이스는 Facade가 맡는다.
+- domain Service는 `UserService`와 같은 방식으로 Aggregate별 저장 위임과 단순 조율을 맡는다. 여러 Aggregate를 엮는 유스케이스는 Facade가 맡는다.
 - 상품 응답(상품 + 브랜드 + 좋아요 수)의 조합은 application이 한다. 목록에서는 `brandIds`를 모아 일괄 조회해 N+1을 피한다.
 - 좋아요 수는 Like 행에서 집계한다 (D-12). 상세는 `count`, 목록은 `productIds`로 `group by` 일괄 집계, `likes_desc` 정렬은 Product 쿼리에서 Like 집계를 join해 수행한다. 카운터 컬럼은 두지 않는다.
 

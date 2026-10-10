@@ -54,11 +54,11 @@ Loopers 에서 제공하는 Spring Boot(Java 21) 멀티 모듈 커머스 템플�
 
 ## 애플리케이션 내부 레이어드 아키텍처
 
-**아래 4계층 패턴은 현재 `commerce-api`의 `example` 도메인에만 실제로 구현되어 있는 템플릿 예시입니다.** `commerce-batch`, `commerce-streamer`는 아직 데모 코드(배치 Job, Kafka Consumer)만 있을 뿐 이 레이어 구조를 따르는 도메인 코드가 없으므로, 새로 도메인을 추가할 때 이 패턴을 그대로 이식하면 됩니다. 각 `apps` 모듈은 독립적이므로 동일 도메인이라도 앱마다 각자 이 4계층을 따로 구현해야 합니다(위 "멀티 모듈 구조" 참고).
+**아래 4계층 패턴은 현재 `commerce-api`에만 실제로 구현되어 있습니다(`user`·`point` 기능이 예시).** `commerce-batch`, `commerce-streamer`는 아직 데모 코드(배치 Job, Kafka Consumer)만 있을 뿐 이 레이어 구조를 따르는 도메인 코드가 없으므로, 새로 도메인을 추가할 때 이 패턴을 따르면 됩니다. 각 `apps` 모듈은 독립적이므로 동일 도메인이라도 앱마다 각자 이 4계층을 따로 구현해야 합니다(위 "멀티 모듈 구조" 참고).
 
 각 `apps` 모듈은 도메인별로 다음 4개 레이어를 따릅니다 (`apps/commerce-api/src/main/java/com/loopers/{layer}/{domain}` 참고):
 
-1. **`interfaces.api`** — Controller. API 스펙은 `{Domain}ApiSpec` 인터페이스(Swagger 어노테이션 등 문서화 목적)와 이를 구현하는 `{Domain}Controller`로 분리합니다. 요청/응답 DTO는 `{Domain}Dto`에 정적 record로 모아둡니다. 클래스 이름에는 버전(`V1`)을 붙이지 않고 URL 경로(`/api/v1/...`)로만 버전을 표현합니다(템플릿의 `ExampleV1*`는 예외로 그대로 둡니다). 컨트롤러는 요청을 받아 `application` 레이어의 Facade만 호출하고, 응답은 공통 `ApiResponse<T>`(`interfaces.api.ApiResponse`)로 감쌉니다.
+1. **`interfaces.api`** — Controller. API 스펙은 `{Domain}ApiSpec` 인터페이스(Swagger 어노테이션 등 문서화 목적)와 이를 구현하는 `{Domain}Controller`로 분리합니다. 요청/응답 DTO는 `{Domain}Dto`에 정적 record로 모아둡니다. 클래스 이름에는 버전(`V1`)을 붙이지 않고 URL 경로(`/api/v1/...`)로만 버전을 표현합니다. 컨트롤러는 요청을 받아 `application` 레이어의 Facade만 호출하고, 응답은 공통 `ApiResponse<T>`(`interfaces.api.ApiResponse`)로 감쌉니다.
 2. **`application`** — Facade + Info. `{Domain}Facade`는 하나 이상의 `domain.Service`를 조합(오케스트레이션)하고, 도메인 모델을 `interfaces` 레이어에 노출할 `{Domain}Info`(record)로 변환합니다. 여러 도메인을 넘나드는 유스케이스 조합은 이 레이어의 책임입니다.
 3. **`domain`** — Model(JPA Entity), Service, Repository(인터페이스). 비즈니스 규칙(유효성 검증 등)은 Model 생성자/메소드 내부에서 `CoreException`을 던지는 방식으로 캡슐화합니다. Repository는 `domain` 레이어에 인터페이스로만 정의합니다. **트랜잭션 경계는 `application`의 Facade에서 `@Transactional`로 관리**하며(조회 유스케이스는 `readOnly = true`), 도메인 `Service`에는 `@Transactional`을 붙이지 않고 Facade가 연 트랜잭션에 참여합니다.
 4. **`infrastructure`** — `domain.Repository` 인터페이스의 실제 구현체(`{Domain}RepositoryImpl`)와 Spring Data JPA 인터페이스(`{Domain}JpaRepository`)가 위치합니다. `RepositoryImpl`은 `JpaRepository`에 위임하는 어댑터 역할만 합니다.
@@ -70,7 +70,7 @@ Loopers 에서 제공하는 Spring Boot(Java 21) 멀티 모듈 커머스 템플�
 ## 테스트 컨벤션
 
 - 테스트는 `@Nested` 클래스로 시나리오(예: `Get`, `Create`)를 그룹화하고, `@DisplayName`을 한국어로 작성해 테스트 트리를 문서처럼 읽히게 합니다. 메소드명은 `동작_when조건` 형태의 영어(예: `messageShouldBeErrorTypeMessage_whenCustomMessageIsNull`)를 사용합니다.
-- 현재 `example` 도메인의 테스트(단위·통합·E2E)는 삭제되어 아래 통합/E2E 컨벤션의 실제 예시는 없습니다. 새 도메인을 추가할 때 이 컨벤션대로 작성하세요.
+- 아래 통합/E2E 컨벤션의 실제 예시는 `UserRepositoryTest`(저장), `PointFacadeTest`(Facade 통합), `PointApiE2ETest`(API E2E)입니다. 새 도메인도 이 컨벤션대로 작성하세요.
 - 도메인/서비스 통합 테스트는 `@SpringBootTest` + `DatabaseCleanUp`(testFixtures)을 `@AfterEach`에서 호출해 모든 테이블을 truncate합니다.
 - API E2E 테스트는 `@SpringBootTest(webEnvironment = RANDOM_PORT)` + `TestRestTemplate`로 실제 HTTP 요청을 보내고, 응답을 공통 `ApiResponse<T>`로 역직렬화해 검증합니다.
 - MySQL/Redis가 필요한 테스트는 각 모듈의 testFixtures에 있는 Testcontainers 설정(`MySqlTestContainersConfig`, `RedisTestContainersConfig`)을 사용합니다(Docker 필요). Kafka는 위에서 설명한 대로 testFixtures가 아직 구현되어 있지 않으므로 필요 시 직접 구성해야 합니다.

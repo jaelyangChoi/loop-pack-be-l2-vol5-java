@@ -47,7 +47,7 @@ docker-compose -f ./docker/monitoring-compose.yml down
 ```
 Root
 ├── apps      (실행 가능한 SpringBootApplication, 서로 독립적)
-│   ├── commerce-api        - REST API. domain/application/infrastructure 4계층 예시(example)가 구현되어 있음
+│   ├── commerce-api        - REST API. domain/application/infrastructure 4계층(user·point 기능)이 구현되어 있음
 │   ├── commerce-batch      - 배치 작업(spring-boot-starter-batch). 현재는 데모 Job만 있고 도메인 레이어는 비어있음
 │   └── commerce-streamer   - Kafka Consumer 애플리케이션. 현재는 데모 Consumer만 있고 도메인 레이어는 비어있음
 ├── modules   (특정 구현/도메인에 의존하지 않는 재사용 가능한 설정 + 테스트 환경)
