@@ -4,11 +4,11 @@ import com.loopers.application.like.LikeFacade;
 import com.loopers.interfaces.api.ApiResponse;
 import com.loopers.interfaces.api.PageResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -22,7 +22,7 @@ public class LikeController implements LikeApiSpec {
     @PostMapping("/api/v1/products/{productId}/likes")
     @Override
     public ApiResponse<Object> like(
-        @RequestHeader("X-USER-ID") Long userId,
+        @AuthenticationPrincipal Long userId,
         @PathVariable Long productId
     ) {
         likeFacade.like(userId, productId);
@@ -32,7 +32,7 @@ public class LikeController implements LikeApiSpec {
     @DeleteMapping("/api/v1/products/{productId}/likes")
     @Override
     public ApiResponse<Object> unlike(
-        @RequestHeader("X-USER-ID") Long userId,
+        @AuthenticationPrincipal Long userId,
         @PathVariable Long productId
     ) {
         likeFacade.unlike(userId, productId);
@@ -42,7 +42,7 @@ public class LikeController implements LikeApiSpec {
     @GetMapping("/api/v1/users/{userId}/likes")
     @Override
     public ApiResponse<PageResponse<LikeDto.LikedProductResponse>> getMyLikes(
-        @RequestHeader("X-USER-ID") Long requesterId,
+        @AuthenticationPrincipal Long requesterId,
         @PathVariable Long userId,
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size
