@@ -177,4 +177,23 @@ class ProductServiceTest {
             assertThat(page.getContent()).extracting(Product::getId).containsExactly(liked.getId());
         }
     }
+
+    @DisplayName("정렬과 브랜드 조건으로 상품 목록을 검색할 때,")
+    @Nested
+    class Search {
+        @DisplayName("브랜드 조건과 정렬을 적용해 삭제되지 않은 상품을 반환한다.")
+        @Test
+        void appliesBrandAndSort() {
+            // arrange
+            Product cheap = productRepository.save(Product.create(1L, "싼 것", new Money(1_000), new Stock(1)));
+            Product expensive = productRepository.save(Product.create(1L, "비싼 것", new Money(9_000), new Stock(1)));
+            productRepository.save(Product.create(2L, "다른 브랜드", new Money(500), new Stock(1)));
+
+            // act
+            Page<Product> page = productService.search(1L, ProductSort.PRICE_ASC, PageRequest.of(0, 10));
+
+            // assert
+            assertThat(page.getContent()).extracting(Product::getId).containsExactly(cheap.getId(), expensive.getId());
+        }
+    }
 }

@@ -1,5 +1,8 @@
 package com.loopers.domain.like;
 
+import java.util.Collection;
+import java.util.Map;
+
 public interface LikeRepository {
     Like save(Like like);
 
@@ -9,4 +12,7 @@ public interface LikeRepository {
     int delete(Long userId, Long productId);
 
     long countByProductId(Long productId);
+
+    /** 여러 상품의 좋아요 수를 한 번에 센다. 좋아요가 없는 상품은 결과에 없다. */
+    Map<Long, Long> countByProductIds(Collection<Long> productIds);
 }

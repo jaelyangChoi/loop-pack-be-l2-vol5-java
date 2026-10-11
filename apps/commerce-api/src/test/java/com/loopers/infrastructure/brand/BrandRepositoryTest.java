@@ -12,6 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -118,6 +119,32 @@ class BrandRepositoryTest {
             assertThat(secondPage.getContent()).hasSize(1);
             assertThat(secondPage.getTotalPages()).isEqualTo(2);
             assertThat(secondPage.getTotalElements()).isEqualTo(3);
+        }
+    }
+
+    @DisplayName("id 목록으로 브랜드를 일괄 조회할 때,")
+    @Nested
+    class FindAllActiveByIds {
+        @DisplayName("삭제되지 않은 브랜드만 반환하고, 삭제됐거나 없는 id 는 결과에서 빠진다.")
+        @Test
+        void returnsOnlyActiveBrands() {
+            // arrange
+            Brand first = saveBrand("첫째");
+            Brand second = saveBrand("둘째");
+            Brand deleted = saveDeletedBrand("삭제됨");
+
+            // act
+            List<Brand> found = brandRepository.findAllActiveByIds(
+                List.of(first.getId(), second.getId(), deleted.getId(), 999L));
+
+            // assert
+            assertThat(found).extracting(Brand::getId).containsExactlyInAnyOrder(first.getId(), second.getId());
+        }
+
+        @DisplayName("빈 목록이면 빈 결과를 반환한다.")
+        @Test
+        void returnsEmpty_whenIdsAreEmpty() {
+            assertThat(brandRepository.findAllActiveByIds(List.of())).isEmpty();
         }
     }
 }

@@ -3,6 +3,7 @@ package com.loopers.domain.like;
 import jakarta.persistence.Column;
 import jakarta.persistence.EmbeddedId;
 import jakarta.persistence.Entity;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import lombok.Getter;
 
@@ -16,7 +17,8 @@ import java.time.ZonedDateTime;
  */
 @Getter
 @Entity
-@Table(name = "likes")
+// 기본키 (user_id, product_id)는 product_id 조건 집계에 쓸 수 없어 상품별 좋아요 수 집계용 보조 인덱스를 둔다 (D-12).
+@Table(name = "likes", indexes = @Index(name = "idx_likes_product_id", columnList = "product_id"))
 public class Like {
 
     @EmbeddedId

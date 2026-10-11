@@ -27,6 +27,10 @@ public class ProductService {
         return productRepository.findAllActive(pageable);
     }
 
+    public Page<Product> search(Long brandId, ProductSort sort, Pageable pageable) {
+        return productRepository.findAllActive(brandId, sort, pageable);
+    }
+
     public Page<Product> getLikedList(Long userId, Pageable pageable) {
         return productRepository.findAllActiveLikedBy(userId, pageable);
     }

@@ -9,6 +9,10 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+
+import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -17,6 +21,9 @@ class LikeRepositoryTest {
 
     @Autowired
     private LikeRepository likeRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Autowired
     private DatabaseCleanUp databaseCleanUp;
@@ -112,6 +119,65 @@ class LikeRepositoryTest {
         @Test
         void returnsZero_whenNoLikes() {
             assertThat(likeRepository.countByProductId(10L)).isZero();
+        }
+    }
+
+    @DisplayName("여러 상품의 좋아요 수를 한 번에 셀 때,")
+    @Nested
+    class CountByProductIds {
+        @DisplayName("상품별로 집계하고, 좋아요가 없는 상품은 결과에 없다.")
+        @Test
+        void countsPerProduct_withoutProductsHavingNoLikes() {
+            // arrange
+            saveLike(1L, 10L);
+            saveLike(2L, 10L);
+            saveLike(1L, 11L);
+
+            // act
+            Map<Long, Long> counts = likeRepository.countByProductIds(List.of(10L, 11L, 12L));
+
+            // assert
+            assertThat(counts).containsOnly(Map.entry(10L, 2L), Map.entry(11L, 1L));
+        }
+
+        @DisplayName("요청하지 않은 상품은 집계하지 않고, 취소하면 줄어든다.")
+        @Test
+        void countsOnlyRequestedProducts_andDecreasesAfterCancel() {
+            // arrange
+            saveLike(1L, 10L);
+            saveLike(2L, 10L);
+            saveLike(1L, 11L);
+
+            // act
+            likeRepository.delete(1L, 10L);
+            Map<Long, Long> counts = likeRepository.countByProductIds(List.of(10L));
+
+            // assert
+            assertThat(counts).containsOnly(Map.entry(10L, 1L));
+        }
+
+        @DisplayName("빈 목록이면 빈 결과를 반환한다.")
+        @Test
+        void returnsEmpty_whenIdsAreEmpty() {
+            assertThat(likeRepository.countByProductIds(List.of())).isEmpty();
+        }
+    }
+
+    @DisplayName("좋아요 테이블 스키마는,")
+    @Nested
+    class Schema {
+        @DisplayName("상품별 좋아요 수 집계를 위한 product_id 보조 인덱스를 가진다.")
+        @Test
+        void hasProductIdIndex() {
+            // act
+            Integer count = jdbcTemplate.queryForObject(
+                "select count(*) from information_schema.statistics "
+                    + "where table_schema = database() and table_name = 'likes' and index_name = 'idx_likes_product_id'",
+                Integer.class
+            );
+
+            // assert
+            assertThat(count).isPositive();
         }
     }
 }

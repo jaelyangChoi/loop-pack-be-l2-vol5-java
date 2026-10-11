@@ -14,6 +14,12 @@ public interface ProductRepository {
     /** 삭제되지 않은 상품을 id 내림차순으로 조회한다. 정렬은 Pageable 이 아니라 구현이 고정한다. */
     Page<Product> findAllActive(Pageable pageable);
 
+    /**
+     * 고객 상품 목록. 삭제되지 않은 상품을 정렬 기준에 따라 조회하고, 브랜드를 지정하면 그 브랜드의 상품만 조회한다.
+     * 존재하지 않는 브랜드이면 빈 결과다. 정렬은 Pageable 이 아니라 {@code sort} 가 정하며 동률은 id 내림차순이다.
+     */
+    Page<Product> findAllActive(Long brandId, ProductSort sort, Pageable pageable);
+
     /** 사용자가 좋아요한 삭제되지 않은 상품을, 최근에 좋아요한 순으로 조회한다. 정렬은 Pageable 이 아니라 구현이 고정한다. */
     Page<Product> findAllActiveLikedBy(Long userId, Pageable pageable);
 

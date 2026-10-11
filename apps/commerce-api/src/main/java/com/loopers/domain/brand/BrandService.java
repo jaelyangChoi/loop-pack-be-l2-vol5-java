@@ -7,6 +7,11 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
 
+import java.util.Collection;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
 @RequiredArgsConstructor
 @Component
 public class BrandService {
@@ -20,6 +25,12 @@ public class BrandService {
 
     public Brand create(String name) {
         return brandRepository.save(Brand.create(name));
+    }
+
+    /** 여러 브랜드를 한 번에 조회해 id 로 찾을 수 있게 돌려준다. 삭제됐거나 없는 브랜드는 담기지 않는다. */
+    public Map<Long, Brand> getAllByIds(Collection<Long> ids) {
+        return brandRepository.findAllActiveByIds(ids).stream()
+            .collect(Collectors.toMap(Brand::getId, Function.identity()));
     }
 
     public Page<Brand> getList(Pageable pageable) {

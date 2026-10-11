@@ -2,8 +2,6 @@ package com.loopers.application.brand;
 
 import com.loopers.domain.brand.Brand;
 import com.loopers.domain.brand.BrandRepository;
-import com.loopers.domain.user.User;
-import com.loopers.domain.user.UserRepository;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import com.loopers.utils.DatabaseCleanUp;
@@ -27,9 +25,6 @@ class BrandFacadeTest {
     private BrandRepository brandRepository;
 
     @Autowired
-    private UserRepository userRepository;
-
-    @Autowired
     private DatabaseCleanUp databaseCleanUp;
 
     @AfterEach
@@ -40,15 +35,14 @@ class BrandFacadeTest {
     @DisplayName("브랜드 상세를 조회할 때,")
     @Nested
     class Get {
-        @DisplayName("저장된 브랜드 정보를 반환한다.")
+        @DisplayName("요청자를 식별하지 않아도 저장된 브랜드 정보를 반환한다.")
         @Test
         void returnsInfo() {
             // arrange
-            User user = userRepository.save(User.create());
             Brand brand = brandRepository.save(Brand.create("루퍼스"));
 
             // act
-            BrandInfo info = brandFacade.get(user.getId(), brand.getId());
+            BrandInfo info = brandFacade.get(brand.getId());
 
             // assert
             assertThat(info.id()).isEqualTo(brand.getId());
@@ -59,35 +53,17 @@ class BrandFacadeTest {
         @Test
         void throwsNotFound_whenBrandDoesNotExistOrIsDeleted() {
             // arrange
-            User user = userRepository.save(User.create());
             Brand deleted = Brand.create("삭제됨");
             deleted.delete();
             Brand saved = brandRepository.save(deleted);
 
             // act
-            CoreException missing = assertThrows(CoreException.class,
-                () -> brandFacade.get(user.getId(), 999L));
-            CoreException removed = assertThrows(CoreException.class,
-                () -> brandFacade.get(user.getId(), saved.getId()));
+            CoreException missing = assertThrows(CoreException.class, () -> brandFacade.get(999L));
+            CoreException removed = assertThrows(CoreException.class, () -> brandFacade.get(saved.getId()));
 
             // assert
             assertThat(missing.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
             assertThat(removed.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
-        }
-
-        @DisplayName("존재하지 않는 사용자이면 NOT_FOUND 로 거절한다.")
-        @Test
-        void throwsNotFound_whenUserDoesNotExist() {
-            // arrange
-            Brand brand = brandRepository.save(Brand.create("루퍼스"));
-
-            // act
-            CoreException exception = assertThrows(CoreException.class,
-                () -> brandFacade.get(999L, brand.getId()));
-
-            // assert
-            assertThat(exception.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
-            assertThat(exception.getCustomMessage()).isEqualTo("존재하지 않는 사용자입니다.");
         }
     }
 }

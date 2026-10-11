@@ -12,6 +12,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 
+import java.util.List;
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -119,6 +122,29 @@ class BrandServiceTest {
             // assert
             assertThat(page.getContent()).extracting(Brand::getId)
                 .containsExactly(second.getId(), first.getId());
+        }
+    }
+
+    @DisplayName("id 목록으로 브랜드를 일괄 조회할 때,")
+    @Nested
+    class GetAllByIds {
+        @DisplayName("id 를 키로 한 맵을 반환하고, 삭제됐거나 없는 브랜드는 담기지 않는다.")
+        @Test
+        void returnsMapOfActiveBrands() {
+            // arrange
+            Brand first = brandService.create("첫째");
+            Brand second = brandService.create("둘째");
+            Brand deleted = Brand.create("삭제됨");
+            deleted.delete();
+            Brand savedDeleted = brandRepository.save(deleted);
+
+            // act
+            Map<Long, Brand> brands = brandService.getAllByIds(
+                List.of(first.getId(), second.getId(), savedDeleted.getId(), 999L));
+
+            // assert
+            assertThat(brands).containsOnlyKeys(first.getId(), second.getId());
+            assertThat(brands.get(first.getId()).getName()).isEqualTo("첫째");
         }
     }
 }

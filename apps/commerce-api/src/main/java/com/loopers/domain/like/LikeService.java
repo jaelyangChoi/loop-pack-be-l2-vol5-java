@@ -3,6 +3,10 @@ package com.loopers.domain.like;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 @RequiredArgsConstructor
 @Component
 public class LikeService {
@@ -24,5 +28,15 @@ public class LikeService {
 
     public long count(Long productId) {
         return likeRepository.countByProductId(productId);
+    }
+
+    /** 요청한 모든 상품의 좋아요 수를 돌려준다. 좋아요가 없는 상품은 0으로 채운다. */
+    public Map<Long, Long> countByProductIds(Collection<Long> productIds) {
+        Map<Long, Long> counts = likeRepository.countByProductIds(productIds);
+        Map<Long, Long> result = new LinkedHashMap<>();
+        for (Long productId : productIds) {
+            result.put(productId, counts.getOrDefault(productId, 0L));
+        }
+        return result;
     }
 }

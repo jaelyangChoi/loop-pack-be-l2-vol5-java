@@ -8,6 +8,7 @@ import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import lombok.Getter;
 
@@ -20,7 +21,8 @@ import lombok.Getter;
  */
 @Getter
 @Entity
-@Table(name = "products")
+// 브랜드별 조회(고객 목록의 브랜드 필터, 브랜드 삭제 시 연결된 상품 확인)에 쓰는 보조 인덱스.
+@Table(name = "products", indexes = @Index(name = "idx_products_brand_id", columnList = "brand_id"))
 public class Product extends BaseEntity {
 
     private static final int NAME_MAX_LENGTH = 100;

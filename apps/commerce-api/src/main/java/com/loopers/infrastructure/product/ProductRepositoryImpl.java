@@ -2,6 +2,7 @@ package com.loopers.infrastructure.product;
 
 import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductRepository;
+import com.loopers.domain.product.ProductSort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -27,6 +28,15 @@ public class ProductRepositoryImpl implements ProductRepository {
     @Override
     public Page<Product> findAllActive(Pageable pageable) {
         return productJpaRepository.findAllByDeletedAtIsNullOrderByIdDesc(pageable);
+    }
+
+    @Override
+    public Page<Product> findAllActive(Long brandId, ProductSort sort, Pageable pageable) {
+        return switch (sort) {
+            case LATEST -> productJpaRepository.findAllActiveOrderByLatest(brandId, pageable);
+            case PRICE_ASC -> productJpaRepository.findAllActiveOrderByPriceAsc(brandId, pageable);
+            case LIKES_DESC -> productJpaRepository.findAllActiveOrderByLikesDesc(brandId, pageable);
+        };
     }
 
     @Override
