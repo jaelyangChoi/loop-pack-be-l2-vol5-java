@@ -39,6 +39,8 @@ class JacksonConfig {
                 DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES
             );
             builder.featuresToDisable(
+                // 정수 필드에 소수(1.5)를 보내면 소수점을 버리고 받아들이는 기본 동작을 끈다. 금액·수량이 입력과 다르게 저장되지 않도록 거절한다.
+                DeserializationFeature.ACCEPT_FLOAT_AS_INT,
                 DeserializationFeature.READ_UNKNOWN_ENUM_VALUES_AS_NULL,
                 DeserializationFeature.FAIL_ON_IGNORED_PROPERTIES,
                 DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES

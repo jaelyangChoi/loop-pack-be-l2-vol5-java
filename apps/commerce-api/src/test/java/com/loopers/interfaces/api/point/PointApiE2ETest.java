@@ -134,6 +134,19 @@ class PointApiE2ETest {
             assertFail(response, HttpStatus.BAD_REQUEST, "INVALID_INPUT");
         }
 
+        @DisplayName("amount 가 소수이면 소수점을 버려 충전하지 않고, 400 INVALID_INPUT 이며 기존 잔액은 그대로다.")
+        @ParameterizedTest
+        @ValueSource(strings = {"1.5", "1000.0"})
+        void returnsBadRequest_andKeepsBalance_whenAmountIsDecimal(String amount) {
+            User user = saveUserWithBalance(5_000);
+
+            ResponseEntity<ApiResponse<PointDto.PointResponse>> response =
+                charge(String.valueOf(user.getId()), "{\"amount\": " + amount + "}");
+
+            assertFail(response, HttpStatus.BAD_REQUEST, "INVALID_INPUT");
+            assertThat(getPoint(String.valueOf(user.getId())).getBody().data().balance()).isEqualTo(5_000);
+        }
+
         @DisplayName("충전 후 잔액이 표현 범위를 넘으면 400 INVALID_INPUT 이고, 기존 잔액은 그대로다.")
         @Test
         void returnsBadRequest_andKeepsBalance_whenBalanceOverflows() {
