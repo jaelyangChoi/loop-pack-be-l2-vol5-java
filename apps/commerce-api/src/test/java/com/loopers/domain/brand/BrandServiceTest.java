@@ -1,0 +1,124 @@
+package com.loopers.domain.brand;
+
+import com.loopers.support.error.CoreException;
+import com.loopers.support.error.ErrorType;
+import com.loopers.utils.DatabaseCleanUp;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+@SpringBootTest
+class BrandServiceTest {
+
+    @Autowired
+    private BrandService brandService;
+
+    @Autowired
+    private BrandRepository brandRepository;
+
+    @Autowired
+    private DatabaseCleanUp databaseCleanUp;
+
+    @AfterEach
+    void tearDown() {
+        databaseCleanUp.truncateAllTables();
+    }
+
+    @DisplayName("브랜드를 조회할 때,")
+    @Nested
+    class Get {
+        @DisplayName("존재하는 브랜드이면 해당 브랜드를 반환한다.")
+        @Test
+        void returnsBrand_whenBrandExists() {
+            // arrange
+            Brand saved = brandRepository.save(Brand.create("루퍼스"));
+
+            // act
+            Brand found = brandService.get(saved.getId());
+
+            // assert
+            assertThat(found.getId()).isEqualTo(saved.getId());
+            assertThat(found.getName()).isEqualTo("루퍼스");
+        }
+
+        @DisplayName("존재하지 않는 브랜드이면 NOT_FOUND 로 거절한다.")
+        @Test
+        void throwsNotFound_whenBrandDoesNotExist() {
+            // act
+            CoreException exception = assertThrows(CoreException.class, () -> brandService.get(999L));
+
+            // assert
+            assertThat(exception.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
+        }
+
+        @DisplayName("삭제된 브랜드이면 NOT_FOUND 로 거절한다.")
+        @Test
+        void throwsNotFound_whenBrandIsDeleted() {
+            // arrange
+            Brand brand = Brand.create("삭제됨");
+            brand.delete();
+            Brand saved = brandRepository.save(brand);
+
+            // act
+            CoreException exception = assertThrows(CoreException.class, () -> brandService.get(saved.getId()));
+
+            // assert
+            assertThat(exception.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
+        }
+    }
+
+    @DisplayName("브랜드를 등록할 때,")
+    @Nested
+    class Create {
+        @DisplayName("저장하고, 저장된 브랜드를 반환한다.")
+        @Test
+        void savesBrand() {
+            // act
+            Brand created = brandService.create("  루퍼스  ");
+
+            // assert
+            assertThat(brandRepository.findActive(created.getId()))
+                .get()
+                .extracting(Brand::getName)
+                .isEqualTo("루퍼스");
+        }
+
+        @DisplayName("이름이 유효하지 않으면 INVALID_INPUT 으로 거절하고, 저장하지 않는다.")
+        @Test
+        void rejectsWithInvalidInput_andSavesNothing_whenNameIsBlank() {
+            // act
+            CoreException exception = assertThrows(CoreException.class, () -> brandService.create("   "));
+
+            // assert
+            assertThat(exception.getErrorType()).isEqualTo(ErrorType.INVALID_INPUT);
+            assertThat(brandRepository.findAllActive(PageRequest.of(0, 10)).getTotalElements()).isZero();
+        }
+    }
+
+    @DisplayName("브랜드 목록을 조회할 때,")
+    @Nested
+    class GetList {
+        @DisplayName("삭제되지 않은 브랜드를 최신순으로 반환한다.")
+        @Test
+        void returnsActiveBrands_newestFirst() {
+            // arrange
+            Brand first = brandService.create("첫째");
+            Brand second = brandService.create("둘째");
+
+            // act
+            Page<Brand> page = brandService.getList(PageRequest.of(0, 10));
+
+            // assert
+            assertThat(page.getContent()).extracting(Brand::getId)
+                .containsExactly(second.getId(), first.getId());
+        }
+    }
+}

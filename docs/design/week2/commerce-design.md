@@ -27,13 +27,13 @@ week2의 목표는 **기본 API를 간단하게 구현하고 TDD를 적용**하�
 | 3 | 도메인 관계 | 완료 |
 | 4 | 대표 흐름 | 완료 |
 | 5 | 기본 기능 설계 (API 계약) | 골격 (P-1 결정, 나머지 TBD) |
-| 6 | 설계 결정 기록 | 진행 중 (D-1 ~ D-13) |
+| 6 | 설계 결정 기록 | 진행 중 (D-1 ~ D-14) |
 
 **작업 순서**
 
 1. 3장 도메인 관계 (P-10, P-5 포함)
 2. 4장 대표 흐름
-3. 기능 구현 직전에 해당 TBD를 결정: P-4(상품 목록 구현 전), P-8(DTO 작성 시), P-9(첫 관리자 Controller 작성 시)
+3. 기능 구현 직전에 해당 TBD를 결정: P-4(상품 목록 구현 전), P-8(DTO 작성 시. 브랜드는 결정됨, 상품은 구현 시), ~~P-9~~(결정됨, D-14)
 
 구현하며 더 나은 판단이 나오면 이 문서를 고친다.
 
@@ -71,8 +71,8 @@ week2의 목표는 **기본 API를 간단하게 구현하고 TDD를 적용**하�
 ```
 com.loopers
 ├── interfaces.api.{feature}        고객 API (Controller, ApiSpec, Dto)
-├── interfaces.api.admin.{feature}  관리자 API (TBD: 경로/패키지 분리 방식)
-├── application.{feature}           Facade, Info
+├── interfaces.api.admin.{feature}  관리자 API (클래스에 `Admin` 접두사, D-14)
+├── application.{feature}           Facade(고객 `{Feature}Facade`, 관리자 `Admin{Feature}Facade`), Info
 ├── domain.{feature}                Model(Entity), Service, Repository(인터페이스)
 ├── infrastructure.{feature}        RepositoryImpl, JpaRepository
 ├── support.error                   CoreException, ErrorType
@@ -353,7 +353,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 
 | 기능 | method · path | 입력 | 성공 | 대표 오류 |
 |---|---|---|---|---|
-| 브랜드 상세 | `GET /api/v1/brands/{brandId}` | path `brandId` | 브랜드 정보 | 없거나 삭제된 브랜드 → `NOT_FOUND` |
+| 브랜드 상세 | `GET /api/v1/brands/{brandId}` | path `brandId`, 요청자 | 브랜드 정보 (id, 이름) | 없거나 삭제된 브랜드 → `NOT_FOUND` (헤더 누락·형식 오류 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND`) |
 | 상품 목록 | `GET /api/v1/products` | 브랜드 필터, 페이지, 정렬(`latest`·`price_asc`·`likes_desc`) | 상품 목록 (브랜드 정보·좋아요 수 포함, 삭제 상품 제외) | 잘못된 정렬·페이지 → `INVALID_INPUT` (상세 TBD) |
 | 상품 상세 | `GET /api/v1/products/{productId}` | path `productId` | 상품 정보 (브랜드 정보·좋아요 수 포함) | 없거나 삭제된 상품 → `NOT_FOUND` |
 | 좋아요 등록 | `POST /api/v1/products/{productId}/likes` | path `productId`, 요청자 | 성공 (200, 본문 없음). 이미 좋아요한 상품이어도 성공(멱등), 관계는 하나만 유지 | 없거나 삭제된 상품 → `NOT_FOUND` |
@@ -375,7 +375,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 
 | 기능 | method · path | 입력 | 성공 | 대표 오류 |
 |---|---|---|---|---|
-| 브랜드 목록·상세 | `GET /api-admin/v1/brands`, `GET /api-admin/v1/brands/{brandId}` | (목록 조건 TBD) | 브랜드 정보 | 없는 브랜드 → `NOT_FOUND` |
+| 브랜드 목록·상세 | `GET /api-admin/v1/brands`, `GET /api-admin/v1/brands/{brandId}` | 목록: query `page`(0 이상, 기본 0)·`size`(1~100, 기본 20), 삭제되지 않은 브랜드를 id 내림차순으로 고정 | 브랜드 정보 (id, 이름, 생성·수정 시각). 목록은 `content`·`page`·`size`·`totalElements`·`totalPages` | 없거나 삭제된 브랜드 → `NOT_FOUND`, 잘못된 `page`·`size` → `INVALID_INPUT` |
 | 브랜드 등록 | `POST /api-admin/v1/brands` | body 이름 (1~50자) | 저장된 브랜드 | 유효하지 않은 입력 → `INVALID_INPUT` |
 | 브랜드 수정 | `PUT /api-admin/v1/brands/{brandId}` | body 이름 (1~50자) | 수정된 브랜드 | 없거나 삭제된 브랜드 → `NOT_FOUND`, 입력 오류 → `INVALID_INPUT` |
 | 브랜드 삭제 | `DELETE /api-admin/v1/brands/{brandId}` | path `brandId` | 성공 (200, 본문 없음) | 삭제되지 않은 상품 연결(재고 0 포함) → `CONFLICT` ("연결된 상품이 있어 브랜드를 삭제할 수 없습니다. 상품을 먼저 삭제해 주세요."), 이미 삭제됐거나 없는 브랜드 → `NOT_FOUND` |
@@ -386,7 +386,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 | 재고 변경 | `PUT /api-admin/v1/products/{productId}/stock` | body 최종 수량 (0 이상) | 변경된 재고 | 음수 → `INVALID_INPUT`, 삭제된 상품 거절 |
 | 주문 목록·상세 | `GET /api-admin/v1/orders`, `GET /api-admin/v1/orders/{orderId}` | (구매자별 조건 TBD) | 구매자별 주문의 품목·상태·금액·결제 결과 | 없는 주문 → `NOT_FOUND` |
 
-- 관리자 API 접근: 관리자 허용, 일반 사용자·식별 없는 요청은 거절(403). 거절 시 DB를 바꾸지 않는다.
+- 관리자 API 접근: 관리자 허용, 일반 사용자·식별 없는 요청은 거절(403). 거절 시 DB를 바꾸지 않는다. 거절 본문은 과제 예시의 `sendError(403)`이 아니라 `ApiResponse.fail(FORBIDDEN)` 형식이다 (D-14).
 - 삭제 정책(기본 삭제 조건): 삭제되지 않은 상품이 연결된 브랜드의 삭제는 거절(재고 0 포함). 삭제된 브랜드·상품은 고객 조회·새 주문에서 제외하고 수정·재고 변경 대상으로도 사용하지 않는다. 삭제는 soft delete(`BaseEntity.delete()`, `deletedAt`)로 처리한다 (D-5).
 
 ### 5-4. 주요 규칙의 기대값
@@ -425,8 +425,8 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 | P-5 | ~~상품 이름·가격, 브랜드 이름의 허용 범위~~ | **결정됨 (D-12)**: 브랜드 이름 1~50자, 상품 이름 1~100자, 가격 1~1,000,000,000원 |
 | P-6 | ~~좋아요 중복 등록·없는 관계 취소, 타인 `userId` 목록 접근~~ | **결정됨 (D-4, D-11)**: 멱등 성공, 타인 `userId`의 목록 접근은 `FORBIDDEN`. 동시 요청 경쟁은 week3 이관 |
 | P-7 | ~~이미 CONFIRMED인 주문 확정, 타인 주문, 재고·잔액 부족의 `ErrorType`~~ | **결정됨 (D-3)**: 의미 단위 errorCode + 행동 안내 메시지 |
-| P-8 | 고객/관리자 응답 필드 구분(예: 관리자에게만 재고 노출)? | 응답 Dto 분리. **해당 API의 DTO를 작성할 때 결정** |
-| P-9 | 관리자 controller의 패키지·클래스 분리 방식(`interfaces.api.admin.*`)? | 2-1 패키지 배치. **첫 관리자 Controller 작성 시 결정** |
+| P-8 | 고객/관리자 응답 필드 구분(예: 관리자에게만 재고 노출)? | **브랜드는 결정됨 (D-14)**: 고객 `id`·이름, 관리자는 생성·수정 시각 추가. 상품(재고 등)은 **해당 API의 DTO를 작성할 때 결정** |
+| P-9 | ~~관리자 controller의 패키지·클래스 분리 방식(`interfaces.api.admin.*`)~~ | **결정됨 (D-14)**: `interfaces.api.admin.{feature}` + `Admin` 접두사, application은 같은 기능 패키지에서 Facade만 분리 |
 | P-10 | 사용자(User)를 도메인 모델로 둘지, 식별자만 쓸지? fixture 범위는? | **결정됨 (D-8)**: 최소 User Entity + `PointBalance` VO |
 
 ---
@@ -569,3 +569,15 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 - **비용**: `CONFLICT`의 기본 메시지가 맞지 않아 기본 메시지 변경과 "항상 메시지를 직접 지정" 규칙이 필요하다. 클라이언트가 원인을 코드가 아니라 메시지로 구분한다.
 - **재검토 조건**: week3에서 일괄 삭제로 바뀌면 이 거절을 제거한다. 클라이언트가 이 오류에서 분기해야 하면 전용 코드를 둔다.
 - **기각한 대안**: `BRAND_HAS_PRODUCTS` 전용 코드(사라질 동작에 코드를 추가), 204 No Content(`ApiResponse` 형식 불일치).
+
+### D-14. 관리자 API는 `admin` 패키지와 `Admin` 접두사로 나누고, 거절은 ApiResponse 형식의 403으로 응답한다
+
+- **상황**: 첫 관리자 API(브랜드)를 만들면서 패키지·클래스 분리, 관리자 경계의 거절 응답, 고객·관리자 응답 필드, 관리자 목록 조건(P-8, P-9, 5-3 TBD)을 정해야 했다.
+- **결정 (분리)**: interfaces는 `interfaces.api.admin.{feature}`에 `Admin{Feature}ApiSpec`·`Admin{Feature}Controller`·`Admin{Feature}Dto`를 둔다. application은 같은 `application.{feature}` 안에서 Facade만 `Admin{Feature}Facade`로 나누고 `admin` 하위 패키지는 두지 않는다. `Info`는 고객·관리자가 함께 쓰고 응답 Dto가 필요한 필드만 고른다.
+- **결정 (경계)**: 과제가 제시한 `config.AdminBoundaryConfig`(`/api-admin/**` → `hasRole("ADMIN")`)를 쓰되, 거절(미식별·권한 부족 모두)은 `sendError(403)` 대신 403과 `ApiResponse.fail("FORBIDDEN", ...)` 본문으로 쓴다. 이 체인은 `/api-admin/**`에만 적용되고, 직접 정의한 `SecurityFilterChain`이 있으면 Boot의 기본 체인이 생기지 않아 고객 API에는 보안이 걸리지 않는다.
+- **결정 (응답)**: 브랜드 응답은 고객 `{id, name}`, 관리자 `{id, name, createdAt, updatedAt}`이다. 등록·수정 시각은 관리에 필요하지만 고객에게는 불필요한 내부 정보이다.
+- **결정 (목록)**: 관리자 브랜드 목록은 `page`(0 이상, 기본 0)·`size`(1~100, 기본 20)를 받고, 삭제되지 않은 브랜드를 id 내림차순으로 고정해 `content`·`page`·`size`·`totalElements`·`totalPages`로 응답한다. 범위를 벗어난 값은 `INVALID_INPUT`이다. 정렬은 Repository 메소드 이름에 고정해 호출하는 쪽의 `Sort`에 영향받지 않는다.
+- **근거**: Spring은 빈 이름을 클래스 단순명으로 만들어서, 패키지만 다르고 이름이 같은 `BrandController` 두 개는 기동 시 빈 이름 충돌이 난다. 접두사로 이름도 구분하면 `admin` 경로와 패키지가 대응한다. Security 필터는 Controller보다 앞에서 동작해 `ApiControllerAdvice`가 거절을 처리하지 못하므로, 모든 응답이 `ApiResponse` 형식이라는 원칙을 지키려면 거절 본문을 설정에서 직접 써야 한다. 브랜드가 계속 늘 수 있어 전체 조회는 피한다.
+- **비용**: 과제 예시 코드보다 설정이 길다(`ObjectMapper`로 직접 응답을 쓴다). 고객·관리자 Dto가 따로 있어 같은 필드를 두 번 선언한다. `Page`/`Pageable`을 domain Repository 인터페이스와 Facade 반환에 쓴다(계층 규칙에는 어긋나지 않는다). `page`·`size` 검증이 관리자 브랜드 Facade에 있어 상품 목록(P-4)에서 같은 규칙을 다시 쓸 때 공용으로 뽑을지 판단한다.
+- **재검토 조건**: 운영 인증을 도입하면 `AdminBoundaryConfig`를 교체한다(로그인 기능은 범위 밖). 관리자 기능이 늘어 `admin` 패키지가 커지면 application도 `admin` 하위 패키지로 나누는 것을 검토한다.
+- **기각한 대안**: 기능 패키지 안에 고객·관리자 Controller를 함께 두기(관리자 경계가 패키지로 드러나지 않음), 패키지만 다르고 이름이 같은 Controller(빈 이름 충돌, `@RestController("...")`로 이름을 직접 지정해야 함), 과제 예시의 `sendError(403)`(응답 형식 불일치), 목록 전체 조회(페이징 없음).
