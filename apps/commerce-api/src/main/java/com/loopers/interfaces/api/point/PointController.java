@@ -3,6 +3,7 @@ package com.loopers.interfaces.api.point;
 import com.loopers.application.point.PointFacade;
 import com.loopers.application.point.PointInfo;
 import com.loopers.interfaces.api.ApiResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,9 +23,9 @@ public class PointController implements PointApiSpec {
     @Override
     public ApiResponse<PointDto.PointResponse> charge(
         @RequestHeader("X-USER-ID") Long userId,
-        @RequestBody PointDto.ChargeRequest request
+        @Valid @RequestBody PointDto.ChargeRequest request
     ) {
-        PointInfo info = pointFacade.charge(userId, request.requiredAmount());
+        PointInfo info = pointFacade.charge(userId, request.amount());
         return ApiResponse.success(PointDto.PointResponse.from(info));
     }
 

@@ -2,6 +2,10 @@ package com.loopers.interfaces.api.admin.brand;
 
 import com.loopers.domain.brand.Brand;
 import com.loopers.domain.brand.BrandRepository;
+import com.loopers.domain.common.Money;
+import com.loopers.domain.product.Product;
+import com.loopers.domain.product.ProductRepository;
+import com.loopers.domain.product.Stock;
 import com.loopers.utils.DatabaseCleanUp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -38,6 +42,9 @@ class AdminBrandApiTest {
 
     @Autowired
     private BrandRepository brandRepository;
+
+    @Autowired
+    private ProductRepository productRepository;
 
     @Autowired
     private DatabaseCleanUp databaseCleanUp;
@@ -253,6 +260,16 @@ class AdminBrandApiTest {
             assertThat(storedName(brand.getId())).isEqualTo("루퍼스");
         }
 
+        @DisplayName("이름이 없으면 브랜드가 존재하지 않아도 404 가 아니라 400 INVALID_INPUT 이다. 필수 누락은 조회 전에 거절한다.")
+        @Test
+        void rejectsWithInvalidInput_beforeLookup_whenNameIsMissing() throws Exception {
+            mvc.perform(put(BRANDS + "/999").with(admin()).with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.meta.errorCode").value("INVALID_INPUT"));
+        }
+
         @DisplayName("없거나 삭제된 브랜드이면 404 NOT_FOUND 이다.")
         @Test
         void returnsNotFound_whenBrandDoesNotExistOrIsDeleted() throws Exception {
@@ -301,6 +318,38 @@ class AdminBrandApiTest {
             mvc.perform(delete(BRANDS + "/999").with(admin()).with(csrf()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.meta.errorCode").value("NOT_FOUND"));
+        }
+
+        @DisplayName("삭제되지 않은 상품이 연결되어 있으면 409 CONFLICT 이고, 브랜드는 그대로 조회된다.")
+        @Test
+        void returnsConflict_andKeepsBrand_whenActiveProductExists() throws Exception {
+            Brand brand = saveBrand("루퍼스");
+            productRepository.save(Product.create(brand.getId(), "품절 상품", new Money(89_000), new Stock(0)));
+
+            mvc.perform(delete(BRANDS + "/" + brand.getId()).with(admin()).with(csrf()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.meta.errorCode").value("CONFLICT"))
+                .andExpect(jsonPath("$.meta.message")
+                    .value("연결된 상품이 있어 브랜드를 삭제할 수 없습니다. 상품을 먼저 삭제해 주세요."));
+
+            mvc.perform(get(BRANDS + "/" + brand.getId()).with(admin()))
+                .andExpect(status().isOk());
+        }
+
+        @DisplayName("연결된 상품을 삭제한 뒤에는 브랜드를 삭제할 수 있다.")
+        @Test
+        void deletesBrand_afterProductIsDeleted() throws Exception {
+            Brand brand = saveBrand("루퍼스");
+            Product product = productRepository.save(
+                Product.create(brand.getId(), "러닝화", new Money(89_000), new Stock(10)));
+
+            mvc.perform(delete("/api-admin/v1/products/" + product.getId()).with(admin()).with(csrf()))
+                .andExpect(status().isOk());
+            mvc.perform(delete(BRANDS + "/" + brand.getId()).with(admin()).with(csrf()))
+                .andExpect(status().isOk());
+
+            mvc.perform(get(BRANDS + "/" + brand.getId()).with(admin()))
+                .andExpect(status().isNotFound());
         }
     }
 }

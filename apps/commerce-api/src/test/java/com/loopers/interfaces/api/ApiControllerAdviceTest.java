@@ -1,16 +1,23 @@
 package com.loopers.interfaces.api;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -55,6 +62,26 @@ class ApiControllerAdviceTest {
         }
     }
 
+    @DisplayName("@Valid 요청 본문을 받는 API 에서,")
+    @Nested
+    class RequestBodyValidation {
+        @DisplayName("@NotNull 필드가 없으면 INVALID_INPUT(400)으로 응답하고, 메시지에 필드명이 들어간다.")
+        @Test
+        void returnsInvalidInput_withFieldName_whenRequiredFieldIsMissing() throws Exception {
+            mockMvc.perform(post("/test/body").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.meta.errorCode").value("INVALID_INPUT"))
+                .andExpect(jsonPath("$.meta.message").value(containsString("name")));
+        }
+
+        @DisplayName("필수 필드가 모두 있으면 정상 응답한다.")
+        @Test
+        void returnsOk_whenRequiredFieldExists() throws Exception {
+            mockMvc.perform(post("/test/body").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"a\"}"))
+                .andExpect(status().isOk());
+        }
+    }
+
     // 실제 Controller 는 아직 없으므로, 헤더를 받는 최소한의 테스트 전용 Controller 를 둔다.
     // 바깥 테스트 클래스의 인스턴스에 묶이지 않도록 static 중첩 클래스로 선언한다.
     @RestController
@@ -63,5 +90,12 @@ class ApiControllerAdviceTest {
         public String get(@RequestHeader("X-USER-ID") Long userId) {
             return String.valueOf(userId);
         }
+
+        @PostMapping("/test/body")
+        public String post(@Valid @RequestBody TestRequest request) {
+            return request.name();
+        }
     }
+
+    record TestRequest(@NotNull String name) {}
 }

@@ -2,6 +2,7 @@ package com.loopers.domain.product;
 
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
+import jakarta.persistence.Embeddable;
 
 /**
  * 상품의 재고 수량을 나타내는 불변 값 객체.
@@ -9,6 +10,7 @@ import com.loopers.support.error.ErrorType;
  * <p>재고는 항상 0 이상이다. 차감은 자신을 바꾸지 않고 새 {@code Stock}을 반환하므로,
  * 거절된 경우에도 기존 재고는 유지된다.
  */
+@Embeddable
 public record Stock(int remaining) {
 
     public Stock {

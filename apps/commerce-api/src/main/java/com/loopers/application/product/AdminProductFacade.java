@@ -1,0 +1,60 @@
+package com.loopers.application.product;
+
+import com.loopers.domain.brand.BrandService;
+import com.loopers.domain.common.Money;
+import com.loopers.domain.product.Product;
+import com.loopers.domain.product.ProductService;
+import com.loopers.domain.product.Stock;
+import com.loopers.support.paging.PageRequests;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * 관리자용 상품 유스케이스.
+ */
+@RequiredArgsConstructor
+@Component
+public class AdminProductFacade {
+
+    private final BrandService brandService;
+    private final ProductService productService;
+
+    @Transactional
+    public ProductInfo create(Long brandId, String name, long price, int stock) {
+        // 브랜드는 다른 Aggregate 라 존재 여부를 여기서 확인한다. 상품은 brandId 만 가진다.
+        brandService.get(brandId);
+        Product product = productService.create(brandId, name, new Money(price), new Stock(stock));
+        return ProductInfo.from(product);
+    }
+
+    @Transactional
+    public ProductInfo update(Long productId, String name, long price) {
+        Product product = productService.get(productId);
+        product.update(name, new Money(price));
+        return ProductInfo.from(product);
+    }
+
+    @Transactional
+    public ProductInfo changeStock(Long productId, int stock) {
+        Product product = productService.get(productId);
+        product.changeStock(stock);
+        return ProductInfo.from(product);
+    }
+
+    @Transactional
+    public void delete(Long productId) {
+        productService.get(productId).delete();
+    }
+
+    @Transactional(readOnly = true)
+    public ProductInfo get(Long productId) {
+        return ProductInfo.from(productService.get(productId));
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ProductInfo> getList(int page, int size) {
+        return productService.getList(PageRequests.of(page, size)).map(ProductInfo::from);
+    }
+}

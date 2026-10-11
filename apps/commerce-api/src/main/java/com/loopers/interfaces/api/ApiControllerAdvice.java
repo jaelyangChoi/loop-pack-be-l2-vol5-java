@@ -8,6 +8,8 @@ import com.loopers.support.error.ErrorType;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -51,6 +53,15 @@ public class ApiControllerAdvice {
     public ResponseEntity<ApiResponse<?>> handleBadRequest(MissingRequestHeaderException e) {
         String message = String.format("필수 요청 헤더 '%s'가 누락되었습니다.", e.getHeaderName());
         return failureResponse(ErrorType.INVALID_INPUT, message);
+    }
+
+    // @Valid 요청 본문의 제약(@NotNull 등) 위반. 처리하지 않으면 Throwable 핸들러로 가서 500 이 된다.
+    @ExceptionHandler
+    public ResponseEntity<ApiResponse<?>> handleBadRequest(MethodArgumentNotValidException e) {
+        String message = e.getBindingResult().getFieldErrors().stream()
+            .map(this::fieldErrorMessage)
+            .collect(Collectors.joining(", "));
+        return failureResponse(ErrorType.INVALID_INPUT, message.isEmpty() ? null : message);
     }
 
     @ExceptionHandler
@@ -118,6 +129,13 @@ public class ApiControllerAdvice {
     public ResponseEntity<ApiResponse<?>> handle(Throwable e) {
         log.error("Exception : {}", e.getMessage(), e);
         return failureResponse(ErrorType.INTERNAL_ERROR, null);
+    }
+
+    private String fieldErrorMessage(FieldError error) {
+        if ("NotNull".equals(error.getCode())) {
+            return error.getField() + " 는 필수입니다.";
+        }
+        return error.getField() + " " + error.getDefaultMessage();
     }
 
     private String extractMissingParameter(String message) {

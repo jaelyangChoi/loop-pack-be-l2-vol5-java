@@ -27,13 +27,13 @@ week2의 목표는 **기본 API를 간단하게 구현하고 TDD를 적용**하�
 | 3 | 도메인 관계 | 완료 |
 | 4 | 대표 흐름 | 완료 |
 | 5 | 기본 기능 설계 (API 계약) | 골격 (P-1 결정, 나머지 TBD) |
-| 6 | 설계 결정 기록 | 진행 중 (D-1 ~ D-14) |
+| 6 | 설계 결정 기록 | 진행 중 (D-1 ~ D-16) |
 
 **작업 순서**
 
 1. 3장 도메인 관계 (P-10, P-5 포함)
 2. 4장 대표 흐름
-3. 기능 구현 직전에 해당 TBD를 결정: P-4(상품 목록 구현 전), P-8(DTO 작성 시. 브랜드는 결정됨, 상품은 구현 시), ~~P-9~~(결정됨, D-14)
+3. 기능 구현 직전에 해당 TBD를 결정: P-4(상품 목록 구현 전), P-8(DTO 작성 시. 브랜드·관리자 상품은 결정됨, 고객 상품은 구현 시), ~~P-9~~(결정됨, D-14)
 
 구현하며 더 나은 판단이 나오면 이 문서를 고친다.
 
@@ -144,6 +144,8 @@ infrastructure.{feature}.{Feature}RepositoryImpl    ← 구현: JpaRepository에
 - 비즈니스 규칙 검증은 Model 생성자·행동 안에서 `CoreException`으로 던진다.
 - Controller는 Facade만 호출하고 응답은 `ApiResponse<T>`로 감싼다.
 - soft delete 대상 Entity의 조회 쿼리는 `deletedAt IS NULL` 조건을 빠뜨리지 않는다 (D-5).
+- 요청 본문의 필수 누락은 Dto의 `@NotNull`과 Controller의 `@Valid`로 조회 전에 `INVALID_INPUT`(400)으로 거절하고, 공백·길이·범위 같은 값 규칙은 도메인에서만 검증한다 (D-15). `@Valid`를 빠뜨리면 NPE(500)가 나므로 필수 누락 테스트를 함께 쓴다.
+- 목록 API의 `page`·`size` 규칙은 `support.paging.PageRequests`를 쓴다 (D-16).
 
 ### 2-7. 요청자 식별 (로컬 실습용)
 
@@ -300,7 +302,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 1. **관리자** `PUT /api-admin/v1/products/{productId}`: `AdminProductFacade.update` → 상품 조회(삭제·없음 `NOT_FOUND`) → `product.update(이름, 가격)`(브랜드는 바뀌지 않음, 검증 실패 `INVALID_INPUT`) → 저장.
 2. **고객** `GET /api/v1/products/{productId}`: `ProductFacade.get`(`readOnly`) → 상품 조회 → `brandId`로 브랜드 조회 → 좋아요 수 집계 → `ProductInfo`로 조합한다. 수정한 가격이 반영된다.
 
-- 상품·브랜드·좋아요 수의 조합은 application이 한다 (D-9). 응답 필드의 고객/관리자 구분은 P-8에서 DTO를 쓸 때 정한다.
+- 상품·브랜드·좋아요 수의 조합은 application이 한다 (D-9). 관리자 상품 응답은 D-16에서 정했고, 고객 상품 응답(브랜드 정보·좋아요 수 포함)은 고객 상품 조회를 구현할 때 정한다.
 - 상품이 남은 브랜드는 삭제할 수 없으므로 week2에서는 삭제된 브랜드의 상품이 생기지 않는다. 일괄 삭제는 week3에서 다룬다.
 
 ### 4-3. 좋아요 등록·취소
@@ -322,7 +324,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 | 존재하지 않는 사용자 | `NOT_FOUND` |
 | path `userId`가 요청자와 다름 (소유자가 URL에 드러난 타인 리소스) | `FORBIDDEN` |
 
-- 구현 메모: 현재 `ApiControllerAdvice`에 `MissingRequestHeaderException` 처리가 없다. 구현 시 `INVALID_INPUT`으로 매핑을 추가해야 한다.
+- 구현됨: `ApiControllerAdvice`가 `MissingRequestHeaderException`을 `INVALID_INPUT`으로, `@Valid` 위반(`MethodArgumentNotValidException`)도 `INVALID_INPUT`으로 매핑한다 (D-15).
 - 표의 `TBD`는 5-5의 미정 정책에서 결정한다.
 
 **성공 응답 원칙 (D-13)**: 돌려줄 데이터가 없는 성공도 HTTP 200과 `ApiResponse.success()`로 응답한다 (204 No Content를 쓰지 않는다). 아래 표의 "성공 (본문 없음)"은 이 응답을 뜻한다.
@@ -364,7 +366,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 
 | 기능 | method · path | 입력 | 성공 | 대표 오류 |
 |---|---|---|---|---|
-| 포인트 충전 | `POST /api/v1/points/charge` | body `amount` (양의 정수) | 충전 후 잔액 | 누락·잘못된 타입·0 이하·표현 범위 초과 → `INVALID_INPUT` (기존 잔액 유지), 충전 후 잔액이 표현 범위 초과 → `INVALID_INPUT` (기존 잔액 유지) |
+| 포인트 충전 | `POST /api/v1/points/charge` | body `amount` (양의 정수) | 충전 후 잔액 | 누락·잘못된 타입·소수(`1.5`, `1000.0`)·0 이하·표현 범위 초과 → `INVALID_INPUT` (기존 잔액 유지), 충전 후 잔액이 표현 범위 초과 → `INVALID_INPUT` (기존 잔액 유지) |
 | 잔액 조회 | `GET /api/v1/points` | 요청자 | 저장된 잔액 | 헤더 누락 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND` |
 | 주문 생성 | `POST /api/v1/orders` | body 품목 목록 (상품 id, 수량) | DRAFT 주문 (품목·수량·단가·합계), 차감 없음 | 없거나 삭제된 상품 → `NOT_FOUND`, 수량 0 이하·품목 없음·같은 상품 중복 → `INVALID_INPUT` |
 | 주문 확정 | `POST /api/v1/orders/{orderId}/confirm` | path `orderId` | CONFIRMED 주문 (결제액·결과), 재고·포인트 차감 | 재고 부족 → `OUT_OF_STOCK`, 잔액 부족 → `INSUFFICIENT_POINT`, 이미 확정 → `ORDER_ALREADY_CONFIRMED`, 상품 삭제됨 → `PRODUCT_UNAVAILABLE`, 없는·타인 주문 → `NOT_FOUND` |
@@ -379,11 +381,11 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 | 브랜드 등록 | `POST /api-admin/v1/brands` | body 이름 (1~50자) | 저장된 브랜드 | 유효하지 않은 입력 → `INVALID_INPUT` |
 | 브랜드 수정 | `PUT /api-admin/v1/brands/{brandId}` | body 이름 (1~50자) | 수정된 브랜드 | 없거나 삭제된 브랜드 → `NOT_FOUND`, 입력 오류 → `INVALID_INPUT` |
 | 브랜드 삭제 | `DELETE /api-admin/v1/brands/{brandId}` | path `brandId` | 성공 (200, 본문 없음) | 삭제되지 않은 상품 연결(재고 0 포함) → `CONFLICT` ("연결된 상품이 있어 브랜드를 삭제할 수 없습니다. 상품을 먼저 삭제해 주세요."), 이미 삭제됐거나 없는 브랜드 → `NOT_FOUND` |
-| 상품 목록·상세 | `GET /api-admin/v1/products`, `GET /api-admin/v1/products/{productId}` | (목록 조건 TBD) | 상품 정보 (관리자용 필드 TBD) | 없는 상품 → `NOT_FOUND` |
-| 상품 등록 | `POST /api-admin/v1/products` | body 브랜드 id, 이름(1~100자), 가격(1~1,000,000,000), 초기 재고(0 이상) | 저장된 상품 | 없거나 삭제된 브랜드 참조 → `NOT_FOUND`, 이름·가격 범위 위반 → `INVALID_INPUT` |
-| 상품 수정 | `PUT /api-admin/v1/products/{productId}` | body 이름(1~100자), 가격(1~1,000,000,000) (브랜드는 변경 불가) | 수정된 상품 | 삭제된 상품 수정 거절 → `NOT_FOUND`(안), 입력 오류 → `INVALID_INPUT` |
+| 상품 목록·상세 | `GET /api-admin/v1/products`, `GET /api-admin/v1/products/{productId}` | 목록: query `page`(0 이상, 기본 0)·`size`(1~100, 기본 20), 삭제되지 않은 상품을 id 내림차순으로 고정 (브랜드 필터 없음) | 상품 정보 (id, brandId, 이름, 가격, 재고, 생성·수정 시각). 목록은 `content`·`page`·`size`·`totalElements`·`totalPages` | 없거나 삭제된 상품 → `NOT_FOUND`, 잘못된 `page`·`size` → `INVALID_INPUT` |
+| 상품 등록 | `POST /api-admin/v1/products` | body `brandId`, `name`(1~100자), `price`(1~1,000,000,000), `stock`(0 이상, 초기 재고) | 저장된 상품 (위 형식) | 필수 누락·소수·이름·가격·재고 범위 위반 → `INVALID_INPUT`, 없거나 삭제된 브랜드 참조 → `NOT_FOUND` |
+| 상품 수정 | `PUT /api-admin/v1/products/{productId}` | body `name`(1~100자), `price`(1~1,000,000,000) (브랜드·재고는 변경 불가) | 수정된 상품 (위 형식) | 없거나 삭제된 상품 → `NOT_FOUND`, 필수 누락·입력 오류 → `INVALID_INPUT` |
 | 상품 삭제 | `DELETE /api-admin/v1/products/{productId}` | path `productId` | 성공 (200, 본문 없음) | 이미 삭제됐거나 없는 상품 → `NOT_FOUND` |
-| 재고 변경 | `PUT /api-admin/v1/products/{productId}/stock` | body 최종 수량 (0 이상) | 변경된 재고 | 음수 → `INVALID_INPUT`, 삭제된 상품 거절 |
+| 재고 변경 | `PUT /api-admin/v1/products/{productId}/stock` | body `stock`(최종 수량, 0 이상) | 변경된 상품 (위 형식) | 누락·음수·소수 → `INVALID_INPUT`, 없거나 삭제된 상품 → `NOT_FOUND` |
 | 주문 목록·상세 | `GET /api-admin/v1/orders`, `GET /api-admin/v1/orders/{orderId}` | (구매자별 조건 TBD) | 구매자별 주문의 품목·상태·금액·결제 결과 | 없는 주문 → `NOT_FOUND` |
 
 - 관리자 API 접근: 관리자 허용, 일반 사용자·식별 없는 요청은 거절(403). 거절 시 DB를 바꾸지 않는다. 거절 본문은 과제 예시의 `sendError(403)`이 아니라 `ApiResponse.fail(FORBIDDEN)` 형식이다 (D-14).
@@ -425,7 +427,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 | P-5 | ~~상품 이름·가격, 브랜드 이름의 허용 범위~~ | **결정됨 (D-12)**: 브랜드 이름 1~50자, 상품 이름 1~100자, 가격 1~1,000,000,000원 |
 | P-6 | ~~좋아요 중복 등록·없는 관계 취소, 타인 `userId` 목록 접근~~ | **결정됨 (D-4, D-11)**: 멱등 성공, 타인 `userId`의 목록 접근은 `FORBIDDEN`. 동시 요청 경쟁은 week3 이관 |
 | P-7 | ~~이미 CONFIRMED인 주문 확정, 타인 주문, 재고·잔액 부족의 `ErrorType`~~ | **결정됨 (D-3)**: 의미 단위 errorCode + 행동 안내 메시지 |
-| P-8 | 고객/관리자 응답 필드 구분(예: 관리자에게만 재고 노출)? | **브랜드는 결정됨 (D-14)**: 고객 `id`·이름, 관리자는 생성·수정 시각 추가. 상품(재고 등)은 **해당 API의 DTO를 작성할 때 결정** |
+| P-8 | 고객/관리자 응답 필드 구분(예: 관리자에게만 재고 노출)? | **브랜드는 결정됨 (D-14)**: 고객 `id`·이름, 관리자는 생성·수정 시각 추가. **관리자 상품은 결정됨 (D-16)**. 고객 상품(브랜드 정보·좋아요 수, 재고 노출 여부)은 **해당 API의 DTO를 작성할 때 결정** |
 | P-9 | ~~관리자 controller의 패키지·클래스 분리 방식(`interfaces.api.admin.*`)~~ | **결정됨 (D-14)**: `interfaces.api.admin.{feature}` + `Admin` 접두사, application은 같은 기능 패키지에서 Facade만 분리 |
 | P-10 | 사용자(User)를 도메인 모델로 둘지, 식별자만 쓸지? fixture 범위는? | **결정됨 (D-8)**: 최소 User Entity + `PointBalance` VO |
 
@@ -581,3 +583,23 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 - **비용**: 과제 예시 코드보다 설정이 길다(`ObjectMapper`로 직접 응답을 쓴다). 고객·관리자 Dto가 따로 있어 같은 필드를 두 번 선언한다. `Page`/`Pageable`을 domain Repository 인터페이스와 Facade 반환에 쓴다(계층 규칙에는 어긋나지 않는다). `page`·`size` 검증이 관리자 브랜드 Facade에 있어 상품 목록(P-4)에서 같은 규칙을 다시 쓸 때 공용으로 뽑을지 판단한다.
 - **재검토 조건**: 운영 인증을 도입하면 `AdminBoundaryConfig`를 교체한다(로그인 기능은 범위 밖). 관리자 기능이 늘어 `admin` 패키지가 커지면 application도 `admin` 하위 패키지로 나누는 것을 검토한다.
 - **기각한 대안**: 기능 패키지 안에 고객·관리자 Controller를 함께 두기(관리자 경계가 패키지로 드러나지 않음), 패키지만 다르고 이름이 같은 Controller(빈 이름 충돌, `@RestController("...")`로 이름을 직접 지정해야 함), 과제 예시의 `sendError(403)`(응답 형식 불일치), 목록 전체 조회(페이징 없음).
+
+### D-15. 입력 검증은 "형식은 Dto, 값 규칙은 도메인"으로 나눈다
+
+- **상황**: 필수 누락 검사가 Dto마다 `required(...)` 호출이라 읽기 어려웠고, 이름 필드만 빠져 있어 이름이 빠진 요청이 존재하지 않는 브랜드·상품을 가리키면 400이 아니라 404가 났다(Facade가 조회를 먼저 한다). 또 Jackson 기본값이 정수 필드의 소수(`1.5`)를 소수점을 버리고 받아들여, 성공 응답을 받아도 입력과 다른 금액·수량이 저장됐다.
+- **결정**: (1) 요청 본문의 필수 누락은 Dto의 `@NotNull`과 Controller의 `@Valid`로 조회 전에 `INVALID_INPUT`(400)으로 거절한다. `ApiControllerAdvice`가 `MethodArgumentNotValidException`을 `INVALID_INPUT`으로 바꾸고, `@NotNull` 위반 메시지는 "`{field}` 는 필수입니다."이다. (2) 공백뿐·길이·범위 같은 값 규칙은 도메인(`Brand`, `Product`, `Money`, `Stock`)에만 둔다. Dto에는 `@NotBlank`·`@Size`·`@Min`을 쓰지 않고, 도메인의 `null` 방어는 안전망으로 남긴다. (3) `supports:jackson`에서 `ACCEPT_FLOAT_AS_INT`를 꺼서, 정수 필드에 소수(`1.5`, `89000.9`, `1000.0` 포함)가 오면 400으로 거절한다.
+- **근거**: 선언부에서 필수 필드가 바로 읽히고 Swagger 스키마에도 필수로 표시된다. 값 규칙이 한 곳에만 있어 Dto와 도메인이 어긋나지 않는다. 다른 객체를 조회해야 하는 검증(3-3)은 형식 오류보다 뒤에 두는 것이 일관된 순서이다. 소수를 버리면 성공 응답과 저장값이 달라 금액 오류가 조용히 생긴다.
+- **비용**: Controller에서 `@Valid`를 빠뜨리면 컴파일러가 못 잡고 `Long`을 풀 때 NPE(500)가 난다(필수 누락 테스트가 잡는다). `supports:jackson`은 `commerce-batch`·`commerce-streamer`와 공용이라 두 앱의 요청 파싱도 소수를 거절한다. `1000.0`처럼 값이 정수여도 소수 표기이면 거절한다. 공백뿐인 이름이 존재하지 않는 브랜드를 가리키면 값 규칙보다 존재 확인이 먼저라 404가 난다.
+- **재검토 조건**: 필수 외 형식 제약(`@Pattern` 등)이 필요해지면 도메인 규칙과 중복되지 않는지 먼저 본다. batch·streamer에서 소수 표기를 받아야 하는 입력이 생기면 모듈별 설정으로 나눈다.
+- **기각한 대안**: `required(...)` 메소드 호출(가독성), Dto에 `@NotBlank`·`@Size`·`@Min`까지 사용(같은 규칙이 두 곳에 생김), 소수 허용 유지(조용한 데이터 변형).
+
+### D-16. 관리자 상품 응답·목록은 브랜드와 같은 규칙으로 두고, 브랜드 삭제 시 상품 확인은 Facade가 한다
+
+- **상황**: 관리자 상품 API의 응답 필드·목록 조건(P-8 상품, 5-3 TBD)과, 브랜드 삭제 거절에서 상품 연결 여부를 어디서 확인할지 정해야 했다.
+- **결정 (응답·목록)**: 관리자 상품 응답은 `{id, brandId, name, price, stock, createdAt, updatedAt}`이고 등록·수정·상세·목록·재고 변경이 같은 형식을 쓴다. 브랜드 이름은 담지 않는다(id 참조, D-9). 재고 변경은 `PUT /{productId}/stock`에 `{stock}`(최종 수량)을 보내고 변경된 상품 전체를 응답한다. 목록은 브랜드 필터 없이 `page`·`size` 규칙과 id 내림차순을 쓴다(D-14). `page`·`size` 검증은 `support.paging.PageRequests`로 공용화했다.
+- **결정 (고객과의 관계)**: 과제가 고객·관리자 응답 필드의 구분을 요구하므로 구분은 유지하되, `ProductInfo`·Repository 쿼리·`ProductService`·페이징 규칙은 공유하고 관리자 응답 record만 따로 둔다. 고객 상품 응답은 브랜드 정보·좋아요 수를 담아 따로 정한다.
+- **결정 (브랜드 삭제)**: `AdminBrandFacade.delete`가 `ProductService.hasActiveProducts`로 삭제되지 않은 상품(재고 0 포함)이 있는지 확인하고, 있으면 `CONFLICT`+메시지로 삭제 전에 거절한다 (D-13). 상품 등록 시 브랜드 존재 확인은 `AdminProductFacade`가 `BrandService`로 한다 (3-3).
+- **근거**: 브랜드 이름까지 담으려면 목록마다 브랜드를 일괄 조회하는 조합 코드가 필요하다. 응답을 고객과 완전히 같게 하면 과제의 "필드 구분" 요구와 충돌하고 재고 노출 여부도 정해야 한다. 한 Aggregate가 다른 Aggregate를 조회해야 하는 확인은 Facade의 몫이다.
+- **비용**: "삭제되지 않은 상품이 있는 브랜드는 삭제할 수 없다"는 규칙이 두 Aggregate에 걸쳐 있어 트랜잭션 수준으로 보장되지 않는다. 확인과 삭제 사이에 다른 요청이 상품을 등록하면 깨질 수 있으며, 이 동시성 경쟁은 week3(동시성 제어, 일괄 삭제)에서 다룬다. 목록에 브랜드 이름이 없어 화면이 브랜드를 따로 조회해야 하고, 브랜드 필터가 없어 상품이 많으면 브랜드별로 보기 어렵다.
+- **재검토 조건**: 관리자 화면에서 브랜드별 조회나 브랜드 이름 표시가 필요하면 필터와 조합을 추가한다. week3에서 일괄 삭제로 바뀌면 이 거절을 제거한다.
+- **기각한 대안**: 고객·관리자 응답을 완전히 같게 두기(과제 요구와 충돌), 브랜드 이름을 포함한 응답(목록 조합 코드 필요), 상품 존재 확인을 `Brand` 모델에서 하기(다른 Aggregate를 조회하게 됨).
