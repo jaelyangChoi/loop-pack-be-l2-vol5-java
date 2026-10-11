@@ -54,7 +54,7 @@ Loopers 에서 제공하는 Spring Boot(Java 21) 멀티 모듈 커머스 템플�
 
 ## 애플리케이션 내부 레이어드 아키텍처
 
-**아래 4계층 패턴은 현재 `commerce-api`에만 실제로 구현되어 있습니다(`user`·`point` 기능이 예시).** `commerce-batch`, `commerce-streamer`는 아직 데모 코드(배치 Job, Kafka Consumer)만 있을 뿐 이 레이어 구조를 따르는 도메인 코드가 없으므로, 새로 도메인을 추가할 때 이 패턴을 따르면 됩니다. 각 `apps` 모듈은 독립적이므로 동일 도메인이라도 앱마다 각자 이 4계층을 따로 구현해야 합니다(위 "멀티 모듈 구조" 참고).
+**아래 4계층 패턴은 현재 `commerce-api`에만 실제로 구현되어 있습니다(`user`·`point`·`brand`·`product`·`like` 기능이 예시).** `commerce-batch`, `commerce-streamer`는 아직 데모 코드(배치 Job, Kafka Consumer)만 있을 뿐 이 레이어 구조를 따르는 도메인 코드가 없으므로, 새로 도메인을 추가할 때 이 패턴을 따르면 됩니다. 각 `apps` 모듈은 독립적이므로 동일 도메인이라도 앱마다 각자 이 4계층을 따로 구현해야 합니다(위 "멀티 모듈 구조" 참고).
 
 각 `apps` 모듈은 도메인별로 다음 4개 레이어를 따릅니다 (`apps/commerce-api/src/main/java/com/loopers/{layer}/{domain}` 참고):
 
@@ -63,9 +63,17 @@ Loopers 에서 제공하는 Spring Boot(Java 21) 멀티 모듈 커머스 템플�
 3. **`domain`** — Model(JPA Entity), Service, Repository(인터페이스). 비즈니스 규칙(유효성 검증 등)은 Model 생성자/메소드 내부에서 `CoreException`을 던지는 방식으로 캡슐화합니다. Repository는 `domain` 레이어에 인터페이스로만 정의합니다. **트랜잭션 경계는 `application`의 Facade에서 `@Transactional`로 관리**하며(조회 유스케이스는 `readOnly = true`), 도메인 `Service`에는 `@Transactional`을 붙이지 않고 Facade가 연 트랜잭션에 참여합니다.
 4. **`infrastructure`** — `domain.Repository` 인터페이스의 실제 구현체(`{Domain}RepositoryImpl`)와 Spring Data JPA 인터페이스(`{Domain}JpaRepository`)가 위치합니다. `RepositoryImpl`은 `JpaRepository`에 위임하는 어댑터 역할만 합니다.
 
-공통 지원 코드는 `support.error`에 있습니다: `CoreException`(비즈니스 예외, `ErrorType` 보유) + `ErrorType`(message를 가진 enum, `getCode()`는 상수명) 조합을 사용합니다. `ErrorType`은 HTTP 상태를 알지 못하며(`INTERNAL_ERROR`/`INVALID_INPUT`/`NOT_FOUND`/`CONFLICT`), HTTP 상태 변환은 `interfaces.api.ErrorTypeHttpStatusMapper`가 전담합니다. `interfaces.api.ApiControllerAdvice`(`@RestControllerAdvice`)가 이를 포함한 각종 예외를 `ApiResponse.fail(...)`로 일괄 변환합니다. 새로운 에러 케이스를 추가할 때는 `ErrorType`에 항목을 추가하고 `ErrorTypeHttpStatusMapper`의 switch에도 매핑을 추가한 뒤(`default` 절이 없어 누락 시 컴파일 에러가 납니다) `CoreException`으로 던지세요.
+공통 지원 코드는 `support.error`에 있습니다: `CoreException`(비즈니스 예외, `ErrorType` 보유) + `ErrorType`(message를 가진 enum, `getCode()`는 상수명) 조합을 사용합니다. `ErrorType`은 HTTP 상태를 알지 못하며(`INTERNAL_ERROR`/`INVALID_INPUT`/`NOT_FOUND`/`CONFLICT`/`FORBIDDEN`), HTTP 상태 변환은 `interfaces.api.ErrorTypeHttpStatusMapper`가 전담합니다. `interfaces.api.ApiControllerAdvice`(`@RestControllerAdvice`)가 이를 포함한 각종 예외를 `ApiResponse.fail(...)`로 일괄 변환합니다. 새로운 에러 케이스를 추가할 때는 `ErrorType`에 항목을 추가하고 `ErrorTypeHttpStatusMapper`의 switch에도 매핑을 추가한 뒤(`default` 절이 없어 누락 시 컴파일 에러가 납니다) `CoreException`으로 던지세요.
 
 `BaseEntity`(`modules:jpa`)는 모든 JPA Entity가 상속하는 `@MappedSuperclass`로, `id`/`createdAt`/`updatedAt`/`deletedAt`과 멱등한 `delete()`/`restore()`를 제공하며 `guard()`를 오버라이드해 `@PrePersist`/`@PreUpdate` 시점 검증을 넣을 수 있습니다. 재사용성을 위해 이 외의 컬럼/동작은 추가하지 않는 것이 원칙입니다.
+
+### 보안 설정과 요청자 식별 (`config`)
+
+`config.SecurityConfig`가 관리자 체인(`/api-admin/**`, 관리자 역할만 허용)과 고객 체인(`/api/**`, CSRF 끔, STATELESS)을 한곳에서 정의합니다. 직접 정의한 `SecurityFilterChain`이 있으면 Spring Boot의 기본 보안 체인은 만들어지지 않습니다. 필터 단계의 오류는 `ApiControllerAdvice`가 처리하지 못하므로 `SecurityErrorResponseWriter`가 같은 `ApiResponse` 형식으로 씁니다.
+
+- 자신의 데이터를 다루는 고객 API(좋아요·포인트·주문)는 `X-USER-ID` 헤더로 요청자를 식별합니다(로컬 실습·테스트용). `config.SecurityConfig.IDENTIFIED_PATHS`에 경로를 등록하면 `CustomerIdentityFilter`가 그 경로에서만 헤더 형식(400)과 사용자 존재(404)를 확인하고 `userId`를 인증 주체로 둡니다. Controller는 `@RequestHeader`가 아니라 `@AuthenticationPrincipal Long`으로 요청자를 받고, Facade는 존재를 다시 조회하지 않습니다.
+- 카탈로그 조회(브랜드 상세, 상품 목록·상세)는 식별하지 않으며 헤더를 읽지도 사용자를 조회하지도 않습니다. 이런 경로는 목록에 등록하지 않습니다.
+- 목록에 등록하지 않은 식별 API는 식별 없이 열리고 `userId`가 `null`로 들어옵니다. 식별이 필요한 API마다 "헤더 누락 400" E2E 테스트를 두어 등록 누락을 잡습니다.
 
 ## 테스트 컨벤션
 

@@ -27,13 +27,13 @@ week2의 목표는 **기본 API를 간단하게 구현하고 TDD를 적용**하�
 | 3 | 도메인 관계 | 완료 |
 | 4 | 대표 흐름 | 완료 |
 | 5 | 기본 기능 설계 (API 계약) | 골격 (P-1 결정, 나머지 TBD) |
-| 6 | 설계 결정 기록 | 진행 중 (D-1 ~ D-17) |
+| 6 | 설계 결정 기록 | 진행 중 (D-1 ~ D-19) |
 
 **작업 순서**
 
 1. 3장 도메인 관계 (P-10, P-5 포함)
 2. 4장 대표 흐름
-3. 기능 구현 직전에 해당 TBD를 결정: P-4(상품 목록 구현 전), P-8(DTO 작성 시. 브랜드·관리자 상품은 결정됨, 고객 상품은 구현 시), ~~P-9~~(결정됨, D-14)
+3. 기능 구현 직전에 해당 TBD를 결정: ~~P-4~~(결정됨, D-18), ~~P-8~~(결정됨, D-14·D-16·D-18), ~~P-9~~(결정됨, D-14)
 
 구현하며 더 나은 판단이 나오면 이 문서를 고친다.
 
@@ -51,8 +51,8 @@ week2의 목표는 **기본 API를 간단하게 구현하고 TDD를 적용**하�
 
 | 구성 요소 | 역할 | 비고 |
 |---|---|---|
-| 고객 | 상품·브랜드 조회, 좋아요, 포인트 충전·조회, 주문 생성·확정·조회 | `X-USER-ID` 헤더로 요청자 식별 (로컬 실습·테스트용, 2-7 참고) |
-| 관리자 | 브랜드·상품 CRUD, 재고 변경, 구매자별 주문 조회 | `/api-admin/**`에 관리자 경계 적용 예정 (`AdminBoundaryConfig`, Spring Security) |
+| 고객 | 상품·브랜드 조회, 좋아요, 포인트 충전·조회, 주문 생성·확정·조회 | 좋아요·포인트·주문은 `X-USER-ID` 헤더로 요청자 식별 (로컬 실습·테스트용, Security 필터가 확인, 2-7·D-19 참고). 상품·브랜드 조회는 식별하지 않음 (D-2) |
+| 관리자 | 브랜드·상품 CRUD, 재고 변경, 구매자별 주문 조회 | `/api-admin/**`에 관리자 경계 적용 (`SecurityConfig`의 관리자 체인, Spring Security) |
 | commerce-api | 요청 검증·유스케이스 조율·업무 규칙 실행 | 단일 Spring Boot 앱 |
 | MySQL | 브랜드·상품·재고·좋아요·포인트·주문 저장 | 트랜잭션 경계는 application의 Facade |
 
@@ -76,7 +76,8 @@ com.loopers
 ├── domain.{feature}                Model(Entity), Service, Repository(인터페이스)
 ├── infrastructure.{feature}        RepositoryImpl, JpaRepository
 ├── support.error                   CoreException, ErrorType
-└── config                          설정 (예: AdminBoundaryConfig)
+└── config                          설정 (SecurityConfig: 관리자·고객 보안 체인, CustomerIdentityFilter: 요청자 식별,
+                                    SecurityErrorResponseWriter: 필터 단계 오류 응답)
 ```
 
 feature: `brand`, `product`, `like`, `order`, `user`. 포인트 API는 `interfaces.api.point`·`application.point`에 두고, 모델은 `domain.user`(User의 `PointBalance`)를 사용한다.
@@ -146,20 +147,21 @@ infrastructure.{feature}.{Feature}RepositoryImpl    ← 구현: JpaRepository에
 - soft delete 대상 Entity의 조회 쿼리는 `deletedAt IS NULL` 조건을 빠뜨리지 않는다 (D-5).
 - 요청 본문의 필수 누락은 Dto의 `@NotNull`과 Controller의 `@Valid`로 조회 전에 `INVALID_INPUT`(400)으로 거절하고, 공백·길이·범위 같은 값 규칙은 도메인에서만 검증한다 (D-15). `@Valid`를 빠뜨리면 NPE(500)가 나므로 필수 누락 테스트를 함께 쓴다.
 - 목록 API의 `page`·`size` 규칙은 `support.paging.PageRequests`를, 응답 형식은 `interfaces.api.PageResponse<T>`를 쓴다 (D-16, D-17).
+- 요청자 식별이 필요한 고객 API는 `SecurityConfig.IDENTIFIED_PATHS`에 경로를 등록한다. 등록하지 않으면 식별 없이 열리므로 그런 API마다 "헤더 누락 400" E2E 테스트를 함께 쓴다 (D-19).
 
 ### 2-7. 요청자 식별 (로컬 실습용)
 
-고객 API는 `X-USER-ID` 헤더로 요청자를 밝힌다.
+자신의 데이터를 다루는 고객 API(좋아요·포인트·주문)는 `X-USER-ID` 헤더로 요청자를 밝힌다. 요청자에 따라 결과가 달라지지 않는 카탈로그 조회(브랜드 상세, 상품 목록·상세)는 식별하지 않는다 (D-2). 식별은 Security 필터 한 곳에서 한다 (D-19).
 
 ```bash
 curl -H "X-USER-ID: 1" http://localhost:8080/api/v1/points
 ```
 
-- Controller가 `@RequestHeader("X-USER-ID") Long userId`로 받아 Facade에 `userId`만 넘긴다 (헤더 읽기 = interfaces).
-- 사용자 존재 확인과 소유권 확인(내 주문·내 좋아요)은 application에서 한다. 헤더·`HttpServletRequest`는 application 이하로 넘기지 않는다.
+- `config.CustomerIdentityFilter`가 식별이 필요한 경로(`SecurityConfig.IDENTIFIED_PATHS`)에서만 헤더 형식과 사용자 존재(DB)를 확인하고, 통과하면 `userId`를 인증 주체로 둔다. Controller는 `@AuthenticationPrincipal Long`으로 받아 Facade에 `userId`만 넘긴다. 그 밖의 경로(카탈로그)는 헤더를 읽지도 사용자를 조회하지도 않는다.
+- 소유권 확인(내 주문·내 좋아요)은 application에서 한다. 사용자 존재 확인은 필터가 맡으므로 Facade는 다시 조회하지 않는다(엔티티가 필요한 `PointFacade` 제외). 헤더·`HttpServletRequest`는 application 이하로 넘기지 않는다.
 - 헤더 값은 위조할 수 있으므로 **로컬 실습·테스트 전용**이다. 운영 인증 방식(JWT 등)은 정하지 않았고 이번 범위 밖이다.
 - 사용자 데이터는 fixture로 준비한다 (회원가입 API 없음).
-- 관리자 경계는 `/api-admin/**`에 `SecurityFilterChain`을 적용하고 MockMvc의 관리자·일반·식별 없는 요청으로 검증한다 (로그인 기능 없음).
+- 관리자 경계는 `/api-admin/**`에 `SecurityFilterChain`을 적용하고 MockMvc의 관리자·일반·식별 없는 요청으로 검증한다 (로그인 기능 없음). 고객 체인(`/api/**`)과 한 클래스(`SecurityConfig`)에서 정의한다.
 
 ---
 
@@ -202,7 +204,7 @@ Order ── 품목 금액 합계 / 포인트 결제액·결제 결과
 | 구분 | 위치 | 예 |
 |---|---|---|
 | 자기 상태의 규칙 | domain 모델의 생성자·행동 | 재고 차감 검증, 충전액 양수, 주문 상태 전이, 품목 중복 검증 |
-| 다른 객체를 조회해야 하는 검증 | application(Facade) | 브랜드 존재 확인, 상품 삭제 여부, 사용자 존재·소유권 |
+| 다른 객체를 조회해야 하는 검증 | application(Facade) | 브랜드 존재 확인, 상품 삭제 여부, 소유권. 요청자 존재는 식별 필터가 확인한다 (D-19) |
 | 조회 결과 조합 | application(Facade) → `Info` | 상품 + 브랜드 + 좋아요 수 응답 |
 
 조회 결과 조합을 Product가 아니라 application에 두는 이유: 브랜드 응답이 바뀔 때 Product 모델이 영향을 받지 않고, Product는 자신의 상태와 규칙에 집중한다. 비용은 조합 코드가 application에 필요하다는 점이다.
@@ -260,18 +262,18 @@ Order[userId] ── OrderItem[productId, qty, unitPrice:Money] ── PaymentRe
 
 **① 충전** `POST /api/v1/points/charge`
 
-`PointFacade.charge(userId, amount)` → `UserService.get`(없으면 `NOT_FOUND`) → `user.chargePoint(Money)`(0 이하·표현 범위 초과 `INVALID_INPUT`) → 저장 → 충전 후 잔액을 반환한다.
+요청자 존재는 식별 필터가 먼저 확인한다 (D-19). `PointFacade.charge(userId, amount)` → `UserService.get`(잔액을 바꿀 `User` 엔티티 조회) → `user.chargePoint(Money)`(0 이하·표현 범위 초과 `INVALID_INPUT`) → 저장 → 충전 후 잔액을 반환한다.
 
 **② 주문 생성** `POST /api/v1/orders`
 
-`OrderFacade.create(userId, items)` → 사용자 확인 → `ProductService`로 상품 일괄 조회(없는·삭제된 상품 `NOT_FOUND`) → `Order.create(userId, 품목 + 현재 단가)`(중복 품목·수량 0 이하 `INVALID_INPUT`, 합계 계산) → 저장 → DRAFT 주문을 반환한다. 재고·잔액은 차감하지 않는다.
+요청자 존재는 식별 필터가 먼저 확인하므로(D-19) 주문 생성은 사용자를 다시 조회하지 않는다. `OrderFacade.create(userId, items)` → `ProductService`로 상품 일괄 조회(없는·삭제된 상품 `NOT_FOUND`) → `Order.create(userId, 품목 + 현재 단가)`(중복 품목·수량 0 이하 `INVALID_INPUT`, 합계 계산) → 저장 → DRAFT 주문을 반환한다. 재고·잔액은 차감하지 않는다.
 
 **③ 확정** `POST /api/v1/orders/{orderId}/confirm`
 
 | 단계 | 하는 일 | 책임 | 실패 시 errorCode |
 |---|---|---|---|
 | 1 | 본인 주문 조회 (`userId`로 한정) | OrderService | `NOT_FOUND` |
-| 2 | 사용자 조회 | UserService | `NOT_FOUND` |
+| 2 | 사용자 조회 (포인트를 차감할 `User` 엔티티. 존재는 식별 필터가 먼저 확인) | UserService | `NOT_FOUND` |
 | 3 | 주문이 DRAFT인지 확인 | `Order.ensureConfirmable()` | `ORDER_ALREADY_CONFIRMED` |
 | 4 | 품목 상품 일괄 조회, 삭제·없음 확인 | ProductService | `PRODUCT_UNAVAILABLE` |
 | 5 | 품목마다 `product.decreaseStock(qty)` | Product → Stock | `OUT_OF_STOCK` |
@@ -282,7 +284,7 @@ Order[userId] ── OrderItem[productId, qty, unitPrice:Money] ── PaymentRe
 ```
 Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
               ├ OrderService  : 본인 주문 조회
-              ├ UserService   : 사용자 조회
+              ├ UserService   : 사용자 엔티티 조회 (존재는 식별 필터가 확인)
               ├ Order         : ensureConfirmable()
               ├ ProductService: 상품 일괄 조회 (삭제·없음 확인)
               ├ Product/Stock : decreaseStock(qty) × 품목 수
@@ -300,23 +302,24 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 두 요청은 별도이다.
 
 1. **관리자** `PUT /api-admin/v1/products/{productId}`: `AdminProductFacade.update` → 상품 조회(삭제·없음 `NOT_FOUND`) → `product.update(이름, 가격)`(브랜드는 바뀌지 않음, 검증 실패 `INVALID_INPUT`) → 저장.
-2. **고객** `GET /api/v1/products/{productId}`: `ProductFacade.get`(`readOnly`) → 상품 조회 → `brandId`로 브랜드 조회 → 좋아요 수 집계 → `ProductInfo`로 조합한다. 수정한 가격이 반영된다.
+2. **고객** `GET /api/v1/products/{productId}`: `ProductFacade.get`(`readOnly`) → 상품 조회 → `brandId`로 브랜드 조회 → 좋아요 수 집계 → `ProductDetailInfo`로 조합한다. 수정한 가격이 반영된다.
 
-- 상품·브랜드·좋아요 수의 조합은 application이 한다 (D-9). 관리자 상품 응답은 D-16에서 정했고, 고객 상품 응답(브랜드 정보·좋아요 수 포함)은 고객 상품 조회를 구현할 때 정한다.
+- 상품·브랜드·좋아요 수의 조합은 application이 한다 (D-9). 관리자 상품 응답은 D-16, 고객 상품 응답(브랜드 정보·좋아요 수 포함)은 D-18에서 정했다.
 - 상품이 남은 브랜드는 삭제할 수 없으므로 week2에서는 삭제된 브랜드의 상품이 생기지 않는다. 일괄 삭제는 week3에서 다룬다.
 
 ### 4-3. 좋아요 등록·취소
 
-- **등록** `POST /api/v1/products/{productId}/likes`: `LikeFacade.like` → 사용자 확인 → 상품 조회(삭제·없음 `NOT_FOUND`) → 이미 있으면 그대로 성공, 없으면 `Like(userId, productId, likedAt)` 저장.
-- **취소** `DELETE /api/v1/products/{productId}/likes`: `LikeFacade.unlike` → 사용자 확인 → `delete(userId, productId)`. 행이 없어도 성공한다. 상품을 조회하지 않으므로 **삭제된 상품이어도, 한 번도 존재한 적 없는 `productId`여도 성공한다** (D-17).
-- **내 목록** `GET /api/v1/users/{userId}/likes`: path `userId`가 요청자와 다르면 `FORBIDDEN`(조회 없이 비교만으로 판단하므로 사용자 존재 여부를 노출하지 않는다). 같으면 `page`·`size` 형식을 확인하고 요청자 존재를 확인한 뒤(없으면 `NOT_FOUND`), 좋아요와 상품을 join한 한 번의 쿼리로 삭제된 상품을 제외하고 최근에 좋아요한 순으로 조회한다 (D-17).
+- **등록** `POST /api/v1/products/{productId}/likes`: `LikeFacade.like` → 상품 조회(삭제·없음 `NOT_FOUND`) → 이미 있으면 그대로 성공, 없으면 `Like(userId, productId, likedAt)` 저장.
+- **취소** `DELETE /api/v1/products/{productId}/likes`: `LikeFacade.unlike` → `delete(userId, productId)`. 행이 없어도 성공한다. 상품을 조회하지 않으므로 **삭제된 상품이어도, 한 번도 존재한 적 없는 `productId`여도 성공한다** (D-17).
+- **내 목록** `GET /api/v1/users/{userId}/likes`: path `userId`가 요청자와 다르면 `FORBIDDEN`(조회 없이 비교만으로 판단하므로 사용자 존재 여부를 노출하지 않는다). 같으면 `page`·`size` 형식을 확인하고, 좋아요와 상품을 join한 한 번의 쿼리로 삭제된 상품을 제외하고 최근에 좋아요한 순으로 조회한다 (D-17).
+- 요청자 존재 확인(없으면 `NOT_FOUND`)과 헤더 형식 확인은 세 API 모두 앞단의 식별 필터가 먼저 한다 (D-19).
 - "타인" 판단 기준: 소유자가 URL에 드러나 있으면 `FORBIDDEN`, 조회로만 알 수 있으면(타인 주문) `NOT_FOUND`이다 (D-11).
 
 ---
 
 ## 5. 기본 기능 설계 (API 계약)
 
-고객 API는 `X-USER-ID` 헤더가 필수다 (2-7). 식별 오류는 기존 `ErrorType`으로 단순하게 처리한다 (D-2).
+자신의 데이터를 다루는 고객 API(좋아요·포인트·주문)는 `X-USER-ID` 헤더가 필수다 (2-7). 브랜드 상세와 상품 목록·상세는 요청자를 식별하지 않아 헤더가 필요 없다 (D-2). 식별 오류는 기존 `ErrorType`으로 단순하게 처리하며, 식별이 필요한 경로에서는 Security 필터가 직접 응답한다 (D-2, D-19).
 
 | 상황 | ErrorType (안) |
 |---|---|
@@ -324,7 +327,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 | 존재하지 않는 사용자 | `NOT_FOUND` |
 | path `userId`가 요청자와 다름 (소유자가 URL에 드러난 타인 리소스) | `FORBIDDEN` |
 
-- 구현됨: `ApiControllerAdvice`가 `MissingRequestHeaderException`을 `INVALID_INPUT`으로, `@Valid` 위반(`MethodArgumentNotValidException`)도 `INVALID_INPUT`으로 매핑한다 (D-15).
+- 구현됨: 식별 헤더의 누락·형식 오류와 없는 사용자는 `CustomerIdentityFilter`가 같은 `ApiResponse` 형식으로 응답한다 (D-19). `ApiControllerAdvice`는 `MissingRequestHeaderException`을 `INVALID_INPUT`으로, `@Valid` 위반(`MethodArgumentNotValidException`)도 `INVALID_INPUT`으로 매핑한다 (D-15).
 - 표의 `TBD`는 5-5의 미정 정책에서 결정한다.
 
 **성공 응답 원칙 (D-13)**: 돌려줄 데이터가 없는 성공도 HTTP 200과 `ApiResponse.success()`로 응답한다 (204 No Content를 쓰지 않는다). 아래 표의 "성공 (본문 없음)"은 이 응답을 뜻한다.
@@ -355,9 +358,9 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 
 | 기능 | method · path | 입력 | 성공 | 대표 오류 |
 |---|---|---|---|---|
-| 브랜드 상세 | `GET /api/v1/brands/{brandId}` | path `brandId`, 요청자 | 브랜드 정보 (id, 이름) | 없거나 삭제된 브랜드 → `NOT_FOUND` (헤더 누락·형식 오류 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND`) |
-| 상품 목록 | `GET /api/v1/products` | 브랜드 필터, 페이지, 정렬(`latest`·`price_asc`·`likes_desc`) | 상품 목록 (브랜드 정보·좋아요 수 포함, 삭제 상품 제외) | 잘못된 정렬·페이지 → `INVALID_INPUT` (상세 TBD) |
-| 상품 상세 | `GET /api/v1/products/{productId}` | path `productId` | 상품 정보 (브랜드 정보·좋아요 수 포함) | 없거나 삭제된 상품 → `NOT_FOUND` |
+| 브랜드 상세 | `GET /api/v1/brands/{brandId}` | path `brandId` (요청자를 식별하지 않음, D-2) | 브랜드 정보 (id, 이름) | 없거나 삭제된 브랜드 → `NOT_FOUND`, `brandId` 형식 오류 → `INVALID_INPUT` |
+| 상품 목록 | `GET /api/v1/products` | query `brandId`(선택), `sort`(`latest`·`price_asc`·`likes_desc`, 기본 `latest`), `page`(0 이상, 기본 0)·`size`(1~100, 기본 20). 요청자를 식별하지 않음 (D-2) | 상품 목록 (삭제 상품 제외, 동률은 상품 id 내림차순). 항목은 `id`, 이름, 가격, `brand`(`id`, 이름), `likeCount`이며 재고·시각은 담지 않고 `content`·`page`·`size`·`totalElements`·`totalPages`로 응답 (D-18) | 허용 값이 아닌 `sort`, 범위 밖 `page`·`size`, 숫자가 아닌 `brandId` → `INVALID_INPUT`. 존재하지 않거나 삭제된 `brandId`는 오류가 아니라 빈 목록 |
+| 상품 상세 | `GET /api/v1/products/{productId}` | path `productId` (요청자를 식별하지 않음, D-2) | 상품 정보 (`id`, 이름, 가격, `brand`(`id`, 이름), `likeCount`. 재고·시각은 담지 않음, D-18) | 없거나 삭제된 상품 → `NOT_FOUND`, `productId` 형식 오류 → `INVALID_INPUT` |
 | 좋아요 등록 | `POST /api/v1/products/{productId}/likes` | path `productId`, 요청자 | 성공 (200, 본문 없음). 이미 좋아요한 상품이어도 성공(멱등), 관계는 하나만 유지 | 없거나 삭제된 상품 → `NOT_FOUND` |
 | 좋아요 취소 | `DELETE /api/v1/products/{productId}/likes` | path `productId`, 요청자 | 성공 (200, 본문 없음). 관계가 없어도 성공(멱등). 관계는 hard delete (D-5) | 상품을 조회하지 않아 상품 관련 오류 없음 (삭제된 상품이든 존재한 적 없는 `productId`든 성공). 헤더 누락·형식 오류 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND` |
 | 내 좋아요 목록 | `GET /api/v1/users/{userId}/likes` | path `userId`, 요청자, query `page`(0 이상, 기본 0)·`size`(1~100, 기본 20) | 내 좋아요 상품 목록 (삭제 상품 제외, 최근에 좋아요한 순). 항목은 `id`, `brandId`, 이름, 가격이며 `content`·`page`·`size`·`totalElements`·`totalPages`로 응답 | path `userId`가 헤더의 요청자와 다르면 → `FORBIDDEN`, 잘못된 `page`·`size` → `INVALID_INPUT`, 없는 요청자 → `NOT_FOUND` |
@@ -423,11 +426,11 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 | P-1 | ~~로컬 실습용 사용자 식별 방식~~ | **결정됨 (D-2)**: `X-USER-ID` 헤더, 오류는 기존 `ErrorType` |
 | P-2 | ~~브랜드·상품 삭제는 물리/논리 중 무엇인가~~ | **결정됨 (D-5)**: 가급적 soft delete. 일괄 삭제·참조 보존 설계는 week3 |
 | P-3 | ~~주문의 중복 상품 품목은 합산하는가 거절하는가~~ | **결정됨 (D-6)**: 거절 (`INVALID_INPUT`) |
-| P-4 | 상품 목록: 정렬 동률 보조 기준, 페이지 기본값·최대 크기, 잘못된 정렬값 처리는? | 목록 쿼리, 입력 오류. **상품 목록 구현 직전에 결정** |
+| P-4 | ~~상품 목록: 정렬 동률 보조 기준, 페이지 기본값·최대 크기, 잘못된 정렬값 처리~~ | **결정됨 (D-18)**: 동률은 상품 id 내림차순, `page` 기본 0·`size` 기본 20(1~100), 잘못된 값은 `INVALID_INPUT` |
 | P-5 | ~~상품 이름·가격, 브랜드 이름의 허용 범위~~ | **결정됨 (D-12)**: 브랜드 이름 1~50자, 상품 이름 1~100자, 가격 1~1,000,000,000원 |
 | P-6 | ~~좋아요 중복 등록·없는 관계 취소, 타인 `userId` 목록 접근~~ | **결정됨 (D-4, D-11)**: 멱등 성공, 타인 `userId`의 목록 접근은 `FORBIDDEN`. 동시 요청 경쟁은 week3 이관 |
 | P-7 | ~~이미 CONFIRMED인 주문 확정, 타인 주문, 재고·잔액 부족의 `ErrorType`~~ | **결정됨 (D-3)**: 의미 단위 errorCode + 행동 안내 메시지 |
-| P-8 | 고객/관리자 응답 필드 구분(예: 관리자에게만 재고 노출)? | **브랜드는 결정됨 (D-14)**: 고객 `id`·이름, 관리자는 생성·수정 시각 추가. **관리자 상품은 결정됨 (D-16)**. 고객 상품(브랜드 정보·좋아요 수, 재고 노출 여부)은 **해당 API의 DTO를 작성할 때 결정** |
+| P-8 | ~~고객/관리자 응답 필드 구분(예: 관리자에게만 재고 노출)~~ | **브랜드는 결정됨 (D-14)**: 고객 `id`·이름, 관리자는 생성·수정 시각 추가. **관리자 상품은 결정됨 (D-16)**. **고객 상품은 결정됨 (D-18)**: 브랜드 정보·좋아요 수를 담고 재고는 노출하지 않음 |
 | P-9 | ~~관리자 controller의 패키지·클래스 분리 방식(`interfaces.api.admin.*`)~~ | **결정됨 (D-14)**: `interfaces.api.admin.{feature}` + `Admin` 접두사, application은 같은 기능 패키지에서 Facade만 분리 |
 | P-10 | 사용자(User)를 도메인 모델로 둘지, 식별자만 쓸지? fixture 범위는? | **결정됨 (D-8)**: 최소 User Entity + `PointBalance` VO |
 
@@ -445,8 +448,9 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 ### D-2. 고객 식별은 로컬 실습·테스트용 `X-USER-ID` 헤더로 단순 구현한다
 
 - **상황**: 과제는 로컬 실습용 식별만 요구하고, week2의 목표는 기본 API와 TDD다.
-- **결정**: Controller가 헤더를 받아 `userId`를 Facade에 전달한다. 별도 추상화(ArgumentResolver 등)는 두지 않는다. 오류는 기존 `ErrorType`을 쓴다 (누락·형식 오류 `INVALID_INPUT`, 없는 사용자 `NOT_FOUND`).
-- **비용**: 헤더는 위조할 수 있어 로컬 전용이다. 운영 인증을 도입하면 Controller 시그니처와 오류 계약을 바꿔야 한다.
+- **결정**: 자신의 데이터를 다루는 고객 API(좋아요·포인트·주문)는 `X-USER-ID` 헤더로 요청자를 식별한다. 오류는 기존 `ErrorType`을 쓴다 (누락·형식 오류 `INVALID_INPUT`, 없는 사용자 `NOT_FOUND`). 처음에는 Controller가 헤더를 받고 별도 추상화는 두지 않기로 했으나, 헤더 읽기와 사용자 존재 확인이 Controller·Facade에 흩어져 반복돼 Security 필터 한 곳으로 옮겼다 (D-19).
+- **결정 (카탈로그 조회 예외)**: 요청자에 따라 결과가 달라지지 않는 브랜드 상세와 상품 목록·상세는 헤더를 요구하지 않고 사용자 존재도 확인하지 않는다. 처음에는 모든 고객 API에 헤더를 필수로 두었으나, 식별 정보가 쓰이지 않는 조회에 요청마다 사용자 조회만 늘어서 바꿨다. 과제의 "식별 누락·없는 사용자를 거절하고, 자신의 좋아요·포인트·주문만 다루도록 확인"은 자신의 데이터를 다루는 기능에 해당한다고 읽었다.
+- **비용**: 헤더는 위조할 수 있어 로컬 전용이다. 운영 인증을 도입하면 Controller 시그니처와 오류 계약을 바꿔야 한다. 카탈로그 조회에서 식별을 요구하지 않는 해석이 과제의 의도와 다르면 해당 경로를 `SecurityConfig.IDENTIFIED_PATHS`에 등록하고 Controller가 `@AuthenticationPrincipal`로 받게 하면 된다 (D-19).
 - **재검토 조건**: 운영 인증 방식(JWT 등)을 정할 때.
 
 ### D-3. 오류는 의미 단위 errorCode와 행동 안내 메시지로 설계한다
@@ -576,12 +580,12 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 
 - **상황**: 첫 관리자 API(브랜드)를 만들면서 패키지·클래스 분리, 관리자 경계의 거절 응답, 고객·관리자 응답 필드, 관리자 목록 조건(P-8, P-9, 5-3 TBD)을 정해야 했다.
 - **결정 (분리)**: interfaces는 `interfaces.api.admin.{feature}`에 `Admin{Feature}ApiSpec`·`Admin{Feature}Controller`·`Admin{Feature}Dto`를 둔다. application은 같은 `application.{feature}` 안에서 Facade만 `Admin{Feature}Facade`로 나누고 `admin` 하위 패키지는 두지 않는다. `Info`는 고객·관리자가 함께 쓰고 응답 Dto가 필요한 필드만 고른다.
-- **결정 (경계)**: 과제가 제시한 `config.AdminBoundaryConfig`(`/api-admin/**` → `hasRole("ADMIN")`)를 쓰되, 거절(미식별·권한 부족 모두)은 `sendError(403)` 대신 403과 `ApiResponse.fail("FORBIDDEN", ...)` 본문으로 쓴다. 이 체인은 `/api-admin/**`에만 적용되고, 직접 정의한 `SecurityFilterChain`이 있으면 Boot의 기본 체인이 생기지 않아 고객 API에는 보안이 걸리지 않는다.
+- **결정 (경계)**: 과제가 제시한 `config.AdminBoundaryConfig`(`/api-admin/**` → `hasRole("ADMIN")`)를 쓰되, 거절(미식별·권한 부족 모두)은 `sendError(403)` 대신 403과 `ApiResponse.fail("FORBIDDEN", ...)` 본문으로 쓴다. 이 체인은 `/api-admin/**`에만 적용되고, 직접 정의한 `SecurityFilterChain`이 있으면 Boot의 기본 체인이 생기지 않아 고객 API에는 보안이 걸리지 않는다. (당시 기준이다. 이후 `SecurityConfig`에 고객 체인이 추가돼 `/api/**`에도 식별 필터가 걸린다, D-19.)
 - **결정 (응답)**: 브랜드 응답은 고객 `{id, name}`, 관리자 `{id, name, createdAt, updatedAt}`이다. 등록·수정 시각은 관리에 필요하지만 고객에게는 불필요한 내부 정보이다.
 - **결정 (목록)**: 관리자 브랜드 목록은 `page`(0 이상, 기본 0)·`size`(1~100, 기본 20)를 받고, 삭제되지 않은 브랜드를 id 내림차순으로 고정해 `content`·`page`·`size`·`totalElements`·`totalPages`로 응답한다. 범위를 벗어난 값은 `INVALID_INPUT`이다. 정렬은 Repository 메소드 이름에 고정해 호출하는 쪽의 `Sort`에 영향받지 않는다.
 - **근거**: Spring은 빈 이름을 클래스 단순명으로 만들어서, 패키지만 다르고 이름이 같은 `BrandController` 두 개는 기동 시 빈 이름 충돌이 난다. 접두사로 이름도 구분하면 `admin` 경로와 패키지가 대응한다. Security 필터는 Controller보다 앞에서 동작해 `ApiControllerAdvice`가 거절을 처리하지 못하므로, 모든 응답이 `ApiResponse` 형식이라는 원칙을 지키려면 거절 본문을 설정에서 직접 써야 한다. 브랜드가 계속 늘 수 있어 전체 조회는 피한다.
 - **비용**: 과제 예시 코드보다 설정이 길다(`ObjectMapper`로 직접 응답을 쓴다). 고객·관리자 Dto가 따로 있어 같은 필드를 두 번 선언한다. `Page`/`Pageable`을 domain Repository 인터페이스와 Facade 반환에 쓴다(계층 규칙에는 어긋나지 않는다). `page`·`size` 검증이 관리자 브랜드 Facade에 있어 상품 목록(P-4)에서 같은 규칙을 다시 쓸 때 공용으로 뽑을지 판단한다.
-- **재검토 조건**: 운영 인증을 도입하면 `AdminBoundaryConfig`를 교체한다(로그인 기능은 범위 밖). 관리자 기능이 늘어 `admin` 패키지가 커지면 application도 `admin` 하위 패키지로 나누는 것을 검토한다.
+- **재검토 조건**: 운영 인증을 도입하면 `AdminBoundaryConfig`(이후 `SecurityConfig`의 관리자 체인으로 통합, D-19)를 교체한다(로그인 기능은 범위 밖). 관리자 기능이 늘어 `admin` 패키지가 커지면 application도 `admin` 하위 패키지로 나누는 것을 검토한다.
 - **기각한 대안**: 기능 패키지 안에 고객·관리자 Controller를 함께 두기(관리자 경계가 패키지로 드러나지 않음), 패키지만 다르고 이름이 같은 Controller(빈 이름 충돌, `@RestController("...")`로 이름을 직접 지정해야 함), 과제 예시의 `sendError(403)`(응답 형식 불일치), 목록 전체 조회(페이징 없음).
 
 ### D-15. 입력 검증은 "형식은 Dto, 값 규칙은 도메인"으로 나눈다
@@ -607,9 +611,37 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 ### D-17. 좋아요 취소는 상품을 조회하지 않고 항상 성공시키고, 내 목록은 삭제 상품 제외를 단일 쿼리로 처리한다
 
 - **상황**: 설계 안에서 취소 규칙이 어긋났다. 4-3은 "취소는 상품을 조회하지 않는다"고 했고, 5-1 표는 취소의 대표 오류로 "없는 상품 → `NOT_FOUND`"를 적었다. 또 내 좋아요 목록의 응답 필드·페이징·정렬·삭제된 상품 처리 방식이 정해져 있지 않았다.
-- **결정 (취소)**: 취소는 사용자만 확인하고 상품은 조회하지 않아, 관계가 없으면 아무것도 하지 않고 200으로 응답한다. 삭제된 상품과 한 번도 존재한 적 없는 `productId`도 같다. 등록은 사용자 확인 → 상품 조회(없거나 삭제됨 `NOT_FOUND`) → 이미 있으면 그대로 성공, 없으면 저장이다.
-- **결정 (내 목록)**: 항목은 `id`, `brandId`, 이름, 가격이고(재고·시각 제외), `page`(0 이상, 기본 0)·`size`(1~100, 기본 20)를 받아 `PageResponse`로 응답한다. 정렬은 최근에 좋아요한 순이며 같은 시각이면 상품 id 내림차순으로 고정한다. 삭제된 상품 제외는 좋아요와 상품을 id로 join하는 한 번의 쿼리(`ProductRepository.findAllActiveLikedBy`)에서 처리한다. 검사 순서는 소유자 비교(`FORBIDDEN`) → 페이지 형식(`INVALID_INPUT`) → 요청자 존재(`NOT_FOUND`) → 조회이다.
+- **결정 (취소)**: 취소는 사용자만 확인하고 상품은 조회하지 않아, 관계가 없으면 아무것도 하지 않고 200으로 응답한다. 삭제된 상품과 한 번도 존재한 적 없는 `productId`도 같다. 등록은 사용자 확인 → 상품 조회(없거나 삭제됨 `NOT_FOUND`) → 이미 있으면 그대로 성공, 없으면 저장이다. (여기서 "사용자 확인"은 당시 Facade가 하던 것이며, 이후 식별 필터가 앞단에서 대신한다. D-19)
+- **결정 (내 목록)**: 항목은 `id`, `brandId`, 이름, 가격이고(재고·시각 제외), `page`(0 이상, 기본 0)·`size`(1~100, 기본 20)를 받아 `PageResponse`로 응답한다. 정렬은 최근에 좋아요한 순이며 같은 시각이면 상품 id 내림차순으로 고정한다. 삭제된 상품 제외는 좋아요와 상품을 id로 join하는 한 번의 쿼리(`ProductRepository.findAllActiveLikedBy`)에서 처리한다. 검사 순서는 소유자 비교(`FORBIDDEN`) → 페이지 형식(`INVALID_INPUT`) → 요청자 존재(`NOT_FOUND`) → 조회였으나, 요청자 존재 확인은 이후 식별 필터가 맨 앞에서 한다 (D-19).
 - **근거**: 취소의 목적은 "내 관계를 없애는 것"이라 상품의 상태와 무관하고, 상품을 조회하면 삭제된 상품의 관계를 취소할 방법을 따로 만들어야 한다. 좋아요를 먼저 페이징한 뒤 삭제된 상품을 걸러 내면 페이지가 비고 총 개수가 틀리므로 한 쿼리가 필요하다. 소유자 비교를 먼저 하면 존재하지 않는 `userId`를 보내도 사용자 존재 여부가 드러나지 않는다 (D-11). 형식 오류를 조회 전에 거절하는 기준은 D-15와 같다.
-- **비용**: 존재한 적 없는 `productId`로 취소해도 오류를 알려 주지 않아 클라이언트의 잘못된 id를 걸러 내지 못한다. 등록은 존재 확인 후 저장이라 같은 사용자의 동시 중복 등록은 기본키 충돌로 실패할 수 있고, 이 오류 계약은 week3(D-4)에서 정한다. 목록 항목에는 재고·시각·좋아요한 시각이 없으며 고객 상품 응답이 정해지면 통합한다. 복합키 엔티티의 `save`가 `merge`라 새 행에도 조회가 한 번 더 나간다. 상품별 좋아요 수 집계(`product_id` 조건)는 기본키 `(user_id, product_id)`로는 인덱스를 못 타므로 D-12에서 정한 `product_id` 보조 인덱스를 고객 상품 조회 구현 때 함께 추가한다.
+- **비용**: 존재한 적 없는 `productId`로 취소해도 오류를 알려 주지 않아 클라이언트의 잘못된 id를 걸러 내지 못한다. 등록은 존재 확인 후 저장이라 같은 사용자의 동시 중복 등록은 기본키 충돌로 실패할 수 있고, 이 오류 계약은 week3(D-4)에서 정한다. 목록 항목에는 재고·시각·좋아요한 시각이 없으며 고객 상품 응답이 정해지면 통합한다. 복합키 엔티티의 `save`가 `merge`라 새 행에도 조회가 한 번 더 나간다. 상품별 좋아요 수 집계(`product_id` 조건)는 기본키 `(user_id, product_id)`로는 인덱스를 못 타므로 D-12에서 정한 `product_id` 보조 인덱스(`idx_likes_product_id`)를 고객 상품 조회 구현 때 추가했다 (D-18).
 - **재검토 조건**: 클라이언트가 잘못된 `productId`를 구분해야 하면 취소에 `NOT_FOUND`를 검토한다(존재한 적 없는 id만 거절). 고객 상품 응답이 정해지면 내 목록 항목을 그에 맞춘다. 좋아요 수가 많아져 집계가 느려지면 D-12의 카운터 비정규화를 week3와 함께 검토한다.
 - **기각한 대안**: 취소 시 존재한 적 없는 `productId`를 `NOT_FOUND`로 거절(조회 하나가 늘고 "관계가 없으면 성공"과 규칙이 섞임), 좋아요를 먼저 페이징한 뒤 삭제된 상품을 걸러 내기(짧은 페이지와 잘못된 총 개수), 목록 응답에 재고·시각 포함(고객 상품 응답 확정 전에 노출 범위를 넓히게 됨).
+
+### D-18. 고객 상품 목록·상세는 브랜드 정보와 좋아요 수를 조합해 응답하고, 재고는 노출하지 않는다
+
+- **상황**: 고객 상품 조회의 정렬 동률, 잘못된 입력, 브랜드 필터, 응답 필드, 재고 노출 여부(P-4, P-8 고객 상품)를 정해야 했다.
+- **결정 (입력)**: `sort`는 `latest`(기본)·`price_asc`·`likes_desc`이며 소문자와 정확히 일치해야 한다. `page`(0 이상, 기본 0)·`size`(1~100, 기본 20)는 `PageRequests`를 쓴다. 허용 값이 아닌 `sort`, 범위 밖 `page`·`size`, 숫자가 아닌 `brandId`·`productId`는 `INVALID_INPUT`이다. 값이 빈 문자열인 파라미터(`?sort=`, `?size=`)는 Spring이 생략으로 보고 기본값을 쓰며, 그 동작을 그대로 따른다(`ProductSort.from("")`은 `INVALID_INPUT`이지만 HTTP 단계에서는 거기까지 오지 않는다).
+- **결정 (정렬)**: 동률은 모두 상품 id 내림차순으로 이어 정렬한다(`latest`는 곧 id 내림차순). `likes_desc`는 상품에 좋아요를 left join하고 `group by`로 집계해 `좋아요 수 내림차순, id 내림차순`으로 정렬하며 좋아요 0개 상품도 포함한다. count 쿼리는 join하지 않는다. `ProductRepository.findAllActive(brandId, sort, pageable)`가 정렬을 구현에서 고정해, 호출하는 쪽의 `Sort`에 영향받지 않는다.
+- **결정 (브랜드 필터)**: `brandId`가 없으면 전체, 존재하지 않거나 삭제된 브랜드이면 오류가 아니라 빈 목록(200)이다. 브랜드를 따로 조회하지 않는다.
+- **결정 (응답)**: 상세와 목록 항목은 `{id, name, price, brand: {id, name}, likeCount}`이다. 목록은 `PageResponse`로 감싼다. 재고 수량도 품절 여부도 담지 않고 생성·수정 시각도 담지 않는다. 재고는 관리자 응답에만 있으며(D-16), 재고 부족은 주문 확정 때 `OUT_OF_STOCK`으로 알린다. 조합은 application의 `ProductFacade`가 하고 `ProductDetailInfo(ProductInfo, BrandInfo, likeCount)`로 전달한다.
+- **결정 (N+1 방지)**: 목록은 상품 페이지(+count), 브랜드 일괄 조회, 좋아요 수 일괄 집계 쿼리로 조합해 항목마다 조회하지 않는다. 좋아요가 없는 상품은 집계에 없으므로 0으로 채운다.
+- **결정 (인덱스)**: 좋아요 수 집계를 위해 `likes.product_id`(`idx_likes_product_id`)에, 브랜드 필터와 브랜드 삭제 시 상품 확인을 위해 `products.brand_id`(`idx_products_brand_id`)에 보조 인덱스를 둔다.
+- **결정 (불변식이 깨졌을 때)**: 상품이 있는 브랜드는 삭제할 수 없으므로 상품의 브랜드는 항상 존재해야 한다(`brand`는 null이 아니다). 브랜드를 찾지 못하면 숨기지 않고 `INTERNAL_ERROR`(500)와 "상품 N 의 브랜드 M 을(를) 찾을 수 없습니다." 메시지로 드러낸다. 브랜드 삭제와 상품 등록이 동시에 일어나는 경쟁(D-16)에서만 생길 수 있다.
+- **근거**: 목록 화면은 상품마다 브랜드와 좋아요 수가 필요해 한 번에 내려주는 편이 호출을 줄인다. 정렬마다 동률 기준이 같으면 페이지를 넘길 때 항목이 겹치거나 빠지지 않는다. 존재하지 않는 브랜드 필터를 오류로 보면 목록 화면이 삭제된 브랜드의 링크에서 깨지므로 빈 목록이 더 단순하다. 불변식이 깨진 데이터를 `null`로 흘려보내면 원인을 찾기 어렵다.
+- **비용**: 재고를 노출하지 않으므로 품절 상품도 목록에 나오고 주문 시점에야 알게 된다. `likes_desc`는 조건에 맞는 상품 전체의 좋아요를 집계하므로 데이터가 많아지면 느리고, 그때는 D-12의 카운터 비정규화를 검토한다. 깨진 상품이 하나라도 있으면 그 목록 페이지 전체가 500이다. 메시지에 내부 id가 응답에 담긴다(로컬 실습 범위라 허용).
+- **재검토 조건**: 품절 표시가 필요하면 `soldOut` 같은 파생 값을 추가한다. week3에서 동시성을 다루면 불변식 위반 500은 사라져야 한다.
+- **기각한 대안**: 목록에 브랜드·좋아요 수 없이 id만 내려주기(클라이언트가 항목마다 추가 호출), 존재하지 않는 브랜드 필터를 `NOT_FOUND`로 거절(삭제된 브랜드 링크에서 목록이 깨짐), 재고 수량 노출(관리자 전용 정보를 고객에 열게 됨), 브랜드를 못 찾으면 `brand`를 null로 응답(원인 추적이 어려움).
+
+### D-19. 고객 요청자 식별은 Security 필터 한 곳에서 하고, 식별이 필요한 경로를 목록으로 관리한다
+
+- **상황**: `@RequestHeader("X-USER-ID")`가 Controller 5곳에 반복되고 사용자 존재 확인(`userService.get`)이 Facade 여러 곳에 흩어져 있었다. 카탈로그 조회에서는 식별이 필요 없다(D-2).
+- **결정 (필터)**: `config.CustomerIdentityFilter`가 헤더 형식과 사용자 존재(DB)를 확인한다. 헤더 누락과 숫자가 아닌 값은 400 `INVALID_INPUT`, 없는 사용자는 404 `NOT_FOUND`로 직접 응답하고 다음으로 넘기지 않는다. 통과하면 `userId`(`Long`)를 인증 주체로 두고 Controller는 `@AuthenticationPrincipal Long`으로 받는다. 오류 계약은 기존 그대로 두고 401로 바꾸지 않는다. 필터 단계의 오류는 `ApiControllerAdvice`가 처리하지 못하므로 `SecurityErrorResponseWriter`가 같은 `ApiResponse` 형식으로 쓴다(관리자 403도 이 클래스를 함께 쓴다).
+- **결정 (경로 목록)**: 식별이 필요한 경로를 `SecurityConfig.IDENTIFIED_PATHS` 하나로 관리하고 그 경로에서만 필터가 동작한다. 현재 `/api/v1/points/**`, `/api/v1/products/*/likes`, `/api/v1/users/*/likes`이며 주문 API는 구현할 때 추가한다. 그 밖의 경로(카탈로그)는 헤더를 읽지도 사용자를 조회하지도 않는다. 권한 규칙도 같은 목록을 쓰며(`authenticated`, 나머지 `permitAll`) 필터가 이미 거절하므로 안전망이다.
+- **결정 (설정 위치)**: `AdminBoundaryConfig`를 `SecurityConfig`로 바꾸고 관리자 체인(`/api-admin/**`, `@Order(1)`)과 고객 체인(`/api/**`, `@Order(2)`)을 한 클래스에서 정의한다. 고객 체인은 CSRF를 끄고 세션을 만들지 않는다(STATELESS). 헤더로 식별해 쿠키 세션이 없고 기존 E2E도 CSRF 토큰 없이 호출하기 때문이다. 관리자 체인은 그대로다. 필터는 빈으로 등록하면 모든 요청의 서블릿 필터로도 등록되므로 `SecurityConfig`가 직접 만들어 고객 체인에만 넣는다. 과제 예시의 `config.AdminBoundaryConfig`와 클래스 이름이 달라진다.
+- **결정 (등록 누락 방지)**: 목록에 등록하지 않은 식별 API는 식별 없이 열리고 Controller에 `userId`가 `null`로 들어온다. 식별이 필요한 API마다 "헤더 누락 400" E2E 테스트를 쓰는 규칙으로 잡고 CLAUDE.md에 적었다. `LikeFacade`는 요청자 id가 `null`이면 `INTERNAL_ERROR`(500)로 거절해, 400·403이나 조용한 성공으로 보이지 않고 설정 실수로 드러낸다(`unlike`는 `null`이면 지울 행이 없어 성공했었다).
+- **결정 (신뢰 경계)**: 요청자 id를 믿는 경계는 이 필터 한 곳이다. Facade는 필터를 거친 존재하는 사용자의 id를 전제로 존재를 다시 조회하지 않는다(`LikeFacade`). 엔티티가 필요한 `PointFacade`는 조회를 유지한다.
+- **근거**: 헤더 읽기와 존재 확인을 한 곳에 두면 API마다 반복이 사라지고 오류 계약이 일관된다. 헤더가 오면 어디서든 검증하는 방식은 카탈로그에도 사용자 조회와 헤더 오류가 생기므로, 식별이 필요한 경로를 직접 관리하는 쪽을 택했다.
+- **비용**: 포인트(이후 주문) 요청은 필터와 Facade에서 사용자를 두 번 조회해 기본키 조회가 1회 늘어난다. `open-in-view: false`라 영속성 컨텍스트가 달라 1차 캐시로 줄지 않는다. 좋아요는 `LikeFacade`의 조회를 옮긴 것이라 쿼리 수가 같다. 캐시는 측정 근거 없는 최적화이고 삭제 반영이 늦어지므로 두지 않는다. 필터가 `config`에서 `domain.user.UserService`에 의존한다(ArchUnit은 `config`를 제한하지 않는다). 숫자가 아닌 헤더의 오류 메시지가 "요청 파라미터 'X-USER-ID' (타입: Long)…"에서 "요청 헤더 'X-USER-ID'의 값 'abc'이(가) 잘못되었습니다."로 바뀌었다(코드와 상태는 같다). 검사 순서가 바뀌어 요청자 존재 확인이 항상 맨 앞이며, 존재하지 않는 요청자가 남의 `userId` 목록을 요청하면 `FORBIDDEN`이 아니라 `NOT_FOUND`이고, 존재하지 않는 요청자의 잘못된 `page`·`size`도 400보다 404가 먼저다. 경로의 `*`가 형식을 가리지 않아 `/products/abc/likes`도 헤더 확인이 먼저다. 등록을 빠뜨린 경로는 식별 없이 열린다.
+- **재검토 조건**: 운영 인증(JWT 등)을 정할 때는 서명된 토큰을 DB 없이 검증하는 방식으로 이 필터를 대체한다. 식별 경로가 늘어 목록 관리가 번거로워지면 애노테이션 기반 등록을 검토한다.
+- **기각한 대안**: 헤더가 오면 어디서든 검증(카탈로그에도 사용자 조회와 헤더 오류가 생김), 공개 경로를 예외로 두기(사용자가 식별 필요 경로 목록을 직접 관리하는 쪽을 선택), Controller마다 `@RequestHeader`와 `ArgumentResolver`(반복과 존재 확인 분산이 남음), Facade에서 다시 조회(필터와 책임이 겹치고 요청마다 조회가 늘어남), 필터에서 사용자 캐시(측정 근거 없음, 삭제 반영 지연), 요청자를 별도 타입으로 도입(시그니처가 모두 바뀌고 application이 그 타입에 의존).
