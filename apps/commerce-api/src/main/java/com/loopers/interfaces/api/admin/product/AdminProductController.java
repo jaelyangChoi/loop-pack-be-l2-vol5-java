@@ -2,6 +2,7 @@ package com.loopers.interfaces.api.admin.product;
 
 import com.loopers.application.product.AdminProductFacade;
 import com.loopers.interfaces.api.ApiResponse;
+import com.loopers.interfaces.api.PageResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -33,11 +34,13 @@ public class AdminProductController implements AdminProductApiSpec {
 
     @GetMapping
     @Override
-    public ApiResponse<AdminProductDto.ProductPageResponse> getList(
+    public ApiResponse<PageResponse<AdminProductDto.ProductResponse>> getList(
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size
     ) {
-        return ApiResponse.success(AdminProductDto.ProductPageResponse.from(adminProductFacade.getList(page, size)));
+        return ApiResponse.success(
+            PageResponse.from(adminProductFacade.getList(page, size), AdminProductDto.ProductResponse::from)
+        );
     }
 
     @GetMapping("/{productId}")

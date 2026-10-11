@@ -1,6 +1,7 @@
 package com.loopers.interfaces.api.admin.brand;
 
 import com.loopers.interfaces.api.ApiResponse;
+import com.loopers.interfaces.api.PageResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -12,7 +13,7 @@ public interface AdminBrandApiSpec {
     ApiResponse<AdminBrandDto.BrandResponse> create(AdminBrandDto.BrandRequest request);
 
     @Operation(summary = "브랜드 목록 조회", description = "삭제되지 않은 브랜드를 최신순으로 페이지 단위로 조회합니다.")
-    ApiResponse<AdminBrandDto.BrandPageResponse> getList(
+    ApiResponse<PageResponse<AdminBrandDto.BrandResponse>> getList(
         @Schema(name = "페이지", description = "0부터 시작하는 페이지 번호 (기본 0)")
         int page,
         @Schema(name = "크기", description = "페이지 크기 1~100 (기본 20)")

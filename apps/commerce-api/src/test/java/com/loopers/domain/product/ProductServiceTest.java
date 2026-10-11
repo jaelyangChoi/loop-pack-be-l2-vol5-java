@@ -1,6 +1,8 @@
 package com.loopers.domain.product;
 
 import com.loopers.domain.common.Money;
+import com.loopers.domain.like.Like;
+import com.loopers.domain.like.LikeRepository;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import com.loopers.utils.DatabaseCleanUp;
@@ -24,6 +26,9 @@ class ProductServiceTest {
 
     @Autowired
     private ProductRepository productRepository;
+
+    @Autowired
+    private LikeRepository likeRepository;
 
     @Autowired
     private DatabaseCleanUp databaseCleanUp;
@@ -149,6 +154,27 @@ class ProductServiceTest {
             assertThat(productService.hasActiveProducts(1L)).isTrue();
             assertThat(productService.hasActiveProducts(2L)).isFalse();
             assertThat(productService.hasActiveProducts(3L)).isFalse();
+        }
+    }
+
+    @DisplayName("사용자가 좋아요한 상품 목록을 조회할 때,")
+    @Nested
+    class GetLikedList {
+        @DisplayName("삭제되지 않은 상품 중 내가 좋아요한 것만 반환한다.")
+        @Test
+        void returnsMyLikedActiveProducts() {
+            // arrange
+            Product liked = saveProduct(1L, "좋아요함");
+            Product deleted = saveDeletedProduct(1L, "삭제됨");
+            saveProduct(1L, "좋아요 안 함");
+            likeRepository.save(Like.create(1L, liked.getId()));
+            likeRepository.save(Like.create(1L, deleted.getId()));
+
+            // act
+            Page<Product> page = productService.getLikedList(1L, PageRequest.of(0, 10));
+
+            // assert
+            assertThat(page.getContent()).extracting(Product::getId).containsExactly(liked.getId());
         }
     }
 }

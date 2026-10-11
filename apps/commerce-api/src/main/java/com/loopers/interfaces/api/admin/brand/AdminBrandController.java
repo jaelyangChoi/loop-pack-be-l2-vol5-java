@@ -2,6 +2,7 @@ package com.loopers.interfaces.api.admin.brand;
 
 import com.loopers.application.brand.AdminBrandFacade;
 import com.loopers.interfaces.api.ApiResponse;
+import com.loopers.interfaces.api.PageResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -29,11 +30,11 @@ public class AdminBrandController implements AdminBrandApiSpec {
 
     @GetMapping
     @Override
-    public ApiResponse<AdminBrandDto.BrandPageResponse> getList(
+    public ApiResponse<PageResponse<AdminBrandDto.BrandResponse>> getList(
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size
     ) {
-        return ApiResponse.success(AdminBrandDto.BrandPageResponse.from(adminBrandFacade.getList(page, size)));
+        return ApiResponse.success(PageResponse.from(adminBrandFacade.getList(page, size), AdminBrandDto.BrandResponse::from));
     }
 
     @GetMapping("/{brandId}")

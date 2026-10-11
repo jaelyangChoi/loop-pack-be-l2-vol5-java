@@ -27,7 +27,7 @@ week2의 목표는 **기본 API를 간단하게 구현하고 TDD를 적용**하�
 | 3 | 도메인 관계 | 완료 |
 | 4 | 대표 흐름 | 완료 |
 | 5 | 기본 기능 설계 (API 계약) | 골격 (P-1 결정, 나머지 TBD) |
-| 6 | 설계 결정 기록 | 진행 중 (D-1 ~ D-16) |
+| 6 | 설계 결정 기록 | 진행 중 (D-1 ~ D-17) |
 
 **작업 순서**
 
@@ -145,7 +145,7 @@ infrastructure.{feature}.{Feature}RepositoryImpl    ← 구현: JpaRepository에
 - Controller는 Facade만 호출하고 응답은 `ApiResponse<T>`로 감싼다.
 - soft delete 대상 Entity의 조회 쿼리는 `deletedAt IS NULL` 조건을 빠뜨리지 않는다 (D-5).
 - 요청 본문의 필수 누락은 Dto의 `@NotNull`과 Controller의 `@Valid`로 조회 전에 `INVALID_INPUT`(400)으로 거절하고, 공백·길이·범위 같은 값 규칙은 도메인에서만 검증한다 (D-15). `@Valid`를 빠뜨리면 NPE(500)가 나므로 필수 누락 테스트를 함께 쓴다.
-- 목록 API의 `page`·`size` 규칙은 `support.paging.PageRequests`를 쓴다 (D-16).
+- 목록 API의 `page`·`size` 규칙은 `support.paging.PageRequests`를, 응답 형식은 `interfaces.api.PageResponse<T>`를 쓴다 (D-16, D-17).
 
 ### 2-7. 요청자 식별 (로컬 실습용)
 
@@ -308,8 +308,8 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 ### 4-3. 좋아요 등록·취소
 
 - **등록** `POST /api/v1/products/{productId}/likes`: `LikeFacade.like` → 사용자 확인 → 상품 조회(삭제·없음 `NOT_FOUND`) → 이미 있으면 그대로 성공, 없으면 `Like(userId, productId, likedAt)` 저장.
-- **취소** `DELETE /api/v1/products/{productId}/likes`: `LikeFacade.unlike` → 사용자 확인 → `delete(userId, productId)`. 행이 없어도 성공한다. 상품을 조회하지 않으므로 **삭제된 상품이어도 취소할 수 있다**.
-- **내 목록** `GET /api/v1/users/{userId}/likes`: path `userId`가 요청자와 다르면 `FORBIDDEN`(조회 없이 비교만으로 판단하므로 사용자 존재 여부를 노출하지 않는다). 같으면 좋아요의 `productId`들을 일괄 조회(삭제된 상품 제외)해 조합한다.
+- **취소** `DELETE /api/v1/products/{productId}/likes`: `LikeFacade.unlike` → 사용자 확인 → `delete(userId, productId)`. 행이 없어도 성공한다. 상품을 조회하지 않으므로 **삭제된 상품이어도, 한 번도 존재한 적 없는 `productId`여도 성공한다** (D-17).
+- **내 목록** `GET /api/v1/users/{userId}/likes`: path `userId`가 요청자와 다르면 `FORBIDDEN`(조회 없이 비교만으로 판단하므로 사용자 존재 여부를 노출하지 않는다). 같으면 `page`·`size` 형식을 확인하고 요청자 존재를 확인한 뒤(없으면 `NOT_FOUND`), 좋아요와 상품을 join한 한 번의 쿼리로 삭제된 상품을 제외하고 최근에 좋아요한 순으로 조회한다 (D-17).
 - "타인" 판단 기준: 소유자가 URL에 드러나 있으면 `FORBIDDEN`, 조회로만 알 수 있으면(타인 주문) `NOT_FOUND`이다 (D-11).
 
 ---
@@ -359,8 +359,8 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 | 상품 목록 | `GET /api/v1/products` | 브랜드 필터, 페이지, 정렬(`latest`·`price_asc`·`likes_desc`) | 상품 목록 (브랜드 정보·좋아요 수 포함, 삭제 상품 제외) | 잘못된 정렬·페이지 → `INVALID_INPUT` (상세 TBD) |
 | 상품 상세 | `GET /api/v1/products/{productId}` | path `productId` | 상품 정보 (브랜드 정보·좋아요 수 포함) | 없거나 삭제된 상품 → `NOT_FOUND` |
 | 좋아요 등록 | `POST /api/v1/products/{productId}/likes` | path `productId`, 요청자 | 성공 (200, 본문 없음). 이미 좋아요한 상품이어도 성공(멱등), 관계는 하나만 유지 | 없거나 삭제된 상품 → `NOT_FOUND` |
-| 좋아요 취소 | `DELETE /api/v1/products/{productId}/likes` | path `productId`, 요청자 | 성공 (200, 본문 없음). 관계가 없어도 성공(멱등). 관계는 hard delete (D-5) | 없는 상품 → `NOT_FOUND` (삭제된 상품이라도 자신의 관계는 취소 가능) |
-| 내 좋아요 목록 | `GET /api/v1/users/{userId}/likes` | path `userId`, 요청자 | 내 좋아요 상품 목록 (삭제 상품 제외) | path `userId`가 헤더의 요청자와 다르면 → `FORBIDDEN` |
+| 좋아요 취소 | `DELETE /api/v1/products/{productId}/likes` | path `productId`, 요청자 | 성공 (200, 본문 없음). 관계가 없어도 성공(멱등). 관계는 hard delete (D-5) | 상품을 조회하지 않아 상품 관련 오류 없음 (삭제된 상품이든 존재한 적 없는 `productId`든 성공). 헤더 누락·형식 오류 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND` |
+| 내 좋아요 목록 | `GET /api/v1/users/{userId}/likes` | path `userId`, 요청자, query `page`(0 이상, 기본 0)·`size`(1~100, 기본 20) | 내 좋아요 상품 목록 (삭제 상품 제외, 최근에 좋아요한 순). 항목은 `id`, `brandId`, 이름, 가격이며 `content`·`page`·`size`·`totalElements`·`totalPages`로 응답 | path `userId`가 헤더의 요청자와 다르면 → `FORBIDDEN`, 잘못된 `page`·`size` → `INVALID_INPUT`, 없는 요청자 → `NOT_FOUND` |
 
 ### 5-2. 포인트·주문 (고객)
 
@@ -412,7 +412,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 | 주문 확정 | 본인 DRAFT 주문 확정 | 재고·포인트 차감, CONFIRMED, 결제액·결과 저장 |
 | 연결 시나리오 | 충전 API → 여러 품목 주문 확정 → 내 주문·잔액 조회 (잔액 0에서 10,000 충전, 7,000 결제) | 잔액 3,000, 결제액 7,000, 주문 CONFIRMED로 조회 |
 | 좋아요 중복 등록 | 같은 사용자가 같은 상품에 좋아요 2회 | 둘 다 성공, 관계 1개, 좋아요 수는 1만 반영 |
-| 좋아요 없이 취소 | 관계 없는 상품에 취소 | 성공, 좋아요 수 변화 없음 (0 미만 불가) |
+| 좋아요 없이 취소 | 관계 없는 상품(존재한 적 없는 `productId` 포함)에 취소 | 성공, 좋아요 수 변화 없음 (0 미만 불가) |
 | 삭제된 상품의 좋아요 | 삭제된 상품에 새 좋아요 / 자신의 기존 좋아요 취소 | `NOT_FOUND` / 취소 성공 |
 | 확정 시 검증 | 상품 삭제됨 / 재고 부족 / 잔액 부족 | 각각 `PRODUCT_UNAVAILABLE` / `OUT_OF_STOCK` / `INSUFFICIENT_POINT`로 거절, 상태·재고·잔액 변경 없음 |
 
@@ -603,3 +603,13 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 - **비용**: "삭제되지 않은 상품이 있는 브랜드는 삭제할 수 없다"는 규칙이 두 Aggregate에 걸쳐 있어 트랜잭션 수준으로 보장되지 않는다. 확인과 삭제 사이에 다른 요청이 상품을 등록하면 깨질 수 있으며, 이 동시성 경쟁은 week3(동시성 제어, 일괄 삭제)에서 다룬다. 목록에 브랜드 이름이 없어 화면이 브랜드를 따로 조회해야 하고, 브랜드 필터가 없어 상품이 많으면 브랜드별로 보기 어렵다.
 - **재검토 조건**: 관리자 화면에서 브랜드별 조회나 브랜드 이름 표시가 필요하면 필터와 조합을 추가한다. week3에서 일괄 삭제로 바뀌면 이 거절을 제거한다.
 - **기각한 대안**: 고객·관리자 응답을 완전히 같게 두기(과제 요구와 충돌), 브랜드 이름을 포함한 응답(목록 조합 코드 필요), 상품 존재 확인을 `Brand` 모델에서 하기(다른 Aggregate를 조회하게 됨).
+
+### D-17. 좋아요 취소는 상품을 조회하지 않고 항상 성공시키고, 내 목록은 삭제 상품 제외를 단일 쿼리로 처리한다
+
+- **상황**: 설계 안에서 취소 규칙이 어긋났다. 4-3은 "취소는 상품을 조회하지 않는다"고 했고, 5-1 표는 취소의 대표 오류로 "없는 상품 → `NOT_FOUND`"를 적었다. 또 내 좋아요 목록의 응답 필드·페이징·정렬·삭제된 상품 처리 방식이 정해져 있지 않았다.
+- **결정 (취소)**: 취소는 사용자만 확인하고 상품은 조회하지 않아, 관계가 없으면 아무것도 하지 않고 200으로 응답한다. 삭제된 상품과 한 번도 존재한 적 없는 `productId`도 같다. 등록은 사용자 확인 → 상품 조회(없거나 삭제됨 `NOT_FOUND`) → 이미 있으면 그대로 성공, 없으면 저장이다.
+- **결정 (내 목록)**: 항목은 `id`, `brandId`, 이름, 가격이고(재고·시각 제외), `page`(0 이상, 기본 0)·`size`(1~100, 기본 20)를 받아 `PageResponse`로 응답한다. 정렬은 최근에 좋아요한 순이며 같은 시각이면 상품 id 내림차순으로 고정한다. 삭제된 상품 제외는 좋아요와 상품을 id로 join하는 한 번의 쿼리(`ProductRepository.findAllActiveLikedBy`)에서 처리한다. 검사 순서는 소유자 비교(`FORBIDDEN`) → 페이지 형식(`INVALID_INPUT`) → 요청자 존재(`NOT_FOUND`) → 조회이다.
+- **근거**: 취소의 목적은 "내 관계를 없애는 것"이라 상품의 상태와 무관하고, 상품을 조회하면 삭제된 상품의 관계를 취소할 방법을 따로 만들어야 한다. 좋아요를 먼저 페이징한 뒤 삭제된 상품을 걸러 내면 페이지가 비고 총 개수가 틀리므로 한 쿼리가 필요하다. 소유자 비교를 먼저 하면 존재하지 않는 `userId`를 보내도 사용자 존재 여부가 드러나지 않는다 (D-11). 형식 오류를 조회 전에 거절하는 기준은 D-15와 같다.
+- **비용**: 존재한 적 없는 `productId`로 취소해도 오류를 알려 주지 않아 클라이언트의 잘못된 id를 걸러 내지 못한다. 등록은 존재 확인 후 저장이라 같은 사용자의 동시 중복 등록은 기본키 충돌로 실패할 수 있고, 이 오류 계약은 week3(D-4)에서 정한다. 목록 항목에는 재고·시각·좋아요한 시각이 없으며 고객 상품 응답이 정해지면 통합한다. 복합키 엔티티의 `save`가 `merge`라 새 행에도 조회가 한 번 더 나간다. 상품별 좋아요 수 집계(`product_id` 조건)는 기본키 `(user_id, product_id)`로는 인덱스를 못 타므로 D-12에서 정한 `product_id` 보조 인덱스를 고객 상품 조회 구현 때 함께 추가한다.
+- **재검토 조건**: 클라이언트가 잘못된 `productId`를 구분해야 하면 취소에 `NOT_FOUND`를 검토한다(존재한 적 없는 id만 거절). 고객 상품 응답이 정해지면 내 목록 항목을 그에 맞춘다. 좋아요 수가 많아져 집계가 느려지면 D-12의 카운터 비정규화를 week3와 함께 검토한다.
+- **기각한 대안**: 취소 시 존재한 적 없는 `productId`를 `NOT_FOUND`로 거절(조회 하나가 늘고 "관계가 없으면 성공"과 규칙이 섞임), 좋아요를 먼저 페이징한 뒤 삭제된 상품을 걸러 내기(짧은 페이지와 잘못된 총 개수), 목록 응답에 재고·시각 포함(고객 상품 응답 확정 전에 노출 범위를 넓히게 됨).

@@ -30,6 +30,11 @@ public class ProductRepositoryImpl implements ProductRepository {
     }
 
     @Override
+    public Page<Product> findAllActiveLikedBy(Long userId, Pageable pageable) {
+        return productJpaRepository.findAllActiveLikedBy(userId, pageable);
+    }
+
+    @Override
     public boolean existsActiveByBrandId(Long brandId) {
         return productJpaRepository.existsByBrandIdAndDeletedAtIsNull(brandId);
     }

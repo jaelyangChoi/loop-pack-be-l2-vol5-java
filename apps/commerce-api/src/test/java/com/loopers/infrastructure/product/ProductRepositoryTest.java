@@ -1,6 +1,8 @@
 package com.loopers.infrastructure.product;
 
 import com.loopers.domain.common.Money;
+import com.loopers.domain.like.Like;
+import com.loopers.domain.like.LikeRepository;
 import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.Stock;
@@ -23,6 +25,9 @@ class ProductRepositoryTest {
 
     @Autowired
     private ProductRepository productRepository;
+
+    @Autowired
+    private LikeRepository likeRepository;
 
     @Autowired
     private DatabaseCleanUp databaseCleanUp;
@@ -167,6 +172,82 @@ class ProductRepositoryTest {
 
             // act & assert
             assertThat(productRepository.existsActiveByBrandId(1L)).isFalse();
+        }
+    }
+
+    @DisplayName("사용자가 좋아요한 상품 목록을 조회할 때,")
+    @Nested
+    class FindAllActiveLikedBy {
+        private void like(Long userId, Product product) {
+            likeRepository.save(Like.create(userId, product.getId()));
+        }
+
+        @DisplayName("내가 좋아요한 상품만, 최근에 좋아요한 순으로 반환한다.")
+        @Test
+        void returnsOnlyMyLikedProducts_newestLikeFirst() {
+            // arrange
+            Product first = saveProduct(1L, "첫째", 1);
+            Product second = saveProduct(1L, "둘째", 1);
+            Product third = saveProduct(1L, "셋째", 1);
+            like(1L, third);   // 먼저 좋아요
+            like(1L, first);   // 나중에 좋아요
+            like(2L, second);  // 다른 사용자의 좋아요
+
+            // act
+            Page<Product> page = productRepository.findAllActiveLikedBy(1L, PageRequest.of(0, 10));
+
+            // assert: 상품 id 순서(셋째, 첫째)가 아니라 좋아요한 시각의 역순이다.
+            assertThat(page.getContent()).extracting(Product::getId)
+                .containsExactly(first.getId(), third.getId());
+            assertThat(page.getTotalElements()).isEqualTo(2);
+        }
+
+        @DisplayName("삭제된 상품은 제외한다.")
+        @Test
+        void excludesDeletedProducts() {
+            // arrange
+            Product active = saveProduct(1L, "판매 중", 1);
+            Product deleted = saveDeletedProduct(1L, "삭제됨");
+            like(1L, active);
+            like(1L, deleted);
+
+            // act
+            Page<Product> page = productRepository.findAllActiveLikedBy(1L, PageRequest.of(0, 10));
+
+            // assert
+            assertThat(page.getContent()).extracting(Product::getId).containsExactly(active.getId());
+            assertThat(page.getTotalElements()).isEqualTo(1);
+        }
+
+        @DisplayName("페이지 크기만큼만 반환하고, 총 개수와 전체 페이지 수를 계산한다.")
+        @Test
+        void returnsOnlyPageSize_andCalculatesTotals() {
+            // arrange
+            like(1L, saveProduct(1L, "하나", 1));
+            like(1L, saveProduct(1L, "둘", 1));
+            like(1L, saveProduct(1L, "셋", 1));
+
+            // act
+            Page<Product> secondPage = productRepository.findAllActiveLikedBy(1L, PageRequest.of(1, 2));
+
+            // assert
+            assertThat(secondPage.getContent()).hasSize(1);
+            assertThat(secondPage.getTotalElements()).isEqualTo(3);
+            assertThat(secondPage.getTotalPages()).isEqualTo(2);
+        }
+
+        @DisplayName("좋아요한 상품이 없으면 빈 목록이다.")
+        @Test
+        void returnsEmpty_whenUserHasNoLikes() {
+            // arrange
+            saveProduct(1L, "러닝화", 1);
+
+            // act
+            Page<Product> page = productRepository.findAllActiveLikedBy(1L, PageRequest.of(0, 10));
+
+            // assert
+            assertThat(page.getContent()).isEmpty();
+            assertThat(page.getTotalElements()).isZero();
         }
     }
 }

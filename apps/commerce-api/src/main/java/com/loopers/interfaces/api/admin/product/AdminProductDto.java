@@ -2,10 +2,8 @@ package com.loopers.interfaces.api.admin.product;
 
 import com.loopers.application.product.ProductInfo;
 import jakarta.validation.constraints.NotNull;
-import org.springframework.data.domain.Page;
 
 import java.time.ZonedDateTime;
-import java.util.List;
 
 public class AdminProductDto {
 
@@ -33,24 +31,6 @@ public class AdminProductDto {
         public static ProductResponse from(ProductInfo info) {
             return new ProductResponse(
                 info.id(), info.brandId(), info.name(), info.price(), info.stock(), info.createdAt(), info.updatedAt()
-            );
-        }
-    }
-
-    public record ProductPageResponse(
-        List<ProductResponse> content,
-        int page,
-        int size,
-        long totalElements,
-        int totalPages
-    ) {
-        public static ProductPageResponse from(Page<ProductInfo> page) {
-            return new ProductPageResponse(
-                page.getContent().stream().map(ProductResponse::from).toList(),
-                page.getNumber(),
-                page.getSize(),
-                page.getTotalElements(),
-                page.getTotalPages()
             );
         }
     }
