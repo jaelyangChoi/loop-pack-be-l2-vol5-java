@@ -134,6 +134,8 @@ class SecurityConfigTest {
             "POST, /api/v1/products/1/likes",
             "DELETE, /api/v1/products/1/likes",
             "GET, /api/v1/users/1/likes",
+            "POST, /api/v1/orders",
+            "GET, /api/v1/orders/1",
         })
         void rejectsWithInvalidInput_whenHeaderIsMissing(String method, String uri) throws Exception {
             mvc.perform(customerRequest(method, uri, null))
@@ -149,6 +151,8 @@ class SecurityConfigTest {
             "POST, /api/v1/products/1/likes",
             "DELETE, /api/v1/products/1/likes",
             "GET, /api/v1/users/999/likes",
+            "POST, /api/v1/orders",
+            "GET, /api/v1/orders/1",
         })
         void rejectsWithNotFound_whenUserDoesNotExist(String method, String uri) throws Exception {
             mvc.perform(customerRequest(method, uri, "999"))

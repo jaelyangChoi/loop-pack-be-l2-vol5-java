@@ -33,7 +33,8 @@ public class SecurityConfig {
     static final RequestMatcher IDENTIFIED_PATHS = new OrRequestMatcher(
         antMatcher("/api/v1/points/**"),
         antMatcher("/api/v1/products/*/likes"),
-        antMatcher("/api/v1/users/*/likes")
+        antMatcher("/api/v1/users/*/likes"),
+        antMatcher("/api/v1/orders/**")
     );
 
     /** 관리자 API. 관리자 역할만 허용하며 미식별·권한 부족 모두 403 이다. */
