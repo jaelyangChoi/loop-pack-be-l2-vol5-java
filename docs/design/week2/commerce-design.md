@@ -27,7 +27,7 @@ week2의 목표는 **기본 API를 간단하게 구현하고 TDD를 적용**하�
 | 3 | 도메인 관계 | 완료 |
 | 4 | 대표 흐름 | 완료 |
 | 5 | 기본 기능 설계 (API 계약) | 골격 (P-1 결정, 나머지 TBD) |
-| 6 | 설계 결정 기록 | 진행 중 (D-1 ~ D-20) |
+| 6 | 설계 결정 기록 | 진행 중 (D-1 ~ D-21) |
 
 **작업 순서**
 
@@ -197,7 +197,7 @@ Order ── 품목 금액 합계 / 포인트 결제액·결제 결과
 | **OrderLine**, **OrderLines** | 값 (저장하지 않는 요청 값) | 고객이 요청한 품목 한 줄(`productId`, 수량)과 그 목록 | 상품을 조회하기 전에 판단할 수 있는 값 규칙(수량 1 이상, 품목 하나 이상, 중복 금지)을 도메인에 모은다 (D-20) |
 | **OrderProduct** | 값 (저장하지 않음) | 상품의 이름·가격 | `Order`가 상품 Entity를 알지 않고 스냅샷 원본만 받게 한다 (D-20) |
 | **OrderStatus** | enum | `DRAFT`, `CONFIRMED` | 값 목록이므로 별도 클래스가 필요 없다 |
-| **PaymentResult** | **VO** (Order에 내장, DRAFT 동안 비어 있음) | 결제액 `Money`, 결제 후 잔액 `Money` | 확정 시점에 함께 생기고 함께 읽히는 값 (D-10) |
+| **PaymentResult** | **VO** (Order에 내장, DRAFT 동안 비어 있음) | 결제액 `Money`, 결제 후 잔액 `Money` (컬럼 `paid_amount`, `balance_after`, 확정 전에는 모두 null이라 값 자체가 null로 읽힌다. 결제 후 잔액 0원은 null이 아니다) | 확정 시점에 함께 생기고 함께 읽히는 값 (D-10, D-21) |
 
 **VO로 만들지 않는 것**: 상품·브랜드 이름(문자열 검증은 Entity에서, 범위는 D-12), 수량(`int`, 양수 검증은 `OrderItem`·`Stock`), 식별자. 의미가 혼동되지 않고 검증 반복이 두 곳 이하이기 때문이다. 반복이 늘면 `Quantity` VO를 재검토한다.
 
@@ -268,7 +268,7 @@ Order[userId] ── OrderItem[productId, productName, qty, unitPrice:Money] ─
 
 **② 주문 생성** `POST /api/v1/orders`
 
-요청자 존재는 식별 필터가 먼저 확인하므로(D-19) 주문 생성은 사용자를 다시 조회하지 않는다. `OrderFacade.create(userId, items)` → `OrderLines`로 값 규칙 검사(빈 목록·수량 0 이하·중복 품목 `INVALID_INPUT`, 상품을 조회하기 전) → `ProductService`로 삭제되지 않은 상품 일괄 조회(없는·삭제된 상품이 있으면 `NOT_FOUND`, 메시지에 문제 상품 id를 모두 담음) → `Order.create(userId, lines, 상품 이름·가격)`(품목마다 주문 당시 상품명·단가 복사, 합계 계산, 범위 초과 `INVALID_INPUT`) → 저장 → DRAFT 주문을 반환한다. 재고·잔액은 차감하지 않는다 (D-20).
+요청자 존재는 식별 필터가 먼저 확인하므로(D-19) 주문 생성은 사용자를 다시 조회하지 않는다. `OrderFacade.create(userId, items)` → `OrderLines`로 값 규칙 검사(빈 목록·수량 0 이하·중복 품목 `INVALID_INPUT`, 상품을 조회하기 전) → `ProductService`로 삭제되지 않은 상품 일괄 조회(없는·삭제된 상품이 있으면 `NOT_FOUND`, 메시지에 문제 상품 id를 모두 담음) → 재고 확인(재고가 0이거나 요청 수량보다 적은 상품이 있으면 `OUT_OF_STOCK`, 메시지에 상품명을 모두 담음, 재고는 차감하지 않음) → `Order.create(userId, lines, 상품 이름·가격)`(품목마다 주문 당시 상품명·단가 복사, 합계 계산, 범위 초과 `INVALID_INPUT`) → 저장 → DRAFT 주문을 반환한다. 재고·잔액은 차감하지 않는다(차감은 확정에서, D-20).
 
 **③ 확정** `POST /api/v1/orders/{orderId}/confirm`
 
@@ -297,7 +297,9 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 
 - 오류 우선순위는 단계 번호 순서이다. 3단계를 먼저 두는 이유는 이미 확정된 주문이 재고 부족 오류로 보이지 않게 하기 위해서이다. 7단계의 `confirm`이 상태를 다시 검증하는 것은 불변식 보호용이라 역할이 다르다.
 - 트랜잭션 경계는 Facade이다. 5·6단계에서 예외가 나면 앞 단계의 변경이 모두 취소된다 (D-10).
-- `PaymentResult`는 결제액과 결제 후 잔액이다. 예: 결제액 7,000원, 결제 후 잔액 3,000원.
+- `PaymentResult`는 결제액과 결제 후 잔액이다. 예: 결제액 7,000원, 결제 후 잔액 3,000원. 결제액은 확정 시점의 현재 가격이 아니라 **주문 합계(주문 당시 단가 스냅샷)**이다 (D-21).
+- 3단계의 `ensureConfirmable()`은 오류 우선순위용이고 7단계 `confirm` 안의 재검증은 불변식 보호용이다. 같은 검사처럼 보이지만 앞의 것을 지우면 확정된 주문이 재고·잔액 오류로 보인다.
+- 4~5단계는 Facade 안에서 "상품이 모두 살아 있는지 확인 → 품목마다 재고 차감"으로 묶여 있다 (`deductStock`). 삭제된 상품은 주문 당시 상품명으로 알린다 (D-21).
 
 ### 4-2. 관리자 상품 수정 → 고객 상품 상세 조회
 
@@ -348,13 +350,13 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 | 수량 0 이하, 품목 없음, 같은 상품이 중복된 품목 | `INVALID_INPUT` | 400 | 입력 수정 (중복은 병합 후 재요청) | 잘못된 값 설명. 예: "같은 상품이 중복되었습니다. 수량을 합쳐 다시 요청해 주세요." |
 | 없는 주문, **타인 주문** | `NOT_FOUND` | 404 | 주문 목록으로 이동 | 존재 여부를 숨김 ("주문을 찾을 수 없습니다.") |
 | 주문 생성 시 없는·삭제된 상품 | `NOT_FOUND` | 404 | 해당 상품 제거 후 재시도 | 문제 상품의 id를 요청 순서대로 모두 담음. 예: "존재하지 않는 상품이 포함되어 있습니다. (상품 ID: 3, 5)" |
-| 이미 확정된 주문 | `ORDER_ALREADY_CONFIRMED` (신규) | 409 | 주문 상세 조회로 전환 | "이미 결제가 완료된 주문입니다." |
-| 재고 부족 | `OUT_OF_STOCK` (신규) | 409 | 수량 조정 안내 | "재고가 부족합니다. 수량을 줄여 다시 주문해 주세요." |
-| 잔액 부족 | `INSUFFICIENT_POINT` (신규) | 409 | 충전 화면으로 유도 | "포인트가 부족합니다. 충전 후 다시 시도해 주세요." |
-| 확정 시 상품 삭제됨 | `PRODUCT_UNAVAILABLE` (신규) | 409 | 주문 폐기·재주문 안내 | "구매할 수 없는 상품이 포함되어 있습니다." |
+| 이미 확정된 주문 | `ORDER_ALREADY_CONFIRMED` | 409 | 주문 상세 조회로 전환 | "이미 확정된 주문입니다. 주문 내역에서 결과를 확인해 주세요." |
+| 재고 부족 (주문 생성·확정 모두) | `OUT_OF_STOCK` | 409 | 수량 조정 안내 | "재고가 부족합니다. 수량을 줄이거나 다른 상품을 선택해 주세요." 생성에서는 부족한 상품명을 모두 덧붙임. 예: "… (티셔츠, 모자)" |
+| 잔액 부족 | `INSUFFICIENT_POINT` | 409 | 충전 화면으로 유도 | "포인트 잔액이 부족합니다. 포인트를 충전한 뒤 다시 시도해 주세요." |
+| 확정 시 상품 삭제됨 | `PRODUCT_UNAVAILABLE` | 409 | 주문 폐기·재주문 안내 | "주문할 수 없는 상품입니다. 주문 상품을 확인해 주세요." 삭제된 상품의 주문 당시 이름을 모두 덧붙임. 예: "… (티셔츠, 모자)" |
 
-- 신규 4개 코드는 모두 409로 매핑한다. 기존 `CONFLICT`는 **현재 상태와 충돌하는 범용 코드**로 두고, 사용처는 메시지를 항상 직접 지정한다 (D-13).
-- 구현 시 `ErrorType` 4개, `ErrorTypeHttpStatusMapper` switch, `ErrorTypeHttpStatusMapperTest`를 함께 갱신한다.
+- 업무 규칙 위반 4개 코드는 모두 409로 매핑한다. 기존 `CONFLICT`는 **현재 상태와 충돌하는 범용 코드**로 두고, 사용처는 메시지를 항상 직접 지정한다 (D-13).
+- `ErrorType` 4개, `ErrorTypeHttpStatusMapper` switch, `ErrorTypeHttpStatusMapperTest`는 구현되어 있다.
 
 ### 5-1. 상품·브랜드·좋아요 (고객)
 
@@ -373,8 +375,8 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 |---|---|---|---|---|
 | 포인트 충전 | `POST /api/v1/points/charge` | body `amount` (양의 정수) | 충전 후 잔액 | 누락·잘못된 타입·소수(`1.5`, `1000.0`)·0 이하·표현 범위 초과 → `INVALID_INPUT` (기존 잔액 유지), 충전 후 잔액이 표현 범위 초과 → `INVALID_INPUT` (기존 잔액 유지) |
 | 잔액 조회 | `GET /api/v1/points` | 요청자 | 저장된 잔액 | 헤더 누락 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND` |
-| 주문 생성 | `POST /api/v1/orders` | body `items`: `[{productId, quantity}]` (요청자 식별 필요) | DRAFT 주문 `{id, status, items: [{productId, productName, quantity, unitPrice, amount}], totalAmount}`, 상품명·단가는 주문 당시 값, 재고·포인트 차감 없음 (D-20) | `items`·`productId`·`quantity` 누락, 형식 오류(소수·문자열·범위 초과 포함) → `INVALID_INPUT`. 품목 없음·수량 0 이하·같은 상품 중복 → `INVALID_INPUT` (상품 조회 전에 판단, 없는 상품이 섞여 있어도 이 오류가 먼저). 없거나 삭제된 상품 → `NOT_FOUND` (메시지에 상품 id 목록). 합계가 표현 범위 초과 → `INVALID_INPUT`. 헤더 누락 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND` |
-| 주문 확정 | `POST /api/v1/orders/{orderId}/confirm` | path `orderId` | CONFIRMED 주문 (결제액·결과), 재고·포인트 차감 | 재고 부족 → `OUT_OF_STOCK`, 잔액 부족 → `INSUFFICIENT_POINT`, 이미 확정 → `ORDER_ALREADY_CONFIRMED`, 상품 삭제됨 → `PRODUCT_UNAVAILABLE`, 없는·타인 주문 → `NOT_FOUND` |
+| 주문 생성 | `POST /api/v1/orders` | body `items`: `[{productId, quantity}]` (요청자 식별 필요) | DRAFT 주문 `{id, status, items: [{productId, productName, quantity, unitPrice, amount}], totalAmount, payment: null}`, 상품명·단가는 주문 당시 값, 재고·포인트 차감 없음 (D-20) | `items`·`productId`·`quantity` 누락, 형식 오류(소수·문자열·범위 초과 포함) → `INVALID_INPUT`. 품목 없음·수량 0 이하·같은 상품 중복 → `INVALID_INPUT` (상품 조회 전에 판단, 없는 상품이 섞여 있어도 이 오류가 먼저). 없거나 삭제된 상품 → `NOT_FOUND` (메시지에 상품 id 목록). 재고가 0이거나 요청 수량보다 적은 상품 → `OUT_OF_STOCK` (상품이 모두 존재할 때, 메시지에 상품명 목록, 재고는 차감하지 않음). 합계가 표현 범위 초과 → `INVALID_INPUT`. 헤더 누락 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND` |
+| 주문 확정 | `POST /api/v1/orders/{orderId}/confirm` | path `orderId` (요청자 식별 필요) | CONFIRMED 주문 `{id, status, items, totalAmount, payment: {paidAmount, balanceAfter}}`, 재고·포인트 차감, 결제액은 주문 합계 (D-21) | 없는·타인 주문 → `NOT_FOUND`, 이미 확정 → `ORDER_ALREADY_CONFIRMED`, 상품 삭제됨 → `PRODUCT_UNAVAILABLE` (메시지에 주문 당시 상품명), 재고 부족 → `OUT_OF_STOCK`, 잔액 부족 → `INSUFFICIENT_POINT`, `orderId` 형식 오류 → `INVALID_INPUT`, 헤더 누락 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND`. 오류 우선순위는 4-1 표의 순서이고 실패하면 재고·잔액·주문 상태는 그대로 |
 | 내 주문 목록 | `GET /api/v1/orders` | 요청자 | 내 주문 목록 | 페이징 TBD |
 | 내 주문 상세 | `GET /api/v1/orders/{orderId}` | path `orderId` | 품목·수량·금액·상태·결제액 | 없거나 타인 주문 → `NOT_FOUND` |
 
@@ -414,6 +416,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 | 이름 검증 | 공백뿐인 이름 / 브랜드 50자 초과 / 상품 100자 초과 | `INVALID_INPUT`, 저장 없음 |
 | 가격 검증 | 가격 0원 / 1,000,000,000원 초과 | `INVALID_INPUT`, 저장 없음 |
 | 주문 품목 중복 | 같은 상품이 두 품목으로 들어옴 | `INVALID_INPUT`으로 거절, 주문 저장 없음 |
+| 생성 시 재고 확인 | 재고가 0이거나 요청 수량보다 적은 상품이 든 주문 | `OUT_OF_STOCK`로 거절, 주문 저장 없음, 재고 변경 없음 (재고와 수량이 같으면 성공) |
 | 주문 확정 | 본인 DRAFT 주문 확정 | 재고·포인트 차감, CONFIRMED, 결제액·결과 저장 |
 | 연결 시나리오 | 충전 API → 여러 품목 주문 확정 → 내 주문·잔액 조회 (잔액 0에서 10,000 충전, 7,000 결제) | 잔액 3,000, 결제액 7,000, 주문 CONFIRMED로 조회 |
 | 좋아요 중복 등록 | 같은 사용자가 같은 상품에 좋아요 2회 | 둘 다 성공, 관계 1개, 좋아요 수는 1만 반영 |
@@ -534,6 +537,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 - **비용**: fake Repository 기반 application 테스트에서는 실패 후 메모리 객체가 이미 변경돼 있을 수 있다. 그래서 실패 시 재고·잔액 유지는 실제 DB 통합 테스트에서 flush/clear 후 재조회로 확인한다.
 - **재검토 조건**: 메모리에서도 부분 변경을 막아야 하는 요구가 생기거나, week3의 동시성 설계에서 검사 순서와 잠금 순서를 바꿀 때.
 - **기각한 대안**: 변경 전에 전체 재고·잔액을 먼저 일괄 검사. 도메인 행동의 검증과 중복되어 규칙이 두 곳에 생긴다.
+- **구현 메모 (T8)**: 확정은 변경 감지로 저장하고 별도 `save`를 부르지 않는다. 롤백은 `@Transactional` 없는 통합 테스트(`OrderFacadeTest`)에서 실패 뒤 재고·잔액·주문 상태를 저장소에서 다시 읽어 확인한다 (재고 차감 후 잔액 부족, 앞 품목 차감 후 뒤 품목 재고 부족 등). 세부 결정은 D-21.
 
 ### D-11. 타인 리소스 접근은 소유자가 URL에 드러나는지에 따라 구분한다
 
@@ -626,12 +630,12 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 - **결정 (입력)**: `sort`는 `latest`(기본)·`price_asc`·`likes_desc`이며 소문자와 정확히 일치해야 한다. `page`(0 이상, 기본 0)·`size`(1~100, 기본 20)는 `PageRequests`를 쓴다. 허용 값이 아닌 `sort`, 범위 밖 `page`·`size`, 숫자가 아닌 `brandId`·`productId`는 `INVALID_INPUT`이다. 값이 빈 문자열인 파라미터(`?sort=`, `?size=`)는 Spring이 생략으로 보고 기본값을 쓰며, 그 동작을 그대로 따른다(`ProductSort.from("")`은 `INVALID_INPUT`이지만 HTTP 단계에서는 거기까지 오지 않는다).
 - **결정 (정렬)**: 동률은 모두 상품 id 내림차순으로 이어 정렬한다(`latest`는 곧 id 내림차순). `likes_desc`는 상품에 좋아요를 left join하고 `group by`로 집계해 `좋아요 수 내림차순, id 내림차순`으로 정렬하며 좋아요 0개 상품도 포함한다. count 쿼리는 join하지 않는다. `ProductRepository.findAllActive(brandId, sort, pageable)`가 정렬을 구현에서 고정해, 호출하는 쪽의 `Sort`에 영향받지 않는다.
 - **결정 (브랜드 필터)**: `brandId`가 없으면 전체, 존재하지 않거나 삭제된 브랜드이면 오류가 아니라 빈 목록(200)이다. 브랜드를 따로 조회하지 않는다.
-- **결정 (응답)**: 상세와 목록 항목은 `{id, name, price, brand: {id, name}, likeCount}`이다. 목록은 `PageResponse`로 감싼다. 재고 수량도 품절 여부도 담지 않고 생성·수정 시각도 담지 않는다. 재고는 관리자 응답에만 있으며(D-16), 재고 부족은 주문 확정 때 `OUT_OF_STOCK`으로 알린다. 조합은 application의 `ProductFacade`가 하고 `ProductDetailInfo(ProductInfo, BrandInfo, likeCount)`로 전달한다.
+- **결정 (응답)**: 상세와 목록 항목은 `{id, name, price, brand: {id, name}, likeCount}`이다. 목록은 `PageResponse`로 감싼다. 재고 수량도 품절 여부도 담지 않고 생성·수정 시각도 담지 않는다. 재고는 관리자 응답에만 있으며(D-16), 재고 부족은 주문 생성·확정 때 `OUT_OF_STOCK`으로 알린다. 조합은 application의 `ProductFacade`가 하고 `ProductDetailInfo(ProductInfo, BrandInfo, likeCount)`로 전달한다.
 - **결정 (N+1 방지)**: 목록은 상품 페이지(+count), 브랜드 일괄 조회, 좋아요 수 일괄 집계 쿼리로 조합해 항목마다 조회하지 않는다. 좋아요가 없는 상품은 집계에 없으므로 0으로 채운다.
 - **결정 (인덱스)**: 좋아요 수 집계를 위해 `likes.product_id`(`idx_likes_product_id`)에, 브랜드 필터와 브랜드 삭제 시 상품 확인을 위해 `products.brand_id`(`idx_products_brand_id`)에 보조 인덱스를 둔다.
 - **결정 (불변식이 깨졌을 때)**: 상품이 있는 브랜드는 삭제할 수 없으므로 상품의 브랜드는 항상 존재해야 한다(`brand`는 null이 아니다). 브랜드를 찾지 못하면 숨기지 않고 `INTERNAL_ERROR`(500)와 "상품 N 의 브랜드 M 을(를) 찾을 수 없습니다." 메시지로 드러낸다. 브랜드 삭제와 상품 등록이 동시에 일어나는 경쟁(D-16)에서만 생길 수 있다.
 - **근거**: 목록 화면은 상품마다 브랜드와 좋아요 수가 필요해 한 번에 내려주는 편이 호출을 줄인다. 정렬마다 동률 기준이 같으면 페이지를 넘길 때 항목이 겹치거나 빠지지 않는다. 존재하지 않는 브랜드 필터를 오류로 보면 목록 화면이 삭제된 브랜드의 링크에서 깨지므로 빈 목록이 더 단순하다. 불변식이 깨진 데이터를 `null`로 흘려보내면 원인을 찾기 어렵다.
-- **비용**: 재고를 노출하지 않으므로 품절 상품도 목록에 나오고 주문 시점에야 알게 된다. `likes_desc`는 조건에 맞는 상품 전체의 좋아요를 집계하므로 데이터가 많아지면 느리고, 그때는 D-12의 카운터 비정규화를 검토한다. 깨진 상품이 하나라도 있으면 그 목록 페이지 전체가 500이다. 메시지에 내부 id가 응답에 담긴다(로컬 실습 범위라 허용).
+- **비용**: 재고를 노출하지 않으므로 품절 상품도 목록에 나오고 주문을 만들 때(`OUT_OF_STOCK`) 알게 된다. `likes_desc`는 조건에 맞는 상품 전체의 좋아요를 집계하므로 데이터가 많아지면 느리고, 그때는 D-12의 카운터 비정규화를 검토한다. 깨진 상품이 하나라도 있으면 그 목록 페이지 전체가 500이다. 메시지에 내부 id가 응답에 담긴다(로컬 실습 범위라 허용).
 - **재검토 조건**: 품절 표시가 필요하면 `soldOut` 같은 파생 값을 추가한다. week3에서 동시성을 다루면 불변식 위반 500은 사라져야 한다.
 - **기각한 대안**: 목록에 브랜드·좋아요 수 없이 id만 내려주기(클라이언트가 항목마다 추가 호출), 존재하지 않는 브랜드 필터를 `NOT_FOUND`로 거절(삭제된 브랜드 링크에서 목록이 깨짐), 재고 수량 노출(관리자 전용 정보를 고객에 열게 됨), 브랜드를 못 찾으면 `brand`를 null로 응답(원인 추적이 어려움).
 
@@ -653,10 +657,23 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 - **상황**: 주문 생성(T7)에서 품목에 무엇을 저장할지, 값 규칙 위반과 없는 상품 중 어느 오류를 먼저 알릴지, `Order`가 상품을 어떻게 받을지 정해야 했다. 발제의 `OrderItem`은 "상품 식별자·수량·단가"였다.
 - **결정 (스냅샷)**: `OrderItem`은 상품 id, **주문 당시 상품명**, 수량, 주문 당시 단가, 품목 금액(단가 × 수량)을 저장하고, 합계는 품목 금액의 합이다. 브랜드명은 저장하지 않는다. 주문은 항상 `DRAFT`로 만들어지며 재고와 포인트를 건드리지 않는다.
 - **결정 (모델)**: 요청 한 줄은 `OrderLine(productId, quantity)`, 목록은 `OrderLines`(하나 이상, 수량 1 이상, 같은 상품 중복 금지 D-6)이며 저장하지 않는다. `Order.create(userId, OrderLines, Map<Long, OrderProduct>)`는 상품 Entity가 아니라 이름·가격만 가진 `OrderProduct`를 받아 `domain.order`가 `domain.product`에 의존하지 않는다. 맵에 품목의 상품이 없으면 호출하는 쪽의 오류이므로 `INTERNAL_ERROR`로 거절한다(정상 흐름에서는 Facade가 먼저 404로 거르므로 일어나지 않는 안전망이다).
-- **결정 (검사 순서)**: 요청자 확인 → 값 규칙(`OrderLines`, `INVALID_INPUT`) → 상품 일괄 조회와 존재 확인(`NOT_FOUND`) → 합계 범위(`INVALID_INPUT`). 값 규칙이 먼저라서 잘못된 요청은 DB를 조회하지 않고, 수량 0과 없는 상품이 함께 있으면 404가 아니라 400이다. 조회가 먼저인 관리자 API(D-15의 비용)와 순서가 다르다.
+- **결정 (검사 순서)**: 요청자 확인 → 값 규칙(`OrderLines`, `INVALID_INPUT`) → 상품 일괄 조회와 존재 확인(`NOT_FOUND`) → 재고 확인(`OUT_OF_STOCK`) → 합계 범위(`INVALID_INPUT`). 값 규칙이 먼저라서 잘못된 요청은 DB를 조회하지 않고, 수량 0과 없는 상품이 함께 있으면 404가 아니라 400이다. 조회가 먼저인 관리자 API(D-15의 비용)와 순서가 다르다.
+- **결정 (재고 확인)**: 생성 때도 재고가 0이거나 요청 수량보다 적은 상품이 있으면 상품이 모두 존재함을 확인한 뒤 `OUT_OF_STOCK`(409)으로 거절하고, 부족한 상품명을 요청 순서대로 모두 메시지에 담는다. 재고는 확인만 하고 차감하지 않으며(차감은 확정), 재고와 수량이 같으면 성공한다. 처음부터 살 수 없는 주문이 결제 단계까지 가지 않게 하려는 것이다. 생성과 확정 사이에 다른 주문이나 관리자가 재고를 바꿀 수 있어 확정의 차감 시점 확인은 그대로 둔다. 생성의 재고 확인은 안내일 뿐 보장이 아니다(동시성은 week3).
 - **결정 (오류 메시지)**: 없거나 삭제된 상품은 요청 순서대로 모든 id를 메시지에 담아 한 번에 빼고 다시 요청할 수 있게 한다.
 - **결정 (계층)**: Facade는 `interfaces`가 도메인 타입을 알지 않도록 application의 입력 형식 `OrderItemCommand(productId, quantity)`를 받아 `OrderLine`으로 바꾼다. `Order.items`는 `LAZY`이고 `OrderInfo`로의 변환은 트랜잭션 안에서 한다. `/api/v1/orders/**`를 `IDENTIFIED_PATHS`에 등록해 식별 필터가 적용되며(D-19), Facade는 사용자를 다시 조회하지 않는다.
 - **근거**: 단가를 얻으려고 상품을 이미 조회하므로 상품명 저장에 추가 조회가 없다. 단가만 복사하면 주문 내역에 "당시 가격 + 현재 이름"이 섞이고, 삭제된 상품의 이름을 보여 주려면 삭제된 상품을 읽는 조회가 따로 필요하다. 값 규칙을 도메인 타입에 두면 Facade의 `if`로 새어 나가지 않고 `Order.create`가 검증을 건너뛸 수 없다. `Order`가 상품 전체가 아니라 필요한 값만 받으면 Aggregate 사이를 id로 분리한 D-9의 취지가 유지되고 단위 테스트에 상품 Entity가 필요 없다.
 - **비용**: 상품명이 품목에 중복 저장되고, 이후 상품명을 고쳐도 기존 주문에는 반영되지 않는다(주문 내역으로는 맞는 동작이다). 타입이 늘었다(`OrderLine`, `OrderLines`, `OrderProduct`, `OrderItemCommand`). 맵 누락 검사가 Facade의 존재 확인과 겹쳐 보이지만 하나는 사용자 입력 오류(404), 하나는 호출 계약 위반(500)이라 의미가 다르다. 주문 목록(T9)에서 품목을 지연 로딩하면 N+1이 생기므로 그때 batch fetch와 쿼리 수 테스트로 다룬다.
 - **재검토 조건**: 브랜드명 등 표시 정보가 더 필요해지면 스냅샷 필드를 늘린다. 주문 생성의 상품 조회가 느려지면 상품 id 인덱스 조회를 점검한다. 결제 수단이나 배송 정보가 생기면 `Order` 필드를 다시 나눈다.
 - **기각한 대안**: 상품 id·수량·단가만 저장하고 조회할 때 상품을 읽기(삭제된 상품 조회 필요, 현재 이름과 당시 가격이 섞임), 조회를 먼저 하고 `Order.create`가 값 규칙을 검사하기(잘못된 요청도 DB를 조회하고 없는 상품 404가 먼저 나감), `Order.create`가 `Product`를 직접 받기(Aggregate 의존), Facade가 `OrderLine`을 직접 받기(interfaces가 도메인 타입을 알게 됨), 중복 상품 합산(D-6).
+
+### D-21. 주문 확정은 주문 합계를 결제하고, 결제 결과를 응답에 담으며, 실패하면 전체를 되돌린다
+
+- **상황**: 주문 확정(T8)에서 결제액의 기준, 응답에 담을 결제 결과, 삭제된 상품과 재고 부족의 안내, 롤백 검증 방식을 정해야 했다.
+- **결정 (결제액)**: 결제액은 확정 시점의 현재 가격이 아니라 **주문 합계**(`order.totalAmount`, 주문 당시 단가 스냅샷)이다. 그 사이 관리자가 가격을 바꿔도 결제액은 주문 당시 합계다.
+- **결정 (응답)**: 주문 응답에 `payment: {paidAmount, balanceAfter}` 객체를 둔다. 확정 전(DRAFT)의 생성 응답은 `payment: null`이다. 생성·확정·조회가 같은 응답 모양을 쓴다.
+- **결정 (실패 안내)**: 삭제됐거나 없는 상품은 모두 모아 **주문 당시 상품명**으로 `PRODUCT_UNAVAILABLE` 메시지에 담는다(품목에 이름을 저장해 두었으므로 삭제된 상품도 이름으로 알린다, D-20). 확정의 재고 부족은 품목 순서대로 차감하다 처음 부족한 품목에서 멈추며 `ErrorType` 기본 문구를 쓴다.
+- **결정 (순서와 저장)**: 오류 우선순위는 4-1 표의 단계 순서이다. 이미 확정된 주문이 다른 오류로 보이지 않게 확정 가능 여부를 앞에서 확인하고, `Order.confirm` 안의 재검증은 불변식 보호용으로 둔다. 별도 `save` 없이 변경 감지로 주문·재고·잔액을 한 트랜잭션에서 저장한다. 포인트를 차감할 `User` 엔티티가 필요해 사용자를 조회하며 `PointFacade`와 같은 이중 조회가 생긴다 (D-19).
+- **근거**: 결제액을 주문 합계로 두면 고객이 주문 화면에서 본 금액과 실제 결제 금액이 같다. 결제 결과를 응답에 같은 모양으로 두면 생성·확정·조회가 하나의 응답 타입을 쓴다. 롤백을 실제 DB에서 재조회로 확인해야 변경 감지 기반 저장의 부분 반영을 놓치지 않는다 (D-10).
+- **비용**: 확정 시점에 상품 가격이 달라져도 주문 당시 가격으로 결제되므로 가격 변경이 기존 DRAFT 주문에는 반영되지 않는다. 같은 주문을 동시에 확정하거나 같은 재고를 동시에 차감하는 경쟁은 막지 않아(week3) 이중 결제·재고 초과 차감이 가능하며, 순차 요청에서만 정합성을 보장한다. DRAFT 주문의 `payment`가 `null`이라 클라이언트가 null을 처리해야 한다.
+- **재검토 조건**: 결제 수단이 포인트 외로 늘거나 결제 이력이 필요하면 `PaymentResult`를 별도 Entity로 분리한다. week3에서 동시성(잠금·조건부 갱신)을 다룰 때 검사·차감 순서와 잠금 순서를 함께 본다.
+- **기각한 대안**: 확정 시점의 현재 가격으로 결제(주문 화면의 금액과 달라짐), 결제 결과를 응답에서 빼고 조회로만 확인(확정 직후 한 번 더 호출해야 함), 결제를 별도 Payment Entity로 분리(결제 수단이 포인트 하나라 현재는 과함), 변경 전에 전체 검사 후 차감(D-10).
