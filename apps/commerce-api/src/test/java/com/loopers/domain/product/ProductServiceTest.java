@@ -17,6 +17,8 @@ import org.springframework.data.domain.PageRequest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import java.util.List;
+import java.util.Map;
 
 @SpringBootTest
 class ProductServiceTest {
@@ -194,6 +196,33 @@ class ProductServiceTest {
 
             // assert
             assertThat(page.getContent()).extracting(Product::getId).containsExactly(cheap.getId(), expensive.getId());
+        }
+    }
+
+    @DisplayName("id 목록으로 상품을 한 번에 조회할 때,")
+    @Nested
+    class GetAllActiveByIds {
+        @DisplayName("id 로 찾을 수 있게 돌려주고, 삭제됐거나 없는 상품은 담기지 않는다.")
+        @Test
+        void returnsMapOfActiveProducts() {
+            // arrange
+            Product active = saveProduct(1L, "러닝화");
+            Product deleted = saveDeletedProduct(1L, "삭제됨");
+
+            // act
+            Map<Long, Product> products = productService.getAllActiveByIds(
+                List.of(active.getId(), deleted.getId(), 999_999L)
+            );
+
+            // assert
+            assertThat(products).containsOnlyKeys(active.getId());
+            assertThat(products.get(active.getId()).getName()).isEqualTo("러닝화");
+        }
+
+        @DisplayName("id 목록이 비어 있으면 빈 맵을 돌려준다.")
+        @Test
+        void returnsEmptyMap_whenIdsAreEmpty() {
+            assertThat(productService.getAllActiveByIds(List.of())).isEmpty();
         }
     }
 }

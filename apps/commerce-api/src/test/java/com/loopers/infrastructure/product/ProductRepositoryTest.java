@@ -23,6 +23,7 @@ import org.springframework.data.domain.PageRequest;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import java.util.List;
 
 @SpringBootTest
 class ProductRepositoryTest {
@@ -421,6 +422,36 @@ class ProductRepositoryTest {
 
             // assert
             assertThat(count).isPositive();
+        }
+    }
+
+    @DisplayName("id 목록으로 상품을 한 번에 조회할 때,")
+    @Nested
+    class FindAllActiveByIds {
+        @DisplayName("삭제되지 않은 상품만 조회되고, 삭제됐거나 없는 id 는 결과에서 빠진다.")
+        @Test
+        void returnsOnlyActiveProducts() {
+            // arrange
+            Product first = saveProduct(1L, "러닝화", 10);
+            Product second = saveProduct(1L, "샌들", 10);
+            Product deleted = saveDeletedProduct(1L, "삭제됨");
+            saveProduct(1L, "요청하지 않은 상품", 10);
+
+            // act
+            List<Product> found = productRepository.findAllActiveByIds(
+                List.of(first.getId(), second.getId(), deleted.getId(), 999_999L)
+            );
+
+            // assert
+            assertThat(found).extracting(Product::getId).containsExactlyInAnyOrder(first.getId(), second.getId());
+        }
+
+        @DisplayName("id 목록이 비어 있으면 빈 결과를 돌려준다.")
+        @Test
+        void returnsEmpty_whenIdsAreEmpty() {
+            saveProduct(1L, "러닝화", 10);
+
+            assertThat(productRepository.findAllActiveByIds(List.of())).isEmpty();
         }
     }
 }
