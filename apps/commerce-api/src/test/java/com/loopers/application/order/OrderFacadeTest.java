@@ -19,6 +19,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Page;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.ArrayList;
@@ -568,6 +569,133 @@ class OrderFacadeTest {
             // assert
             assertThat(exception.getErrorType()).isEqualTo(ErrorType.INTERNAL_ERROR);
             assertUntouched(orderId, user, 10_000, Map.of(shirt, 10));
+        }
+    }
+
+    @DisplayName("내 주문을 조회할 때,")
+    @Nested
+    class Query {
+        private User saveUserWithBalance(long amount) {
+            User user = User.create();
+            user.chargePoint(new Money(amount));
+            return userRepository.save(user);
+        }
+
+        private Long placeOrder(User user, OrderItemCommand... items) {
+            return orderFacade.create(user.getId(), List.of(items)).id();
+        }
+
+        @DisplayName("생성·확정한 주문의 응답에는 주문 시각이 담긴다.")
+        @Test
+        void includesOrderedAt_inCreateAndConfirmResult() {
+            // arrange
+            User user = saveUserWithBalance(10_000);
+            Product shirt = saveProduct("티셔츠", 3_000, 10);
+
+            // act
+            OrderInfo created = orderFacade.create(user.getId(), List.of(new OrderItemCommand(shirt.getId(), 1)));
+            OrderInfo confirmed = orderFacade.confirm(user.getId(), created.id());
+
+            // assert
+            assertThat(created.orderedAt()).isNotNull();
+            assertThat(confirmed.orderedAt()).isEqualTo(created.orderedAt());
+        }
+
+        @DisplayName("목록은 내 주문만 최신순으로 요약(품목 수, 결제 결과, 주문 시각)해서 돌려준다.")
+        @Test
+        void returnsMyOrdersSummary_newestFirst() {
+            // arrange
+            User me = saveUserWithBalance(10_000);
+            User other = saveUserWithBalance(10_000);
+            Product shirt = saveProduct("티셔츠", 3_000, 10);
+            Product socks = saveProduct("양말", 2_000, 10);
+            Long draftId = placeOrder(me, new OrderItemCommand(shirt.getId(), 1));
+            placeOrder(other, new OrderItemCommand(shirt.getId(), 1));
+            Long confirmedId = placeOrder(me, new OrderItemCommand(shirt.getId(), 1), new OrderItemCommand(socks.getId(), 2));
+            orderFacade.confirm(me.getId(), confirmedId);
+
+            // act
+            Page<OrderSummaryInfo> page = orderFacade.getMyList(me.getId(), 0, 20);
+
+            // assert
+            assertThat(page.getContent()).extracting(OrderSummaryInfo::id).containsExactly(confirmedId, draftId);
+            OrderSummaryInfo confirmed = page.getContent().get(0);
+            assertThat(confirmed.userId()).isEqualTo(me.getId());
+            assertThat(confirmed.status()).isEqualTo(OrderStatus.CONFIRMED);
+            assertThat(confirmed.totalAmount()).isEqualTo(7_000L);
+            assertThat(confirmed.itemCount()).isEqualTo(2);
+            assertThat(confirmed.payment()).isEqualTo(new PaymentInfo(7_000L, 3_000L));
+            assertThat(confirmed.orderedAt()).isNotNull();
+            OrderSummaryInfo draft = page.getContent().get(1);
+            assertThat(draft.status()).isEqualTo(OrderStatus.DRAFT);
+            assertThat(draft.itemCount()).isEqualTo(1);
+            assertThat(draft.payment()).isNull();
+        }
+
+        @DisplayName("목록은 페이지 크기만큼 나누고, 주문이 없으면 빈 목록이다.")
+        @Test
+        void paginates_andReturnsEmpty_whenNoOrders() {
+            // arrange
+            User me = saveUserWithBalance(10_000);
+            User nobody = saveUserWithBalance(10_000);
+            Product shirt = saveProduct("티셔츠", 3_000, 10);
+            for (int i = 0; i < 3; i++) {
+                placeOrder(me, new OrderItemCommand(shirt.getId(), 1));
+            }
+
+            // act
+            Page<OrderSummaryInfo> firstPage = orderFacade.getMyList(me.getId(), 0, 2);
+            Page<OrderSummaryInfo> empty = orderFacade.getMyList(nobody.getId(), 0, 20);
+
+            // assert
+            assertThat(firstPage.getContent()).hasSize(2);
+            assertThat(firstPage.getTotalElements()).isEqualTo(3);
+            assertThat(firstPage.getTotalPages()).isEqualTo(2);
+            assertThat(empty.getContent()).isEmpty();
+        }
+
+        @DisplayName("잘못된 page·size 는 INVALID_INPUT 이다.")
+        @Test
+        void throwsInvalidInput_whenPageOrSizeIsOutOfRange() {
+            User me = saveUserWithBalance(10_000);
+
+            assertThat(rejected(() -> orderFacade.getMyList(me.getId(), -1, 20)).getErrorType())
+                .as("page 음수").isEqualTo(ErrorType.INVALID_INPUT);
+            assertThat(rejected(() -> orderFacade.getMyList(me.getId(), 0, 101)).getErrorType())
+                .as("size 초과").isEqualTo(ErrorType.INVALID_INPUT);
+        }
+
+        @DisplayName("상세는 품목·결제 결과·주문 시각을 돌려주고, 다른 사용자의 주문과 없는 주문은 NOT_FOUND 이다.")
+        @Test
+        void returnsMyOrderDetail_orThrowsNotFound() {
+            // arrange
+            User me = saveUserWithBalance(10_000);
+            User other = saveUserWithBalance(10_000);
+            Product shirt = saveProduct("티셔츠", 3_000, 10);
+            Long orderId = placeOrder(me, new OrderItemCommand(shirt.getId(), 2));
+            orderFacade.confirm(me.getId(), orderId);
+
+            // act
+            OrderInfo info = orderFacade.getMine(me.getId(), orderId);
+            CoreException otherUsers = rejected(() -> orderFacade.getMine(other.getId(), orderId));
+            CoreException missing = rejected(() -> orderFacade.getMine(me.getId(), 999_999L));
+
+            // assert
+            assertThat(info.status()).isEqualTo(OrderStatus.CONFIRMED);
+            assertThat(info.items()).containsExactly(new OrderItemInfo(shirt.getId(), "티셔츠", 2, 3_000L, 6_000L));
+            assertThat(info.payment()).isEqualTo(new PaymentInfo(6_000L, 4_000L));
+            assertThat(info.orderedAt()).isNotNull();
+            assertThat(otherUsers.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
+            assertThat(missing.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
+        }
+
+        @DisplayName("요청자 식별 정보가 없으면(등록 누락) INTERNAL_ERROR 이다.")
+        @Test
+        void throwsInternalError_whenRequesterIsMissing() {
+            assertThat(rejected(() -> orderFacade.getMyList(null, 0, 20)).getErrorType())
+                .isEqualTo(ErrorType.INTERNAL_ERROR);
+            assertThat(rejected(() -> orderFacade.getMine(null, 1L)).getErrorType())
+                .isEqualTo(ErrorType.INTERNAL_ERROR);
         }
     }
 }

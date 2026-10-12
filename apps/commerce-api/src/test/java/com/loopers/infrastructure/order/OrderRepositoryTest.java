@@ -16,6 +16,8 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -187,6 +189,101 @@ class OrderRepositoryTest {
             // act & assert
             assertThat(orderRepository.findByIdAndUserId(orderId, 8L)).isEmpty();
             assertThat(orderRepository.findByIdAndUserId(999_999L, 7L)).isEmpty();
+        }
+    }
+
+    @DisplayName("주문 목록을 조회할 때,")
+    @Nested
+    class FindAll {
+        @DisplayName("구매자를 지정하면 그 구매자의 주문만 최신순(id 내림차순)으로 조회된다.")
+        @Test
+        void returnsOnlyThatUsersOrders_newestFirst() {
+            // arrange
+            Long first = orderRepository.save(newOrder(7L)).getId();
+            orderRepository.save(newOrder(8L));
+            Long second = orderRepository.save(newOrder(7L)).getId();
+
+            // act
+            Page<Order> page = orderRepository.findAll(7L, PageRequest.of(0, 10));
+
+            // assert
+            assertThat(page.getContent()).extracting(Order::getId).containsExactly(second, first);
+            assertThat(page.getTotalElements()).isEqualTo(2);
+        }
+
+        @DisplayName("구매자를 지정하지 않으면 모든 주문이 최신순으로 조회된다.")
+        @Test
+        void returnsAllOrders_whenUserIsNull() {
+            // arrange
+            Long first = orderRepository.save(newOrder(7L)).getId();
+            Long second = orderRepository.save(newOrder(8L)).getId();
+
+            // act
+            Page<Order> page = orderRepository.findAll(null, PageRequest.of(0, 10));
+
+            // assert
+            assertThat(page.getContent()).extracting(Order::getId).containsExactly(second, first);
+        }
+
+        @DisplayName("주문이 없는 구매자는 오류가 아니라 빈 결과다.")
+        @Test
+        void returnsEmpty_whenUserHasNoOrders() {
+            orderRepository.save(newOrder(7L));
+
+            Page<Order> page = orderRepository.findAll(999L, PageRequest.of(0, 10));
+
+            assertThat(page.getContent()).isEmpty();
+            assertThat(page.getTotalElements()).isZero();
+        }
+
+        @DisplayName("페이지 크기만큼 나누어 조회하고 총 개수와 전체 페이지 수가 정확하다.")
+        @Test
+        void paginates() {
+            // arrange
+            for (int i = 0; i < 3; i++) {
+                orderRepository.save(newOrder(7L));
+            }
+
+            // act
+            Page<Order> firstPage = orderRepository.findAll(7L, PageRequest.of(0, 2));
+            Page<Order> secondPage = orderRepository.findAll(7L, PageRequest.of(1, 2));
+
+            // assert
+            assertThat(firstPage.getContent()).hasSize(2);
+            assertThat(secondPage.getContent()).hasSize(1);
+            assertThat(firstPage.getTotalElements()).isEqualTo(3);
+            assertThat(firstPage.getTotalPages()).isEqualTo(2);
+        }
+
+        @DisplayName("호출하는 쪽이 Pageable 에 정렬을 실어도 최신순으로 고정된다.")
+        @Test
+        void ignoresSortOfPageable() {
+            // arrange
+            Long first = orderRepository.save(newOrder(7L)).getId();
+            Long second = orderRepository.save(newOrder(7L)).getId();
+
+            // act
+            Page<Order> page = orderRepository.findAll(
+                7L, PageRequest.of(0, 10, org.springframework.data.domain.Sort.by("id").ascending())
+            );
+
+            // assert
+            assertThat(page.getContent()).extracting(Order::getId).containsExactly(second, first);
+        }
+    }
+
+    @DisplayName("주문 하나를 id 로 조회할 때,")
+    @Nested
+    class FindById {
+        @DisplayName("있으면 조회되고, 없으면 빈 결과다.")
+        @Test
+        void returnsOrder_orEmpty() {
+            // arrange
+            Long orderId = orderRepository.save(newOrder(7L)).getId();
+
+            // act & assert
+            assertThat(orderRepository.findById(orderId)).isPresent();
+            assertThat(orderRepository.findById(999_999L)).isEmpty();
         }
     }
 }

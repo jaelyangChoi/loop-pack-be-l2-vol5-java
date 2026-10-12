@@ -13,7 +13,9 @@ import com.loopers.domain.user.User;
 import com.loopers.domain.user.UserService;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
+import com.loopers.support.paging.PageRequests;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -99,6 +101,20 @@ public class OrderFacade {
                 ErrorType.PRODUCT_UNAVAILABLE.getMessage() + " (" + String.join(", ", unavailableNames) + ")"
             );
         }
+    }
+
+    /** 본인의 주문 하나를 조회한다. 없는 주문과 다른 사용자의 주문은 구분하지 않고 NOT_FOUND 다. */
+    @Transactional(readOnly = true)
+    public OrderInfo getMine(Long userId, Long orderId) {
+        requireRequester(userId);
+        return OrderInfo.from(orderService.getMine(orderId, userId));
+    }
+
+    /** 내 주문 목록을 최신순으로 요약해서 조회한다. 품목은 상세에서 본다. */
+    @Transactional(readOnly = true)
+    public Page<OrderSummaryInfo> getMyList(Long userId, int page, int size) {
+        requireRequester(userId);
+        return orderService.getList(userId, PageRequests.of(page, size)).map(OrderSummaryInfo::from);
     }
 
     private OrderLines toLines(List<OrderItemCommand> items) {
