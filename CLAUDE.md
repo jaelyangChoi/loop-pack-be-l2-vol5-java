@@ -54,7 +54,7 @@ Loopers 에서 제공하는 Spring Boot(Java 21) 멀티 모듈 커머스 템플�
 
 ## 애플리케이션 내부 레이어드 아키텍처
 
-**아래 4계층 패턴은 현재 `commerce-api`에만 실제로 구현되어 있습니다(`user`·`point`·`brand`·`product`·`like` 기능이 예시).** `commerce-batch`, `commerce-streamer`는 아직 데모 코드(배치 Job, Kafka Consumer)만 있을 뿐 이 레이어 구조를 따르는 도메인 코드가 없으므로, 새로 도메인을 추가할 때 이 패턴을 따르면 됩니다. 각 `apps` 모듈은 독립적이므로 동일 도메인이라도 앱마다 각자 이 4계층을 따로 구현해야 합니다(위 "멀티 모듈 구조" 참고).
+**아래 4계층 패턴은 현재 `commerce-api`에만 실제로 구현되어 있습니다(`user`·`point`·`brand`·`product`·`like`·`order` 기능이 예시).** `commerce-batch`, `commerce-streamer`는 아직 데모 코드(배치 Job, Kafka Consumer)만 있을 뿐 이 레이어 구조를 따르는 도메인 코드가 없으므로, 새로 도메인을 추가할 때 이 패턴을 따르면 됩니다. 각 `apps` 모듈은 독립적이므로 동일 도메인이라도 앱마다 각자 이 4계층을 따로 구현해야 합니다(위 "멀티 모듈 구조" 참고).
 
 각 `apps` 모듈은 도메인별로 다음 4개 레이어를 따릅니다 (`apps/commerce-api/src/main/java/com/loopers/{layer}/{domain}` 참고):
 

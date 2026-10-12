@@ -27,7 +27,7 @@ week2의 목표는 **기본 API를 간단하게 구현하고 TDD를 적용**하�
 | 3 | 도메인 관계 | 완료 |
 | 4 | 대표 흐름 | 완료 |
 | 5 | 기본 기능 설계 (API 계약) | 골격 (P-1 결정, 나머지 TBD) |
-| 6 | 설계 결정 기록 | 진행 중 (D-1 ~ D-19) |
+| 6 | 설계 결정 기록 | 진행 중 (D-1 ~ D-20) |
 
 **작업 순서**
 
@@ -172,7 +172,7 @@ curl -H "X-USER-ID: 1" http://localhost:8080/api/v1/points
 ```
 Brand 1 ── N Product
 User  1 ── N Like N ── 1 Product
-User  1 ── N Order 1 ── N OrderItem ── 상품 식별자·수량·단가
+User  1 ── N Order 1 ── N OrderItem ── 상품 식별자·주문 당시 상품명·수량·단가
 User  1 ── 포인트 잔액
 Order ── 품목 금액 합계 / 포인트 결제액·결제 결과
 ```
@@ -193,7 +193,9 @@ Order ── 품목 금액 합계 / 포인트 결제액·결제 결과
 | **PointBalance** | **VO** (User에 내장) | 잔액 `Money`. `charge(m)`, `pay(m)`는 새 `PointBalance`를 반환. 잔액 0 허용, 충전액 양수, 합산 범위 초과·잔액 초과 결제 거절 | 값 규칙을 한 곳에 모은다 (D-8) |
 | **Money** | **VO** | 0 이상 정수 원(`long`). 연산은 새 값을 반환 | 단가·합계·잔액·결제액이 모두 사용 (D-7) |
 | **Order** | Entity (Aggregate root) | `userId`, 상태, 품목 목록, 합계 `Money`, 결제 결과. `confirm(...)` | 상태가 바뀌는 Entity. 품목 중복 금지(D-6)와 상태 전이 규칙을 가진다 |
-| **OrderItem** | Entity (Order의 하위, Order를 통해서만 접근) | `productId`, 수량, 주문 당시 단가 `Money`, 품목 금액 | 주문 당시 값의 스냅샷. 별도 Repository 없이 Order와 함께 저장 |
+| **OrderItem** | Entity (Order의 하위, Order를 통해서만 접근) | `productId`, 주문 당시 상품명, 수량, 주문 당시 단가 `Money`, 품목 금액 | 주문 당시 값의 스냅샷. 상품이 바뀌거나 삭제돼도 주문 내역이 유지된다 (D-20). 별도 Repository 없이 Order와 함께 저장 |
+| **OrderLine**, **OrderLines** | 값 (저장하지 않는 요청 값) | 고객이 요청한 품목 한 줄(`productId`, 수량)과 그 목록 | 상품을 조회하기 전에 판단할 수 있는 값 규칙(수량 1 이상, 품목 하나 이상, 중복 금지)을 도메인에 모은다 (D-20) |
+| **OrderProduct** | 값 (저장하지 않음) | 상품의 이름·가격 | `Order`가 상품 Entity를 알지 않고 스냅샷 원본만 받게 한다 (D-20) |
 | **OrderStatus** | enum | `DRAFT`, `CONFIRMED` | 값 목록이므로 별도 클래스가 필요 없다 |
 | **PaymentResult** | **VO** (Order에 내장, DRAFT 동안 비어 있음) | 결제액 `Money`, 결제 후 잔액 `Money` | 확정 시점에 함께 생기고 함께 읽히는 값 (D-10) |
 
@@ -233,7 +235,7 @@ Brand ◁── Product[brandId] ── Stock(VO), Money(VO)
                 ▲
 Like[userId, productId] ──▷ User ── PointBalance(VO) ── Money(VO)
                               ▲
-Order[userId] ── OrderItem[productId, qty, unitPrice:Money] ── PaymentResult(VO)
+Order[userId] ── OrderItem[productId, productName, qty, unitPrice:Money] ── PaymentResult(VO)
 ```
 
 ▲/▷는 id 참조, 선은 내장 또는 소유를 뜻한다.
@@ -266,7 +268,7 @@ Order[userId] ── OrderItem[productId, qty, unitPrice:Money] ── PaymentRe
 
 **② 주문 생성** `POST /api/v1/orders`
 
-요청자 존재는 식별 필터가 먼저 확인하므로(D-19) 주문 생성은 사용자를 다시 조회하지 않는다. `OrderFacade.create(userId, items)` → `ProductService`로 상품 일괄 조회(없는·삭제된 상품 `NOT_FOUND`) → `Order.create(userId, 품목 + 현재 단가)`(중복 품목·수량 0 이하 `INVALID_INPUT`, 합계 계산) → 저장 → DRAFT 주문을 반환한다. 재고·잔액은 차감하지 않는다.
+요청자 존재는 식별 필터가 먼저 확인하므로(D-19) 주문 생성은 사용자를 다시 조회하지 않는다. `OrderFacade.create(userId, items)` → `OrderLines`로 값 규칙 검사(빈 목록·수량 0 이하·중복 품목 `INVALID_INPUT`, 상품을 조회하기 전) → `ProductService`로 삭제되지 않은 상품 일괄 조회(없는·삭제된 상품이 있으면 `NOT_FOUND`, 메시지에 문제 상품 id를 모두 담음) → `Order.create(userId, lines, 상품 이름·가격)`(품목마다 주문 당시 상품명·단가 복사, 합계 계산, 범위 초과 `INVALID_INPUT`) → 저장 → DRAFT 주문을 반환한다. 재고·잔액은 차감하지 않는다 (D-20).
 
 **③ 확정** `POST /api/v1/orders/{orderId}/confirm`
 
@@ -345,7 +347,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 |---|---|---|---|---|
 | 수량 0 이하, 품목 없음, 같은 상품이 중복된 품목 | `INVALID_INPUT` | 400 | 입력 수정 (중복은 병합 후 재요청) | 잘못된 값 설명. 예: "같은 상품이 중복되었습니다. 수량을 합쳐 다시 요청해 주세요." |
 | 없는 주문, **타인 주문** | `NOT_FOUND` | 404 | 주문 목록으로 이동 | 존재 여부를 숨김 ("주문을 찾을 수 없습니다.") |
-| 주문 생성 시 없는·삭제된 상품 | `NOT_FOUND` | 404 | 해당 상품 제거 후 재시도 | 어떤 상품인지 |
+| 주문 생성 시 없는·삭제된 상품 | `NOT_FOUND` | 404 | 해당 상품 제거 후 재시도 | 문제 상품의 id를 요청 순서대로 모두 담음. 예: "존재하지 않는 상품이 포함되어 있습니다. (상품 ID: 3, 5)" |
 | 이미 확정된 주문 | `ORDER_ALREADY_CONFIRMED` (신규) | 409 | 주문 상세 조회로 전환 | "이미 결제가 완료된 주문입니다." |
 | 재고 부족 | `OUT_OF_STOCK` (신규) | 409 | 수량 조정 안내 | "재고가 부족합니다. 수량을 줄여 다시 주문해 주세요." |
 | 잔액 부족 | `INSUFFICIENT_POINT` (신규) | 409 | 충전 화면으로 유도 | "포인트가 부족합니다. 충전 후 다시 시도해 주세요." |
@@ -371,7 +373,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 |---|---|---|---|---|
 | 포인트 충전 | `POST /api/v1/points/charge` | body `amount` (양의 정수) | 충전 후 잔액 | 누락·잘못된 타입·소수(`1.5`, `1000.0`)·0 이하·표현 범위 초과 → `INVALID_INPUT` (기존 잔액 유지), 충전 후 잔액이 표현 범위 초과 → `INVALID_INPUT` (기존 잔액 유지) |
 | 잔액 조회 | `GET /api/v1/points` | 요청자 | 저장된 잔액 | 헤더 누락 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND` |
-| 주문 생성 | `POST /api/v1/orders` | body 품목 목록 (상품 id, 수량) | DRAFT 주문 (품목·수량·단가·합계), 차감 없음 | 없거나 삭제된 상품 → `NOT_FOUND`, 수량 0 이하·품목 없음·같은 상품 중복 → `INVALID_INPUT` |
+| 주문 생성 | `POST /api/v1/orders` | body `items`: `[{productId, quantity}]` (요청자 식별 필요) | DRAFT 주문 `{id, status, items: [{productId, productName, quantity, unitPrice, amount}], totalAmount}`, 상품명·단가는 주문 당시 값, 재고·포인트 차감 없음 (D-20) | `items`·`productId`·`quantity` 누락, 형식 오류(소수·문자열·범위 초과 포함) → `INVALID_INPUT`. 품목 없음·수량 0 이하·같은 상품 중복 → `INVALID_INPUT` (상품 조회 전에 판단, 없는 상품이 섞여 있어도 이 오류가 먼저). 없거나 삭제된 상품 → `NOT_FOUND` (메시지에 상품 id 목록). 합계가 표현 범위 초과 → `INVALID_INPUT`. 헤더 누락 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND` |
 | 주문 확정 | `POST /api/v1/orders/{orderId}/confirm` | path `orderId` | CONFIRMED 주문 (결제액·결과), 재고·포인트 차감 | 재고 부족 → `OUT_OF_STOCK`, 잔액 부족 → `INSUFFICIENT_POINT`, 이미 확정 → `ORDER_ALREADY_CONFIRMED`, 상품 삭제됨 → `PRODUCT_UNAVAILABLE`, 없는·타인 주문 → `NOT_FOUND` |
 | 내 주문 목록 | `GET /api/v1/orders` | 요청자 | 내 주문 목록 | 페이징 TBD |
 | 내 주문 상세 | `GET /api/v1/orders/{orderId}` | path `orderId` | 품목·수량·금액·상태·결제액 | 없거나 타인 주문 → `NOT_FOUND` |
@@ -512,7 +514,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 ### D-9. Entity·VO 구성과 Aggregate 사이 id 참조
 
 - **상황**: 도메인 모델의 분류와 참조 방식을 한 번에 정해야 했다.
-- **결정**: 3-2의 표대로 정한다. VO는 `Money`, `Stock`, `PointBalance`, `PaymentResult`, Entity는 `Brand`, `Product`, `Like`, `User`, `Order`, `OrderItem`이다. `Like`는 `(userId, productId)` 복합키를 쓰고 `BaseEntity`를 상속하지 않는다. Aggregate 사이는 id로 참조하고, 조회 결과 조합은 application이 한다.
+- **결정**: 3-2의 표대로 정한다. VO는 `Money`, `Stock`, `PointBalance`, `PaymentResult`, Entity는 `Brand`, `Product`, `Like`, `User`, `Order`, `OrderItem`이다. `Like`는 `(userId, productId)` 복합키를 쓰고 `BaseEntity`를 상속하지 않는다. Aggregate 사이는 id로 참조하고, 조회 결과 조합은 application이 한다. `Order`가 소유하는 `OrderItem` 컬렉션은 `LAZY`로 두며, 트랜잭션 밖에서 읽지 못하므로 application이 `Info`로 변환해 내보낸다 (D-20).
 - **근거 (id 참조)**:
   1. `@ManyToOne`은 기본이 EAGER라 `Order → User`, `OrderItem → Product → Brand`가 연쇄 로딩된다. LAZY는 설정 누락과 `LazyInitializationException` 위험이 있고, 목록은 브랜드 N+1이 생긴다.
   2. `Product`가 `List<Like>`를 가지면 `getLikes().size()`가 좋아요 행을 전부 로딩한다. 연관관계를 써도 집계 쿼리와 조합 코드는 필요하다.
@@ -591,7 +593,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 ### D-15. 입력 검증은 "형식은 Dto, 값 규칙은 도메인"으로 나눈다
 
 - **상황**: 필수 누락 검사가 Dto마다 `required(...)` 호출이라 읽기 어려웠고, 이름 필드만 빠져 있어 이름이 빠진 요청이 존재하지 않는 브랜드·상품을 가리키면 400이 아니라 404가 났다(Facade가 조회를 먼저 한다). 또 Jackson 기본값이 정수 필드의 소수(`1.5`)를 소수점을 버리고 받아들여, 성공 응답을 받아도 입력과 다른 금액·수량이 저장됐다.
-- **결정**: (1) 요청 본문의 필수 누락은 Dto의 `@NotNull`과 Controller의 `@Valid`로 조회 전에 `INVALID_INPUT`(400)으로 거절한다. `ApiControllerAdvice`가 `MethodArgumentNotValidException`을 `INVALID_INPUT`으로 바꾸고, `@NotNull` 위반 메시지는 "`{field}` 는 필수입니다."이다. (2) 공백뿐·길이·범위 같은 값 규칙은 도메인(`Brand`, `Product`, `Money`, `Stock`)에만 둔다. Dto에는 `@NotBlank`·`@Size`·`@Min`을 쓰지 않고, 도메인의 `null` 방어는 안전망으로 남긴다. (3) `supports:jackson`에서 `ACCEPT_FLOAT_AS_INT`를 꺼서, 정수 필드에 소수(`1.5`, `89000.9`, `1000.0` 포함)가 오면 400으로 거절한다.
+- **결정**: (1) 요청 본문의 필수 누락은 Dto의 `@NotNull`과 Controller의 `@Valid`로 조회 전에 `INVALID_INPUT`(400)으로 거절한다. `ApiControllerAdvice`가 `MethodArgumentNotValidException`을 `INVALID_INPUT`으로 바꾸고, `@NotNull` 위반 메시지는 "`{field}` 는 필수입니다."이다. (2) 공백뿐·길이·범위 같은 값 규칙은 도메인(`Brand`, `Product`, `Money`, `Stock`)에만 둔다. Dto에는 `@NotBlank`·`@Size`·`@Min`을 쓰지 않고, 도메인의 `null` 방어는 안전망으로 남긴다. (3) `supports:jackson`에서 `ACCEPT_FLOAT_AS_INT`를 꺼서, 정수 필드에 소수(`1.5`, `89000.9`, `1000.0` 포함)가 오면 400으로 거절한다. (4) 본문을 읽지 못한 오류의 메시지는 문제 필드의 위치를 담는다. 배열 원소는 `items[1].quantity`처럼 인덱스로 표기하고, `int`·`long` 범위를 넘는 값은 "필드 'items[1].quantity'의 값 '3000000000'이(가) 예상 타입(Integer)의 범위를 넘었습니다."로 안내한다(`ApiControllerAdvice`). 범위 초과를 던지는 Jackson 예외는 필드 경로가 없어 파서의 현재 위치로 경로를 만든다.
 - **근거**: 선언부에서 필수 필드가 바로 읽히고 Swagger 스키마에도 필수로 표시된다. 값 규칙이 한 곳에만 있어 Dto와 도메인이 어긋나지 않는다. 다른 객체를 조회해야 하는 검증(3-3)은 형식 오류보다 뒤에 두는 것이 일관된 순서이다. 소수를 버리면 성공 응답과 저장값이 달라 금액 오류가 조용히 생긴다.
 - **비용**: Controller에서 `@Valid`를 빠뜨리면 컴파일러가 못 잡고 `Long`을 풀 때 NPE(500)가 난다(필수 누락 테스트가 잡는다). `supports:jackson`은 `commerce-batch`·`commerce-streamer`와 공용이라 두 앱의 요청 파싱도 소수를 거절한다. `1000.0`처럼 값이 정수여도 소수 표기이면 거절한다. 공백뿐인 이름이 존재하지 않는 브랜드를 가리키면 값 규칙보다 존재 확인이 먼저라 404가 난다.
 - **재검토 조건**: 필수 외 형식 제약(`@Pattern` 등)이 필요해지면 도메인 규칙과 중복되지 않는지 먼저 본다. batch·streamer에서 소수 표기를 받아야 하는 입력이 생기면 모듈별 설정으로 나눈다.
@@ -637,7 +639,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 
 - **상황**: `@RequestHeader("X-USER-ID")`가 Controller 5곳에 반복되고 사용자 존재 확인(`userService.get`)이 Facade 여러 곳에 흩어져 있었다. 카탈로그 조회에서는 식별이 필요 없다(D-2).
 - **결정 (필터)**: `config.CustomerIdentityFilter`가 헤더 형식과 사용자 존재(DB)를 확인한다. 헤더 누락과 숫자가 아닌 값은 400 `INVALID_INPUT`, 없는 사용자는 404 `NOT_FOUND`로 직접 응답하고 다음으로 넘기지 않는다. 통과하면 `userId`(`Long`)를 인증 주체로 두고 Controller는 `@AuthenticationPrincipal Long`으로 받는다. 오류 계약은 기존 그대로 두고 401로 바꾸지 않는다. 필터 단계의 오류는 `ApiControllerAdvice`가 처리하지 못하므로 `SecurityErrorResponseWriter`가 같은 `ApiResponse` 형식으로 쓴다(관리자 403도 이 클래스를 함께 쓴다).
-- **결정 (경로 목록)**: 식별이 필요한 경로를 `SecurityConfig.IDENTIFIED_PATHS` 하나로 관리하고 그 경로에서만 필터가 동작한다. 현재 `/api/v1/points/**`, `/api/v1/products/*/likes`, `/api/v1/users/*/likes`이며 주문 API는 구현할 때 추가한다. 그 밖의 경로(카탈로그)는 헤더를 읽지도 사용자를 조회하지도 않는다. 권한 규칙도 같은 목록을 쓰며(`authenticated`, 나머지 `permitAll`) 필터가 이미 거절하므로 안전망이다.
+- **결정 (경로 목록)**: 식별이 필요한 경로를 `SecurityConfig.IDENTIFIED_PATHS` 하나로 관리하고 그 경로에서만 필터가 동작한다. 현재 `/api/v1/points/**`, `/api/v1/products/*/likes`, `/api/v1/users/*/likes`, `/api/v1/orders/**`이다(주문 경로는 확정·조회 API도 이 접두사로 이미 포함된다). 그 밖의 경로(카탈로그)는 헤더를 읽지도 사용자를 조회하지도 않는다. 권한 규칙도 같은 목록을 쓰며(`authenticated`, 나머지 `permitAll`) 필터가 이미 거절하므로 안전망이다.
 - **결정 (설정 위치)**: `AdminBoundaryConfig`를 `SecurityConfig`로 바꾸고 관리자 체인(`/api-admin/**`, `@Order(1)`)과 고객 체인(`/api/**`, `@Order(2)`)을 한 클래스에서 정의한다. 고객 체인은 CSRF를 끄고 세션을 만들지 않는다(STATELESS). 헤더로 식별해 쿠키 세션이 없고 기존 E2E도 CSRF 토큰 없이 호출하기 때문이다. 관리자 체인은 그대로다. 필터는 빈으로 등록하면 모든 요청의 서블릿 필터로도 등록되므로 `SecurityConfig`가 직접 만들어 고객 체인에만 넣는다. 과제 예시의 `config.AdminBoundaryConfig`와 클래스 이름이 달라진다.
 - **결정 (등록 누락 방지)**: 목록에 등록하지 않은 식별 API는 식별 없이 열리고 Controller에 `userId`가 `null`로 들어온다. 식별이 필요한 API마다 "헤더 누락 400" E2E 테스트를 쓰는 규칙으로 잡고 CLAUDE.md에 적었다. `LikeFacade`는 요청자 id가 `null`이면 `INTERNAL_ERROR`(500)로 거절해, 400·403이나 조용한 성공으로 보이지 않고 설정 실수로 드러낸다(`unlike`는 `null`이면 지울 행이 없어 성공했었다).
 - **결정 (신뢰 경계)**: 요청자 id를 믿는 경계는 이 필터 한 곳이다. Facade는 필터를 거친 존재하는 사용자의 id를 전제로 존재를 다시 조회하지 않는다(`LikeFacade`). 엔티티가 필요한 `PointFacade`는 조회를 유지한다.
@@ -645,3 +647,16 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 - **비용**: 포인트(이후 주문) 요청은 필터와 Facade에서 사용자를 두 번 조회해 기본키 조회가 1회 늘어난다. `open-in-view: false`라 영속성 컨텍스트가 달라 1차 캐시로 줄지 않는다. 좋아요는 `LikeFacade`의 조회를 옮긴 것이라 쿼리 수가 같다. 캐시는 측정 근거 없는 최적화이고 삭제 반영이 늦어지므로 두지 않는다. 필터가 `config`에서 `domain.user.UserService`에 의존한다(ArchUnit은 `config`를 제한하지 않는다). 숫자가 아닌 헤더의 오류 메시지가 "요청 파라미터 'X-USER-ID' (타입: Long)…"에서 "요청 헤더 'X-USER-ID'의 값 'abc'이(가) 잘못되었습니다."로 바뀌었다(코드와 상태는 같다). 검사 순서가 바뀌어 요청자 존재 확인이 항상 맨 앞이며, 존재하지 않는 요청자가 남의 `userId` 목록을 요청하면 `FORBIDDEN`이 아니라 `NOT_FOUND`이고, 존재하지 않는 요청자의 잘못된 `page`·`size`도 400보다 404가 먼저다. 경로의 `*`가 형식을 가리지 않아 `/products/abc/likes`도 헤더 확인이 먼저다. 등록을 빠뜨린 경로는 식별 없이 열린다.
 - **재검토 조건**: 운영 인증(JWT 등)을 정할 때는 서명된 토큰을 DB 없이 검증하는 방식으로 이 필터를 대체한다. 식별 경로가 늘어 목록 관리가 번거로워지면 애노테이션 기반 등록을 검토한다.
 - **기각한 대안**: 헤더가 오면 어디서든 검증(카탈로그에도 사용자 조회와 헤더 오류가 생김), 공개 경로를 예외로 두기(사용자가 식별 필요 경로 목록을 직접 관리하는 쪽을 선택), Controller마다 `@RequestHeader`와 `ArgumentResolver`(반복과 존재 확인 분산이 남음), Facade에서 다시 조회(필터와 책임이 겹치고 요청마다 조회가 늘어남), 필터에서 사용자 캐시(측정 근거 없음, 삭제 반영 지연), 요청자를 별도 타입으로 도입(시그니처가 모두 바뀌고 application이 그 타입에 의존).
+
+### D-20. 주문 품목은 주문 당시 상품명·단가를 복사해 저장하고, 값 규칙은 상품 조회 전에 도메인이 판단한다
+
+- **상황**: 주문 생성(T7)에서 품목에 무엇을 저장할지, 값 규칙 위반과 없는 상품 중 어느 오류를 먼저 알릴지, `Order`가 상품을 어떻게 받을지 정해야 했다. 발제의 `OrderItem`은 "상품 식별자·수량·단가"였다.
+- **결정 (스냅샷)**: `OrderItem`은 상품 id, **주문 당시 상품명**, 수량, 주문 당시 단가, 품목 금액(단가 × 수량)을 저장하고, 합계는 품목 금액의 합이다. 브랜드명은 저장하지 않는다. 주문은 항상 `DRAFT`로 만들어지며 재고와 포인트를 건드리지 않는다.
+- **결정 (모델)**: 요청 한 줄은 `OrderLine(productId, quantity)`, 목록은 `OrderLines`(하나 이상, 수량 1 이상, 같은 상품 중복 금지 D-6)이며 저장하지 않는다. `Order.create(userId, OrderLines, Map<Long, OrderProduct>)`는 상품 Entity가 아니라 이름·가격만 가진 `OrderProduct`를 받아 `domain.order`가 `domain.product`에 의존하지 않는다. 맵에 품목의 상품이 없으면 호출하는 쪽의 오류이므로 `INTERNAL_ERROR`로 거절한다(정상 흐름에서는 Facade가 먼저 404로 거르므로 일어나지 않는 안전망이다).
+- **결정 (검사 순서)**: 요청자 확인 → 값 규칙(`OrderLines`, `INVALID_INPUT`) → 상품 일괄 조회와 존재 확인(`NOT_FOUND`) → 합계 범위(`INVALID_INPUT`). 값 규칙이 먼저라서 잘못된 요청은 DB를 조회하지 않고, 수량 0과 없는 상품이 함께 있으면 404가 아니라 400이다. 조회가 먼저인 관리자 API(D-15의 비용)와 순서가 다르다.
+- **결정 (오류 메시지)**: 없거나 삭제된 상품은 요청 순서대로 모든 id를 메시지에 담아 한 번에 빼고 다시 요청할 수 있게 한다.
+- **결정 (계층)**: Facade는 `interfaces`가 도메인 타입을 알지 않도록 application의 입력 형식 `OrderItemCommand(productId, quantity)`를 받아 `OrderLine`으로 바꾼다. `Order.items`는 `LAZY`이고 `OrderInfo`로의 변환은 트랜잭션 안에서 한다. `/api/v1/orders/**`를 `IDENTIFIED_PATHS`에 등록해 식별 필터가 적용되며(D-19), Facade는 사용자를 다시 조회하지 않는다.
+- **근거**: 단가를 얻으려고 상품을 이미 조회하므로 상품명 저장에 추가 조회가 없다. 단가만 복사하면 주문 내역에 "당시 가격 + 현재 이름"이 섞이고, 삭제된 상품의 이름을 보여 주려면 삭제된 상품을 읽는 조회가 따로 필요하다. 값 규칙을 도메인 타입에 두면 Facade의 `if`로 새어 나가지 않고 `Order.create`가 검증을 건너뛸 수 없다. `Order`가 상품 전체가 아니라 필요한 값만 받으면 Aggregate 사이를 id로 분리한 D-9의 취지가 유지되고 단위 테스트에 상품 Entity가 필요 없다.
+- **비용**: 상품명이 품목에 중복 저장되고, 이후 상품명을 고쳐도 기존 주문에는 반영되지 않는다(주문 내역으로는 맞는 동작이다). 타입이 늘었다(`OrderLine`, `OrderLines`, `OrderProduct`, `OrderItemCommand`). 맵 누락 검사가 Facade의 존재 확인과 겹쳐 보이지만 하나는 사용자 입력 오류(404), 하나는 호출 계약 위반(500)이라 의미가 다르다. 주문 목록(T9)에서 품목을 지연 로딩하면 N+1이 생기므로 그때 batch fetch와 쿼리 수 테스트로 다룬다.
+- **재검토 조건**: 브랜드명 등 표시 정보가 더 필요해지면 스냅샷 필드를 늘린다. 주문 생성의 상품 조회가 느려지면 상품 id 인덱스 조회를 점검한다. 결제 수단이나 배송 정보가 생기면 `Order` 필드를 다시 나눈다.
+- **기각한 대안**: 상품 id·수량·단가만 저장하고 조회할 때 상품을 읽기(삭제된 상품 조회 필요, 현재 이름과 당시 가격이 섞임), 조회를 먼저 하고 `Order.create`가 값 규칙을 검사하기(잘못된 요청도 DB를 조회하고 없는 상품 404가 먼저 나감), `Order.create`가 `Product`를 직접 받기(Aggregate 의존), Facade가 `OrderLine`을 직접 받기(interfaces가 도메인 타입을 알게 됨), 중복 상품 합산(D-6).
