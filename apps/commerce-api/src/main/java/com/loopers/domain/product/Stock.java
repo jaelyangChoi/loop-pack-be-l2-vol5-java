@@ -19,6 +19,11 @@ public record Stock(int remaining) {
         }
     }
 
+    /** 재고가 요청 수량 이상이면 true 이다. 확인만 하고 재고를 바꾸지 않는다. */
+    public boolean isEnoughFor(int quantity) {
+        return remaining >= quantity;
+    }
+
     /**
      * 재고를 차감한 새 {@code Stock}을 반환한다.
      *

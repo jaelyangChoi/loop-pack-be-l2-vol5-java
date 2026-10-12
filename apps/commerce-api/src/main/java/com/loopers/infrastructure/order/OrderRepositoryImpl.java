@@ -5,6 +5,8 @@ import com.loopers.domain.order.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.Optional;
+
 @RequiredArgsConstructor
 @Component
 public class OrderRepositoryImpl implements OrderRepository {
@@ -13,5 +15,10 @@ public class OrderRepositoryImpl implements OrderRepository {
     @Override
     public Order save(Order order) {
         return orderJpaRepository.save(order);
+    }
+
+    @Override
+    public Optional<Order> findByIdAndUserId(Long id, Long userId) {
+        return orderJpaRepository.findByIdAndUserId(id, userId);
     }
 }

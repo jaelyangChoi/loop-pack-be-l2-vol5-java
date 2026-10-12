@@ -5,6 +5,7 @@ import com.loopers.domain.common.Money;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import jakarta.persistence.AttributeOverride;
+import jakarta.persistence.AttributeOverrides;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
@@ -44,6 +45,14 @@ public class Order extends BaseEntity {
     @AttributeOverride(name = "amount", column = @Column(name = "total_amount", nullable = false))
     private Money totalAmount;
 
+    // 확정 전(DRAFT)에는 비어 있다. 컬럼이 모두 null 이면 값 자체가 null 로 읽힌다.
+    @Embedded
+    @AttributeOverrides({
+        @AttributeOverride(name = "paidAmount.amount", column = @Column(name = "paid_amount")),
+        @AttributeOverride(name = "balanceAfter.amount", column = @Column(name = "balance_after"))
+    })
+    private PaymentResult paymentResult;
+
     // 품목은 필요할 때만 읽는다. 트랜잭션 밖에서는 읽을 수 없으므로 application 이 Info 로 변환해 내보낸다.
     @OneToMany(fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "order_id", nullable = false)
@@ -80,6 +89,34 @@ public class Order extends BaseEntity {
         order.totalAmount = total;
         order.items = items;
         return order;
+    }
+
+    /** 품목의 상품 id 를 품목 순서대로 돌려준다. */
+    public List<Long> productIds() {
+        return items.stream().map(OrderItem::getProductId).toList();
+    }
+
+    /** 확정할 수 있는 상태(DRAFT)인지 확인한다. 이미 확정된 주문이면 ORDER_ALREADY_CONFIRMED 로 거절한다. */
+    public void ensureConfirmable() {
+        if (status != OrderStatus.DRAFT) {
+            throw new CoreException(ErrorType.ORDER_ALREADY_CONFIRMED);
+        }
+    }
+
+    /**
+     * 결제 결과를 저장하고 CONFIRMED 로 바꾼다. 재고·포인트 차감은 호출하는 쪽(application)이 먼저 한다.
+     *
+     * <p>여기서 상태를 다시 검증하는 것은 불변식 보호용이다. 어디서 호출하든 확정된 주문의 결제 결과를 덮어쓰지 못하게 한다.
+     * application 이 앞서 {@link #ensureConfirmable()} 을 부르는 것은 오류 우선순위용이라 역할이 다르다.
+     * 거절되면 상태와 결제 결과는 그대로다.
+     */
+    public void confirm(PaymentResult paymentResult) {
+        ensureConfirmable();
+        if (paymentResult == null) {
+            throw new CoreException(ErrorType.INVALID_INPUT, "결제 결과는 필수입니다.");
+        }
+        this.paymentResult = paymentResult;
+        this.status = OrderStatus.CONFIRMED;
     }
 
     public List<OrderItem> getItems() {

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -178,5 +179,54 @@ class ProductTest {
             assertInvalidInput(() -> product.changeStock(-1));
             assertThat(product.getStock()).isEqualTo(new Stock(10));
         }
+    }
+
+    @DisplayName("재고를 차감할 때,")
+    @Nested
+    class DecreaseStock {
+        @DisplayName("보유량 이하이면 그만큼 줄어든다 (경계값은 StockTest).")
+        @Test
+        void decreasesStock() {
+            // arrange
+            Product product = product();
+
+            // act
+            product.decreaseStock(2);
+
+            // assert
+            assertThat(product.getStock()).isEqualTo(new Stock(8));
+        }
+
+        @DisplayName("보유량을 넘으면 OUT_OF_STOCK 으로 거절하고, 기존 재고를 유지한다.")
+        @Test
+        void rejectsWithOutOfStock_andKeepsStock_whenQuantityExceedsStock() {
+            // arrange
+            Product product = product();
+
+            // act
+            CoreException exception = assertThrows(CoreException.class, () -> product.decreaseStock(11));
+
+            // assert
+            assertThat(exception.getErrorType()).isEqualTo(ErrorType.OUT_OF_STOCK);
+            assertThat(product.getStock()).isEqualTo(new Stock(10));
+        }
+
+    }
+
+    @DisplayName("주문 수량에 재고가 충분한지 확인할 때,")
+    @Nested
+    class HasEnoughStock {
+        @DisplayName("재고가 수량 이상이면 true, 적으면 false 이고, 재고는 바뀌지 않는다.")
+        @ParameterizedTest
+        @CsvSource({"10, true", "11, false"})
+        void judgesBySufficiency_withoutChangingStock(int quantity, boolean expected) {
+            // arrange
+            Product product = product();
+
+            // act & assert
+            assertThat(product.hasEnoughStock(quantity)).isEqualTo(expected);
+            assertThat(product.getStock()).isEqualTo(new Stock(10));
+        }
+
     }
 }

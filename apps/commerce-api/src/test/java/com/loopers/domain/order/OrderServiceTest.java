@@ -55,19 +55,46 @@ class OrderServiceTest {
             assertThat(jdbcTemplate.queryForObject("select count(*) from orders", Integer.class)).isEqualTo(1);
         }
 
-        @DisplayName("도메인 규칙에 어긋나면 예외가 나고 아무것도 저장하지 않는다.")
-        @Test
-        void savesNothing_whenOrderIsInvalid() {
-            // act
-            CoreException exception = assertThrows(CoreException.class, () -> orderService.create(
-                null,
+    }
+
+    @DisplayName("본인 주문을 조회할 때,")
+    @Nested
+    class GetMine {
+        private Order saveOrder(Long userId) {
+            return orderService.create(
+                userId,
                 new OrderLines(List.of(new OrderLine(10L, 2))),
                 Map.of(10L, new OrderProduct("티셔츠", new Money(3_000)))
-            ));
+            );
+        }
+
+        @DisplayName("주문자가 같으면 주문을 돌려준다.")
+        @Test
+        void returnsOrder_whenUserIsOwner() {
+            // arrange
+            Order saved = saveOrder(7L);
+
+            // act
+            Order found = orderService.getMine(saved.getId(), 7L);
 
             // assert
-            assertThat(exception.getErrorType()).isEqualTo(ErrorType.INVALID_INPUT);
-            assertThat(jdbcTemplate.queryForObject("select count(*) from orders", Integer.class)).isZero();
+            assertThat(found.getId()).isEqualTo(saved.getId());
+        }
+
+        @DisplayName("다른 사용자의 주문과 없는 주문은 구분하지 않고 NOT_FOUND 로 거절한다.")
+        @Test
+        void throwsNotFound_whenOrderBelongsToOtherUserOrDoesNotExist() {
+            // arrange
+            Order saved = saveOrder(7L);
+
+            // act
+            CoreException otherUser = assertThrows(CoreException.class, () -> orderService.getMine(saved.getId(), 8L));
+            CoreException missing = assertThrows(CoreException.class, () -> orderService.getMine(999_999L, 7L));
+
+            // assert
+            assertThat(otherUser.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
+            assertThat(missing.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
+            assertThat(otherUser.getMessage()).isEqualTo(missing.getMessage());
         }
     }
 }

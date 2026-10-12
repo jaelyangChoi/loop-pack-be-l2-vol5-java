@@ -74,6 +74,19 @@ public class Product extends BaseEntity {
         this.stock = new Stock(quantity);
     }
 
+    /**
+     * 재고를 차감한다. 수량이 0 이하이면 {@code INVALID_INPUT}, 보유량을 넘으면 {@code OUT_OF_STOCK} 이며
+     * 거절되면 기존 재고가 유지된다 ({@link Stock} 이 불변이라 새 값을 만들지 못하면 필드를 바꾸지 않는다).
+     */
+    public void decreaseStock(int quantity) {
+        this.stock = stock.decrease(quantity);
+    }
+
+    /** 재고가 주문 수량 이상인지 확인한다. 확인만 하고 재고를 바꾸지 않는다 (차감은 {@link #decreaseStock}). */
+    public boolean hasEnoughStock(int quantity) {
+        return stock.isEnoughFor(quantity);
+    }
+
     private static String validatedName(String name) {
         if (name == null || name.isBlank()) {
             throw new CoreException(ErrorType.INVALID_INPUT, "상품 이름은 비어 있을 수 없습니다.");

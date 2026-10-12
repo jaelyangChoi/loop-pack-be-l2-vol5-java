@@ -66,6 +66,20 @@ class OrderTest {
             assertThat(second.getAmount()).isEqualTo(new Money(4_000));
         }
 
+        @DisplayName("품목의 상품 id 를 품목 순서대로 돌려준다.")
+        @Test
+        void returnsProductIds_inItemOrder() {
+            // arrange
+            Order order = Order.create(
+                7L,
+                lines(new OrderLine(20L, 1), new OrderLine(10L, 2), new OrderLine(30L, 1)),
+                Map.of(10L, product("티셔츠", 3_000), 20L, product("양말", 2_000), 30L, product("모자", 5_000))
+            );
+
+            // act & assert
+            assertThat(order.productIds()).containsExactly(20L, 10L, 30L);
+        }
+
         @DisplayName("요청자가 없으면 INVALID_INPUT 으로 거절한다.")
         @Test
         void throwsInvalidInput_whenUserIdIsNull() {
@@ -101,6 +115,79 @@ class OrderTest {
 
             // act & assert
             assertErrorType(ErrorType.INVALID_INPUT, () -> Order.create(7L, lines, products));
+        }
+    }
+
+    @DisplayName("주문을 확정할 때,")
+    @Nested
+    class Confirm {
+        private Order draftOrder() {
+            return Order.create(
+                7L,
+                lines(new OrderLine(10L, 1), new OrderLine(20L, 2)),
+                Map.of(10L, product("티셔츠", 3_000), 20L, product("양말", 2_000))
+            );
+        }
+
+        // 합계 7,000원을 결제하고 10,000원에서 3,000원이 남은 결과
+        private PaymentResult payment() {
+            return new PaymentResult(new Money(7_000), new Money(3_000));
+        }
+
+        @DisplayName("DRAFT 주문은 확정할 수 있는 상태다.")
+        @Test
+        void isConfirmable_whenDraft() {
+            // act & assert: 예외가 나지 않는다.
+            draftOrder().ensureConfirmable();
+        }
+
+        @DisplayName("확정하면 CONFIRMED 가 되고, 결제액과 결제 후 잔액을 보존한다. 품목과 합계는 그대로다.")
+        @Test
+        void becomesConfirmed_withPaymentResult() {
+            // arrange
+            Order order = draftOrder();
+
+            // act
+            order.confirm(payment());
+
+            // assert
+            assertThat(order.getStatus()).isEqualTo(OrderStatus.CONFIRMED);
+            assertThat(order.getPaymentResult()).isEqualTo(payment());
+            assertThat(order.getTotalAmount()).isEqualTo(new Money(7_000));
+            assertThat(order.getItems()).hasSize(2);
+        }
+
+        @DisplayName("DRAFT 주문은 결제 결과가 비어 있다.")
+        @Test
+        void hasNoPaymentResult_whenDraft() {
+            assertThat(draftOrder().getPaymentResult()).isNull();
+        }
+
+        @DisplayName("이미 확정된 주문은 ORDER_ALREADY_CONFIRMED 로 거절하고, 기존 결제 결과를 유지한다.")
+        @Test
+        void rejectsWithAlreadyConfirmed_andKeepsPaymentResult_whenAlreadyConfirmed() {
+            // arrange
+            Order order = draftOrder();
+            order.confirm(payment());
+            PaymentResult other = new PaymentResult(new Money(1), new Money(1));
+
+            // act & assert
+            assertErrorType(ErrorType.ORDER_ALREADY_CONFIRMED, order::ensureConfirmable);
+            assertErrorType(ErrorType.ORDER_ALREADY_CONFIRMED, () -> order.confirm(other));
+            assertThat(order.getStatus()).isEqualTo(OrderStatus.CONFIRMED);
+            assertThat(order.getPaymentResult()).isEqualTo(payment());
+        }
+
+        @DisplayName("결제 결과가 없으면 INVALID_INPUT 으로 거절하고, DRAFT 를 유지한다.")
+        @Test
+        void rejectsWithInvalidInput_andStaysDraft_whenPaymentResultIsNull() {
+            // arrange
+            Order order = draftOrder();
+
+            // act & assert
+            assertErrorType(ErrorType.INVALID_INPUT, () -> order.confirm(null));
+            assertThat(order.getStatus()).isEqualTo(OrderStatus.DRAFT);
+            assertThat(order.getPaymentResult()).isNull();
         }
     }
 }

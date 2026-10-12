@@ -6,6 +6,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -81,6 +82,22 @@ class StockTest {
             assertThat(decreased.remaining()).isZero();
         }
 
+        @DisplayName("재고가 0이면 1 이상의 수량은 OUT_OF_STOCK 이고, 0 이하의 수량은 OUT_OF_STOCK 이 아니라 INVALID_INPUT 이다.")
+        @Test
+        void distinguishesOutOfStockFromInvalidQuantity_whenStockIsZero() {
+            // arrange
+            Stock soldOut = new Stock(0);
+
+            // act
+            CoreException outOfStock = assertThrows(CoreException.class, () -> soldOut.decrease(1));
+            CoreException invalid = assertThrows(CoreException.class, () -> soldOut.decrease(0));
+
+            // assert
+            assertThat(outOfStock.getErrorType()).isEqualTo(ErrorType.OUT_OF_STOCK);
+            assertThat(invalid.getErrorType()).isEqualTo(ErrorType.INVALID_INPUT);
+            assertThat(soldOut.remaining()).isZero();
+        }
+
         @DisplayName("0 이하의 수량이면 INVALID_INPUT 으로 거절하고, 기존 재고는 그대로다.")
         @ParameterizedTest
         @ValueSource(ints = {0, -1})
@@ -93,6 +110,30 @@ class StockTest {
 
             // assert
             assertThat(exception.getErrorType()).isEqualTo(ErrorType.INVALID_INPUT);
+            assertThat(stock.remaining()).isEqualTo(5);
+        }
+    }
+
+    @DisplayName("요청 수량에 충분한지 확인할 때,")
+    @Nested
+    class IsEnoughFor {
+        @DisplayName("재고가 수량 이상이면 충분하고, 수량보다 적으면 부족하다.")
+        @ParameterizedTest
+        @CsvSource({"5, 4, true", "5, 5, true", "5, 6, false", "0, 1, false"})
+        void judgesBySufficiency(int remaining, int quantity, boolean expected) {
+            assertThat(new Stock(remaining).isEnoughFor(quantity)).isEqualTo(expected);
+        }
+
+        @DisplayName("확인만 하고 재고를 바꾸지 않는다.")
+        @Test
+        void doesNotChangeStock() {
+            // arrange
+            Stock stock = new Stock(5);
+
+            // act
+            stock.isEnoughFor(3);
+
+            // assert
             assertThat(stock.remaining()).isEqualTo(5);
         }
     }
