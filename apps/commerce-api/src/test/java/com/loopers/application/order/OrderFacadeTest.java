@@ -323,21 +323,6 @@ class OrderFacadeTest {
             assertThat(orderCount()).isZero();
         }
 
-        @DisplayName("요청자 식별 정보가 없으면(등록 누락) INTERNAL_ERROR 이고 저장하지 않는다.")
-        @Test
-        void throwsInternalError_whenRequesterIsMissing() {
-            // arrange
-            Product shirt = saveProduct("티셔츠", 3_000, 10);
-
-            // act
-            CoreException exception = rejected(
-                () -> orderFacade.create(null, List.of(new OrderItemCommand(shirt.getId(), 1)))
-            );
-
-            // assert
-            assertThat(exception.getErrorType()).isEqualTo(ErrorType.INTERNAL_ERROR);
-            assertThat(orderCount()).isZero();
-        }
     }
 
     @DisplayName("주문을 확정할 때,")
@@ -559,21 +544,6 @@ class OrderFacadeTest {
                 .as("삭제된 상품 + 재고 부족").isEqualTo(ErrorType.PRODUCT_UNAVAILABLE);
         }
 
-        @DisplayName("요청자 식별 정보가 없으면(등록 누락) INTERNAL_ERROR 이고 아무것도 바꾸지 않는다.")
-        @Test
-        void throwsInternalError_whenRequesterIsMissing() {
-            // arrange
-            User user = saveUserWithBalance(10_000);
-            Product shirt = saveProduct("티셔츠", 3_000, 10);
-            Long orderId = placeOrder(user, new OrderItemCommand(shirt.getId(), 1));
-
-            // act
-            CoreException exception = rejected(() -> orderFacade.confirm(null, orderId));
-
-            // assert
-            assertThat(exception.getErrorType()).isEqualTo(ErrorType.INTERNAL_ERROR);
-            assertUntouched(orderId, user, 10_000, Map.of(shirt, 10));
-        }
     }
 
     @DisplayName("내 주문을 조회할 때,")
@@ -693,13 +663,5 @@ class OrderFacadeTest {
             assertThat(missing.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
         }
 
-        @DisplayName("요청자 식별 정보가 없으면(등록 누락) INTERNAL_ERROR 이다.")
-        @Test
-        void throwsInternalError_whenRequesterIsMissing() {
-            assertThat(rejected(() -> orderFacade.getMyList(null, 0, 20)).getErrorType())
-                .isEqualTo(ErrorType.INTERNAL_ERROR);
-            assertThat(rejected(() -> orderFacade.getMine(null, 1L)).getErrorType())
-                .isEqualTo(ErrorType.INTERNAL_ERROR);
-        }
     }
 }

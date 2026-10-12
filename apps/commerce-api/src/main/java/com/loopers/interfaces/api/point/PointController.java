@@ -3,9 +3,9 @@ package com.loopers.interfaces.api.point;
 import com.loopers.application.point.PointFacade;
 import com.loopers.application.point.PointInfo;
 import com.loopers.interfaces.api.ApiResponse;
+import com.loopers.interfaces.api.Requester;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -22,7 +22,7 @@ public class PointController implements PointApiSpec {
     @PostMapping("/charge")
     @Override
     public ApiResponse<PointDto.PointResponse> charge(
-        @AuthenticationPrincipal Long userId,
+        @Requester Long userId,
         @Valid @RequestBody PointDto.ChargeRequest request
     ) {
         PointInfo info = pointFacade.charge(userId, request.amount());
@@ -32,7 +32,7 @@ public class PointController implements PointApiSpec {
     @GetMapping
     @Override
     public ApiResponse<PointDto.PointResponse> getPoint(
-        @AuthenticationPrincipal Long userId
+        @Requester Long userId
     ) {
         PointInfo info = pointFacade.getBalance(userId);
         return ApiResponse.success(PointDto.PointResponse.from(info));

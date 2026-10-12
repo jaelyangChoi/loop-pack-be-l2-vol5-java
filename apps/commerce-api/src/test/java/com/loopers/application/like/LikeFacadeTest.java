@@ -250,47 +250,4 @@ class LikeFacadeTest {
                 .isEqualTo(ErrorType.INVALID_INPUT);
         }
     }
-
-    /**
-     * 요청자 id 는 식별 필터를 거친 값이어야 한다. 식별이 필요한 경로로 등록하지 않으면 null 이 들어오는데,
-     * 클라이언트 잘못처럼 보이거나(400·403) 조용히 성공하지 않고 서버 설정 실수로 드러내야 한다.
-     */
-    @DisplayName("요청자 식별 정보가 없을 때(식별 경로 등록 누락),")
-    @Nested
-    class MissingRequester {
-        @DisplayName("좋아요 등록은 INTERNAL_ERROR 로 거절하고, 저장하지 않는다.")
-        @Test
-        void like_throwsInternalError_andSavesNothing() {
-            // arrange
-            Product product = saveProduct("러닝화");
-
-            // act & assert
-            assertThat(errorTypeOf(() -> likeFacade.like(null, product.getId()))).isEqualTo(ErrorType.INTERNAL_ERROR);
-            assertThat(likeRepository.countByProductId(product.getId())).isZero();
-        }
-
-        @DisplayName("좋아요 취소는 조용히 성공하지 않고 INTERNAL_ERROR 로 거절하며, 다른 사용자의 좋아요는 그대로다.")
-        @Test
-        void unlike_throwsInternalError_andKeepsOthersLike() {
-            // arrange
-            User other = saveUser();
-            Product product = saveProduct("러닝화");
-            likeFacade.like(other.getId(), product.getId());
-
-            // act & assert
-            assertThat(errorTypeOf(() -> likeFacade.unlike(null, product.getId()))).isEqualTo(ErrorType.INTERNAL_ERROR);
-            assertThat(likeRepository.exists(other.getId(), product.getId())).isTrue();
-        }
-
-        @DisplayName("내 좋아요 목록은 FORBIDDEN 이 아니라 INTERNAL_ERROR 로 거절한다.")
-        @Test
-        void getMyLikes_throwsInternalError() {
-            // arrange
-            User other = saveUser();
-
-            // act & assert
-            assertThat(errorTypeOf(() -> likeFacade.getMyLikes(null, other.getId(), 0, 20)))
-                .isEqualTo(ErrorType.INTERNAL_ERROR);
-        }
-    }
 }

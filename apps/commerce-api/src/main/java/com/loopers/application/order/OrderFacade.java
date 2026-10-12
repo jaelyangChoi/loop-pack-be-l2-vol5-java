@@ -26,10 +26,9 @@ import java.util.stream.Collectors;
 /**
  * 주문 유스케이스.
  *
- * <p>요청자 id 는 앞단의 식별 필터({@code CustomerIdentityFilter})를 거친, 존재하는 사용자의 id 여야 한다. 신뢰 경계는
- * 그 필터 한 곳이라 사용자를 다시 조회하지 않는다. 식별이 필요한 경로로 등록하지 않으면 {@code null} 이 들어오므로
- * 서버 설정 실수로 거절한다 ({@code LikeFacade} 와 같다). 확정은 포인트를 차감할 {@code User} 엔티티가 필요해 조회하지만
- * 존재 확인은 필터가 먼저 한다 ({@code PointFacade} 와 같다).
+ * <p>요청자 id 는 앞단의 식별 필터({@code CustomerIdentityFilter})를 거친, 존재하는 사용자의 id 이며 컨트롤러의
+ * {@code @Requester} 파라미터가 {@code null} 이 아님을 보장한다 ({@code LikeFacade} 와 같다). 확정은 포인트를 차감할
+ * {@code User} 엔티티가 필요해 조회하지만 존재 확인은 필터가 먼저 한다 ({@code PointFacade} 와 같다).
  */
 @RequiredArgsConstructor
 @Component
@@ -48,7 +47,6 @@ public class OrderFacade {
      */
     @Transactional
     public OrderInfo create(Long userId, List<OrderItemCommand> items) {
-        requireRequester(userId);
         OrderLines lines = toLines(items);
 
         Map<Long, Product> found = productService.getAllActiveByIds(lines.productIds());
@@ -69,7 +67,6 @@ public class OrderFacade {
      */
     @Transactional
     public OrderInfo confirm(Long userId, Long orderId) {
-        requireRequester(userId);
         Order order = orderService.getMine(orderId, userId);
         User user = userService.get(userId);
         order.ensureConfirmable(); // 이미 확정된 주문이 재고·잔액 오류로 보이지 않게 먼저 거절한다
@@ -85,7 +82,6 @@ public class OrderFacade {
      */
     @Transactional(readOnly = true)
     public OrderInfo getMine(Long userId, Long orderId) {
-        requireRequester(userId);
         return OrderInfo.from(orderService.getMine(orderId, userId));
     }
 
@@ -94,7 +90,6 @@ public class OrderFacade {
      */
     @Transactional(readOnly = true)
     public Page<OrderSummaryInfo> getMyList(Long userId, int page, int size) {
-        requireRequester(userId);
         return orderService.getList(userId, PageRequests.of(page, size)).map(OrderSummaryInfo::from);
     }
 
@@ -156,15 +151,6 @@ public class OrderFacade {
                 .toList();
         if (!shortNames.isEmpty()) {
             throw withNames(ErrorType.OUT_OF_STOCK, shortNames);
-        }
-    }
-
-    private void requireRequester(Long requesterId) {
-        if (requesterId == null) {
-            throw new CoreException(
-                ErrorType.INTERNAL_ERROR,
-                "요청자 식별 정보가 없습니다. 식별이 필요한 경로로 등록됐는지 확인하세요."
-            );
         }
     }
 }

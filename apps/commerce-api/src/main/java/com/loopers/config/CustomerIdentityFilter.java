@@ -19,7 +19,7 @@ import java.io.IOException;
 /**
  * 고객 요청자 식별. 식별이 필요한 경로에서만 동작하며 {@code X-USER-ID} 헤더의 형식과 사용자 존재를 확인한다.
  *
- * <p>통과하면 사용자 id({@code Long})를 인증 주체로 두어 Controller 가 {@code @AuthenticationPrincipal} 로 받는다.
+ * <p>통과하면 사용자 id({@code Long})를 인증 주체로 두어 Controller 가 {@code @Requester} 로 받는다.
  * 거절은 지금까지의 오류 계약대로 헤더 누락·형식 오류는 400, 없는 사용자는 404 이며 다음으로 넘기지 않는다.
  * 그 밖의 경로(카탈로그 등)는 헤더를 읽지도, 사용자를 조회하지도 않는다.
  *

@@ -157,7 +157,7 @@ infrastructure.{feature}.{Feature}RepositoryImpl    ← 구현: JpaRepository에
 curl -H "X-USER-ID: 1" http://localhost:8080/api/v1/points
 ```
 
-- `config.CustomerIdentityFilter`가 식별이 필요한 경로(`SecurityConfig.IDENTIFIED_PATHS`)에서만 헤더 형식과 사용자 존재(DB)를 확인하고, 통과하면 `userId`를 인증 주체로 둔다. Controller는 `@AuthenticationPrincipal Long`으로 받아 Facade에 `userId`만 넘긴다. 그 밖의 경로(카탈로그)는 헤더를 읽지도 사용자를 조회하지도 않는다.
+- `config.CustomerIdentityFilter`가 식별이 필요한 경로(`SecurityConfig.IDENTIFIED_PATHS`)에서만 헤더 형식과 사용자 존재(DB)를 확인하고, 통과하면 `userId`를 인증 주체로 둔다. Controller는 `@Requester Long`으로 받아 Facade에 `userId`만 넘긴다. 그 밖의 경로(카탈로그)는 헤더를 읽지도 사용자를 조회하지도 않는다.
 - 소유권 확인(내 주문·내 좋아요)은 application에서 한다. 사용자 존재 확인은 필터가 맡으므로 Facade는 다시 조회하지 않는다(엔티티가 필요한 `PointFacade` 제외). 헤더·`HttpServletRequest`는 application 이하로 넘기지 않는다.
 - 헤더 값은 위조할 수 있으므로 **로컬 실습·테스트 전용**이다. 운영 인증 방식(JWT 등)은 정하지 않았고 이번 범위 밖이다.
 - 사용자 데이터는 fixture로 준비한다 (회원가입 API 없음).
@@ -456,7 +456,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 - **상황**: 과제는 로컬 실습용 식별만 요구하고, week2의 목표는 기본 API와 TDD다.
 - **결정**: 자신의 데이터를 다루는 고객 API(좋아요·포인트·주문)는 `X-USER-ID` 헤더로 요청자를 식별한다. 오류는 기존 `ErrorType`을 쓴다 (누락·형식 오류 `INVALID_INPUT`, 없는 사용자 `NOT_FOUND`). 처음에는 Controller가 헤더를 받고 별도 추상화는 두지 않기로 했으나, 헤더 읽기와 사용자 존재 확인이 Controller·Facade에 흩어져 반복돼 Security 필터 한 곳으로 옮겼다 (D-19).
 - **결정 (카탈로그 조회 예외)**: 요청자에 따라 결과가 달라지지 않는 브랜드 상세와 상품 목록·상세는 헤더를 요구하지 않고 사용자 존재도 확인하지 않는다. 처음에는 모든 고객 API에 헤더를 필수로 두었으나, 식별 정보가 쓰이지 않는 조회에 요청마다 사용자 조회만 늘어서 바꿨다. 과제의 "식별 누락·없는 사용자를 거절하고, 자신의 좋아요·포인트·주문만 다루도록 확인"은 자신의 데이터를 다루는 기능에 해당한다고 읽었다.
-- **비용**: 헤더는 위조할 수 있어 로컬 전용이다. 운영 인증을 도입하면 Controller 시그니처와 오류 계약을 바꿔야 한다. 카탈로그 조회에서 식별을 요구하지 않는 해석이 과제의 의도와 다르면 해당 경로를 `SecurityConfig.IDENTIFIED_PATHS`에 등록하고 Controller가 `@AuthenticationPrincipal`로 받게 하면 된다 (D-19).
+- **비용**: 헤더는 위조할 수 있어 로컬 전용이다. 운영 인증을 도입하면 Controller 시그니처와 오류 계약을 바꿔야 한다. 카탈로그 조회에서 식별을 요구하지 않는 해석이 과제의 의도와 다르면 해당 경로를 `SecurityConfig.IDENTIFIED_PATHS`에 등록하고 Controller가 `@Requester`로 받게 하면 된다 (D-19).
 - **재검토 조건**: 운영 인증 방식(JWT 등)을 정할 때.
 
 ### D-3. 오류는 의미 단위 errorCode와 행동 안내 메시지로 설계한다
@@ -643,15 +643,15 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 ### D-19. 고객 요청자 식별은 Security 필터 한 곳에서 하고, 식별이 필요한 경로를 목록으로 관리한다
 
 - **상황**: `@RequestHeader("X-USER-ID")`가 Controller 5곳에 반복되고 사용자 존재 확인(`userService.get`)이 Facade 여러 곳에 흩어져 있었다. 카탈로그 조회에서는 식별이 필요 없다(D-2).
-- **결정 (필터)**: `config.CustomerIdentityFilter`가 헤더 형식과 사용자 존재(DB)를 확인한다. 헤더 누락과 숫자가 아닌 값은 400 `INVALID_INPUT`, 없는 사용자는 404 `NOT_FOUND`로 직접 응답하고 다음으로 넘기지 않는다. 통과하면 `userId`(`Long`)를 인증 주체로 두고 Controller는 `@AuthenticationPrincipal Long`으로 받는다. 오류 계약은 기존 그대로 두고 401로 바꾸지 않는다. 필터 단계의 오류는 `ApiControllerAdvice`가 처리하지 못하므로 `SecurityErrorResponseWriter`가 같은 `ApiResponse` 형식으로 쓴다(관리자 403도 이 클래스를 함께 쓴다).
+- **결정 (필터)**: `config.CustomerIdentityFilter`가 헤더 형식과 사용자 존재(DB)를 확인한다. 헤더 누락과 숫자가 아닌 값은 400 `INVALID_INPUT`, 없는 사용자는 404 `NOT_FOUND`로 직접 응답하고 다음으로 넘기지 않는다. 통과하면 `userId`(`Long`)를 인증 주체로 두고 Controller는 `@Requester Long`으로 받는다. 오류 계약은 기존 그대로 두고 401로 바꾸지 않는다. 필터 단계의 오류는 `ApiControllerAdvice`가 처리하지 못하므로 `SecurityErrorResponseWriter`가 같은 `ApiResponse` 형식으로 쓴다(관리자 403도 이 클래스를 함께 쓴다).
 - **결정 (경로 목록)**: 식별이 필요한 경로를 `SecurityConfig.IDENTIFIED_PATHS` 하나로 관리하고 그 경로에서만 필터가 동작한다. 현재 `/api/v1/points/**`, `/api/v1/products/*/likes`, `/api/v1/users/*/likes`, `/api/v1/orders/**`이다(주문 경로는 확정·조회 API도 이 접두사로 이미 포함된다). 그 밖의 경로(카탈로그)는 헤더를 읽지도 사용자를 조회하지도 않는다. 권한 규칙도 같은 목록을 쓰며(`authenticated`, 나머지 `permitAll`) 필터가 이미 거절하므로 안전망이다.
 - **결정 (설정 위치)**: `AdminBoundaryConfig`를 `SecurityConfig`로 바꾸고 관리자 체인(`/api-admin/**`, `@Order(1)`)과 고객 체인(`/api/**`, `@Order(2)`)을 한 클래스에서 정의한다. 고객 체인은 CSRF를 끄고 세션을 만들지 않는다(STATELESS). 헤더로 식별해 쿠키 세션이 없고 기존 E2E도 CSRF 토큰 없이 호출하기 때문이다. 관리자 체인은 그대로다. 필터는 빈으로 등록하면 모든 요청의 서블릿 필터로도 등록되므로 `SecurityConfig`가 직접 만들어 고객 체인에만 넣는다. 과제 예시의 `config.AdminBoundaryConfig`와 클래스 이름이 달라진다.
-- **결정 (등록 누락 방지)**: 목록에 등록하지 않은 식별 API는 식별 없이 열리고 Controller에 `userId`가 `null`로 들어온다. 식별이 필요한 API마다 "헤더 누락 400" E2E 테스트를 쓰는 규칙으로 잡고 CLAUDE.md에 적었다. `LikeFacade`는 요청자 id가 `null`이면 `INTERNAL_ERROR`(500)로 거절해, 400·403이나 조용한 성공으로 보이지 않고 설정 실수로 드러낸다(`unlike`는 `null`이면 지울 행이 없어 성공했었다).
-- **결정 (신뢰 경계)**: 요청자 id를 믿는 경계는 이 필터 한 곳이다. Facade는 필터를 거친 존재하는 사용자의 id를 전제로 존재를 다시 조회하지 않는다(`LikeFacade`). 엔티티가 필요한 `PointFacade`는 조회를 유지한다.
+- **결정 (등록 누락 방지)**: 목록에 등록하지 않은 식별 API는 식별 없이 열리고 인증 주체가 익명이 된다. 이때 `@Requester` 파라미터를 만드는 `RequesterArgumentResolver`가 인증 정보가 없거나 주체가 `Long`이 아니면 `INTERNAL_ERROR`(500)와 "요청자 식별 정보가 없습니다. 식별이 필요한 경로로 등록됐는지 확인하세요."로 거절한다. 400·403이나 조용한 성공으로 보이지 않고 설정 실수로 드러나며(`unlike`는 `null`이면 지울 행이 없어 성공했었다), 요청자를 받는 모든 컨트롤러(좋아요·포인트·주문)가 같은 보장을 받는다. 식별이 필요한 API마다 "헤더 누락 400" E2E 테스트를 쓰는 규칙도 유지하고 CLAUDE.md에 적었다.
+- **결정 (신뢰 경계)**: 요청자 id를 믿는 경계는 이 필터와 `@Requester` 리졸버다. Facade는 필터를 거친 존재하는 사용자의 id가 `null`이 아니라는 전제로 존재를 다시 조회하지도 `null`을 방어하지도 않는다(`LikeFacade`·`OrderFacade`·`PointFacade`의 클래스 주석에 적는다). 엔티티가 필요한 `PointFacade`·`OrderFacade.confirm`은 조회를 유지한다.
 - **근거**: 헤더 읽기와 존재 확인을 한 곳에 두면 API마다 반복이 사라지고 오류 계약이 일관된다. 헤더가 오면 어디서든 검증하는 방식은 카탈로그에도 사용자 조회와 헤더 오류가 생기므로, 식별이 필요한 경로를 직접 관리하는 쪽을 택했다.
-- **비용**: 포인트(이후 주문) 요청은 필터와 Facade에서 사용자를 두 번 조회해 기본키 조회가 1회 늘어난다. `open-in-view: false`라 영속성 컨텍스트가 달라 1차 캐시로 줄지 않는다. 좋아요는 `LikeFacade`의 조회를 옮긴 것이라 쿼리 수가 같다. 캐시는 측정 근거 없는 최적화이고 삭제 반영이 늦어지므로 두지 않는다. 필터가 `config`에서 `domain.user.UserService`에 의존한다(ArchUnit은 `config`를 제한하지 않는다). 숫자가 아닌 헤더의 오류 메시지가 "요청 파라미터 'X-USER-ID' (타입: Long)…"에서 "요청 헤더 'X-USER-ID'의 값 'abc'이(가) 잘못되었습니다."로 바뀌었다(코드와 상태는 같다). 검사 순서가 바뀌어 요청자 존재 확인이 항상 맨 앞이며, 존재하지 않는 요청자가 남의 `userId` 목록을 요청하면 `FORBIDDEN`이 아니라 `NOT_FOUND`이고, 존재하지 않는 요청자의 잘못된 `page`·`size`도 400보다 404가 먼저다. 경로의 `*`가 형식을 가리지 않아 `/products/abc/likes`도 헤더 확인이 먼저다. 등록을 빠뜨린 경로는 식별 없이 열린다.
+- **비용**: 포인트(이후 주문) 요청은 필터와 Facade에서 사용자를 두 번 조회해 기본키 조회가 1회 늘어난다. `open-in-view: false`라 영속성 컨텍스트가 달라 1차 캐시로 줄지 않는다. 좋아요는 `LikeFacade`의 조회를 옮긴 것이라 쿼리 수가 같다. 캐시는 측정 근거 없는 최적화이고 삭제 반영이 늦어지므로 두지 않는다. 필터가 `config`에서 `domain.user.UserService`에 의존한다(ArchUnit은 `config`를 제한하지 않는다). 숫자가 아닌 헤더의 오류 메시지가 "요청 파라미터 'X-USER-ID' (타입: Long)…"에서 "요청 헤더 'X-USER-ID'의 값 'abc'이(가) 잘못되었습니다."로 바뀌었다(코드와 상태는 같다). 검사 순서가 바뀌어 요청자 존재 확인이 항상 맨 앞이며, 존재하지 않는 요청자가 남의 `userId` 목록을 요청하면 `FORBIDDEN`이 아니라 `NOT_FOUND`이고, 존재하지 않는 요청자의 잘못된 `page`·`size`도 400보다 404가 먼저다. 경로의 `*`가 형식을 가리지 않아 `/products/abc/likes`도 헤더 확인이 먼저다. 등록을 빠뜨린 경로는 식별 없이 열린다. 요청자 `null` 검증은 HTTP 경계(`RequesterArgumentResolver`)에서만 하므로 경계 밖에서 Facade를 직접 호출하면 보호되지 않는다. 그래서 Facade 단위의 `null` 테스트는 `RequesterArgumentResolverTest`로 옮겼다.
 - **재검토 조건**: 운영 인증(JWT 등)을 정할 때는 서명된 토큰을 DB 없이 검증하는 방식으로 이 필터를 대체한다. 식별 경로가 늘어 목록 관리가 번거로워지면 애노테이션 기반 등록을 검토한다.
-- **기각한 대안**: 헤더가 오면 어디서든 검증(카탈로그에도 사용자 조회와 헤더 오류가 생김), 공개 경로를 예외로 두기(사용자가 식별 필요 경로 목록을 직접 관리하는 쪽을 선택), Controller마다 `@RequestHeader`와 `ArgumentResolver`(반복과 존재 확인 분산이 남음), Facade에서 다시 조회(필터와 책임이 겹치고 요청마다 조회가 늘어남), 필터에서 사용자 캐시(측정 근거 없음, 삭제 반영 지연), 요청자를 별도 타입으로 도입(시그니처가 모두 바뀌고 application이 그 타입에 의존).
+- **기각한 대안**: 헤더가 오면 어디서든 검증(카탈로그에도 사용자 조회와 헤더 오류가 생김), 공개 경로를 예외로 두기(사용자가 식별 필요 경로 목록을 직접 관리하는 쪽을 선택), Controller마다 `@RequestHeader`와 `ArgumentResolver`(반복과 존재 확인 분산이 남음), Facade에서 다시 조회(필터와 책임이 겹치고 요청마다 조회가 늘어남), 필터에서 사용자 캐시(측정 근거 없음, 삭제 반영 지연), 요청자를 별도 타입으로 도입(시그니처가 모두 바뀌고 application이 그 타입에 의존), Facade마다 `null` 가드를 호출(한 번 만들었으나 Facade가 늘 때마다 호출을 잊을 수 있고 `PointFacade`처럼 빠진 곳이 이미 있어 경계 한 곳 검증으로 바꿈), 내장 `@AuthenticationPrincipal(errorOnInvalidType = true)`(타입이 맞지 않을 때 `ClassCastException`으로 일반 500이라 원인 메시지가 사라지고 인증 정보가 아예 없으면 `null`이 그대로 들어옴).
 
 ### D-20. 주문 품목은 주문 당시 상품명·단가를 복사해 저장하고, 값 규칙은 상품 조회 전에 도메인이 판단한다
 

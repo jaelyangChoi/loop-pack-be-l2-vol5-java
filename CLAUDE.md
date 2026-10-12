@@ -71,9 +71,9 @@ Loopers 에서 제공하는 Spring Boot(Java 21) 멀티 모듈 커머스 템플�
 
 `config.SecurityConfig`가 관리자 체인(`/api-admin/**`, 관리자 역할만 허용)과 고객 체인(`/api/**`, CSRF 끔, STATELESS)을 한곳에서 정의합니다. 직접 정의한 `SecurityFilterChain`이 있으면 Spring Boot의 기본 보안 체인은 만들어지지 않습니다. 필터 단계의 오류는 `ApiControllerAdvice`가 처리하지 못하므로 `SecurityErrorResponseWriter`가 같은 `ApiResponse` 형식으로 씁니다.
 
-- 자신의 데이터를 다루는 고객 API(좋아요·포인트·주문)는 `X-USER-ID` 헤더로 요청자를 식별합니다(로컬 실습·테스트용). `config.SecurityConfig.IDENTIFIED_PATHS`에 경로를 등록하면 `CustomerIdentityFilter`가 그 경로에서만 헤더 형식(400)과 사용자 존재(404)를 확인하고 `userId`를 인증 주체로 둡니다. Controller는 `@RequestHeader`가 아니라 `@AuthenticationPrincipal Long`으로 요청자를 받고, Facade는 존재를 다시 조회하지 않습니다.
+- 자신의 데이터를 다루는 고객 API(좋아요·포인트·주문)는 `X-USER-ID` 헤더로 요청자를 식별합니다(로컬 실습·테스트용). `config.SecurityConfig.IDENTIFIED_PATHS`에 경로를 등록하면 `CustomerIdentityFilter`가 그 경로에서만 헤더 형식(400)과 사용자 존재(404)를 확인하고 `userId`를 인증 주체로 둡니다. Controller는 `@RequestHeader`가 아니라 `@Requester Long`(`interfaces.api.Requester`)으로 요청자를 받고, Facade는 요청자가 검증된 값이라고 보고 존재를 다시 조회하지도 `null`을 방어하지도 않습니다.
 - 카탈로그 조회(브랜드 상세, 상품 목록·상세)는 식별하지 않으며 헤더를 읽지도 사용자를 조회하지도 않습니다. 이런 경로는 목록에 등록하지 않습니다.
-- 목록에 등록하지 않은 식별 API는 식별 없이 열리고 `userId`가 `null`로 들어옵니다. 식별이 필요한 API마다 "헤더 누락 400" E2E 테스트를 두어 등록 누락을 잡습니다.
+- 목록에 등록하지 않은 식별 API는 식별 없이 열립니다. 이때 `@Requester` 파라미터를 만드는 시점에 `RequesterArgumentResolver`가 서버 설정 실수로 보고 `INTERNAL_ERROR`(500)로 거절하므로 Facade에 `null`이 닿지 않습니다. 그래도 식별이 필요한 API마다 "헤더 누락 400" E2E 테스트를 두어 등록 누락을 잡습니다.
 
 ## 테스트 컨벤션
 

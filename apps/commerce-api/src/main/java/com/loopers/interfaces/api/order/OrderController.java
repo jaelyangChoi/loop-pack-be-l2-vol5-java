@@ -3,9 +3,9 @@ package com.loopers.interfaces.api.order;
 import com.loopers.application.order.OrderFacade;
 import com.loopers.interfaces.api.ApiResponse;
 import com.loopers.interfaces.api.PageResponse;
+import com.loopers.interfaces.api.Requester;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,7 +24,7 @@ public class OrderController implements OrderApiSpec {
     @PostMapping
     @Override
     public ApiResponse<OrderDto.OrderResponse> create(
-        @AuthenticationPrincipal Long userId,
+        @Requester Long userId,
         @Valid @RequestBody OrderDto.CreateRequest request
     ) {
         return ApiResponse.success(OrderDto.OrderResponse.from(orderFacade.create(userId, request.toCommands())));
@@ -33,7 +33,7 @@ public class OrderController implements OrderApiSpec {
     @GetMapping
     @Override
     public ApiResponse<PageResponse<OrderDto.OrderSummaryResponse>> getList(
-        @AuthenticationPrincipal Long userId,
+        @Requester Long userId,
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size
     ) {
@@ -45,7 +45,7 @@ public class OrderController implements OrderApiSpec {
     @GetMapping("/{orderId}")
     @Override
     public ApiResponse<OrderDto.OrderResponse> get(
-        @AuthenticationPrincipal Long userId,
+        @Requester Long userId,
         @PathVariable Long orderId
     ) {
         return ApiResponse.success(OrderDto.OrderResponse.from(orderFacade.getMine(userId, orderId)));
@@ -54,7 +54,7 @@ public class OrderController implements OrderApiSpec {
     @PostMapping("/{orderId}/confirm")
     @Override
     public ApiResponse<OrderDto.OrderResponse> confirm(
-        @AuthenticationPrincipal Long userId,
+        @Requester Long userId,
         @PathVariable Long orderId
     ) {
         return ApiResponse.success(OrderDto.OrderResponse.from(orderFacade.confirm(userId, orderId)));
