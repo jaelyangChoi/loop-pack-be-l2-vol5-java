@@ -1,7 +1,5 @@
 package com.loopers.interfaces.api;
 
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonStreamContext;
 import com.fasterxml.jackson.core.exc.InputCoercionException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
@@ -21,10 +19,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.server.ServerWebInputException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -76,7 +71,7 @@ public class ApiControllerAdvice {
         Throwable rootCause = e.getRootCause();
 
         if (rootCause instanceof InvalidFormatException invalidFormat) {
-            String fieldName = pathOf(invalidFormat.getPath());
+            String fieldName = RequestBodyErrorPaths.of(invalidFormat.getPath());
 
             String valueIndicationMessage = "";
             if (invalidFormat.getTargetType().isEnum()) {
@@ -94,82 +89,25 @@ public class ApiControllerAdvice {
                 fieldName, value, expectedType, valueIndicationMessage);
 
         } else if (rootCause instanceof MismatchedInputException mismatchedInput) {
-            String fieldPath = pathOf(mismatchedInput.getPath());
+            String fieldPath = RequestBodyErrorPaths.of(mismatchedInput.getPath());
             errorMessage = String.format("필수 필드 '%s'이(가) 누락되었습니다.", fieldPath);
 
         } else if (rootCause instanceof JsonMappingException jsonMapping) {
-            String fieldPath = pathOf(jsonMapping.getPath());
+            String fieldPath = RequestBodyErrorPaths.of(jsonMapping.getPath());
             errorMessage = String.format("필드 '%s'에서 JSON 매핑 오류가 발생했습니다: %s",
                 fieldPath, jsonMapping.getOriginalMessage());
 
-        } else if (rootCause instanceof InputCoercionException coercion && rangeMessageOf(coercion) != null) {
-            errorMessage = rangeMessageOf(coercion);
-
         } else {
-            errorMessage = "요청 본문을 처리하는 중 오류가 발생했습니다. JSON 메세지 규격을 확인해주세요.";
+            // 정수 범위 초과는 필드 경로를 얻을 수 있을 때만 위치를 안내하고, 그 밖에는 일반 메시지다.
+            String rangeMessage = rootCause instanceof InputCoercionException coercion
+                ? RequestBodyErrorPaths.rangeMessage(coercion)
+                : null;
+            errorMessage = rangeMessage != null
+                ? rangeMessage
+                : "요청 본문을 처리하는 중 오류가 발생했습니다. JSON 메세지 규격을 확인해주세요.";
         }
 
         return failureResponse(ErrorType.INVALID_INPUT, errorMessage);
-    }
-
-    // 정수 필드가 int·long 범위를 넘으면 Jackson 은 필드 경로 없는 파서 예외를 던진다. 파서의 현재 위치로 경로를 만든다.
-    private String rangeMessageOf(InputCoercionException e) {
-        if (!(e.getProcessor() instanceof JsonParser parser)) {
-            return null;
-        }
-        try {
-            String path = pathOf(parser.getParsingContext());
-            if (path.isEmpty()) {
-                return null;
-            }
-            String targetType = e.getTargetType() != null ? e.getTargetType().getSimpleName() : "정수";
-            return String.format("필드 '%s'의 값 '%s'이(가) 예상 타입(%s)의 범위를 넘었습니다.", path, parser.getText(), targetType);
-        } catch (java.io.IOException ignored) {
-            return null;
-        }
-    }
-
-    // 배열 원소는 필드 이름이 없으므로 순서(인덱스)로 표기한다. 예: items[1].quantity
-    private String pathOf(List<JsonMappingException.Reference> references) {
-        StringBuilder path = new StringBuilder();
-        for (JsonMappingException.Reference ref : references) {
-            if (ref.getFieldName() != null) {
-                appendField(path, ref.getFieldName());
-            } else if (ref.getIndex() >= 0) {
-                path.append('[').append(ref.getIndex()).append(']');
-            } else {
-                appendField(path, "?");
-            }
-        }
-        return path.toString();
-    }
-
-    private String pathOf(JsonStreamContext context) {
-        List<String> segments = new ArrayList<>();
-        for (JsonStreamContext current = context; current != null; current = current.getParent()) {
-            if (current.inObject() && current.getCurrentName() != null) {
-                segments.add(current.getCurrentName());
-            } else if (current.inArray()) {
-                segments.add("[" + current.getCurrentIndex() + "]");
-            }
-        }
-        Collections.reverse(segments);
-        StringBuilder path = new StringBuilder();
-        for (String segment : segments) {
-            if (segment.startsWith("[")) {
-                path.append(segment);
-            } else {
-                appendField(path, segment);
-            }
-        }
-        return path.toString();
-    }
-
-    private void appendField(StringBuilder path, String name) {
-        if (!path.isEmpty()) {
-            path.append('.');
-        }
-        path.append(name);
     }
 
     @ExceptionHandler
