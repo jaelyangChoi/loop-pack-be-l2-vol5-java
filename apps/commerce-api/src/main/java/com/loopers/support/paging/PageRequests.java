@@ -11,7 +11,13 @@ import org.springframework.data.domain.PageRequest;
  */
 public final class PageRequests {
 
-    private static final int MAX_PAGE_SIZE = 100;
+    public static final int MAX_PAGE_SIZE = 100;
+
+    // 요청 파라미터의 기본값과 문서 설명. 어노테이션 값으로 쓰려고 컴파일 타임 상수(문자열)로 둔다.
+    public static final String DEFAULT_PAGE = "0";
+    public static final String DEFAULT_SIZE = "20";
+    public static final String PAGE_PARAM_DESCRIPTION = "0부터 시작하는 페이지 번호 (기본 " + DEFAULT_PAGE + ")";
+    public static final String SIZE_PARAM_DESCRIPTION = "페이지 크기 1~" + MAX_PAGE_SIZE + " (기본 " + DEFAULT_SIZE + ")";
 
     private PageRequests() {
     }

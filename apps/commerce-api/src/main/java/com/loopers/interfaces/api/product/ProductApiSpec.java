@@ -2,6 +2,7 @@ package com.loopers.interfaces.api.product;
 
 import com.loopers.interfaces.api.ApiResponse;
 import com.loopers.interfaces.api.PageResponse;
+import com.loopers.support.paging.PageRequests;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -19,9 +20,9 @@ public interface ProductApiSpec {
         Long brandId,
         @Parameter(name = "sort", description = "latest | price_asc | likes_desc (기본 latest)")
         String sort,
-        @Parameter(name = "page", description = "0부터 시작하는 페이지 번호 (기본 0)")
+        @Parameter(name = "page", description = PageRequests.PAGE_PARAM_DESCRIPTION)
         int page,
-        @Parameter(name = "size", description = "페이지 크기 1~100 (기본 20)")
+        @Parameter(name = "size", description = PageRequests.SIZE_PARAM_DESCRIPTION)
         int size
     );
 

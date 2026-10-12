@@ -146,7 +146,7 @@ infrastructure.{feature}.{Feature}RepositoryImpl    ← 구현: JpaRepository에
 - Controller는 Facade만 호출하고 응답은 `ApiResponse<T>`로 감싼다.
 - soft delete 대상 Entity의 조회 쿼리는 `deletedAt IS NULL` 조건을 빠뜨리지 않는다 (D-5).
 - 요청 본문의 필수 누락은 Dto의 `@NotNull`과 Controller의 `@Valid`로 조회 전에 `INVALID_INPUT`(400)으로 거절하고, 공백·길이·범위 같은 값 규칙은 도메인에서만 검증한다 (D-15). `@Valid`를 빠뜨리면 NPE(500)가 나므로 필수 누락 테스트를 함께 쓴다.
-- 목록 API의 `page`·`size` 규칙은 `support.paging.PageRequests`를, 응답 형식은 `interfaces.api.PageResponse<T>`를 쓴다 (D-16, D-17).
+- 목록 API의 `page`·`size` 규칙은 `support.paging.PageRequests`를, 응답 형식은 `interfaces.api.PageResponse<T>`를 쓴다 (D-16, D-17). 요청 파라미터의 기본값(`DEFAULT_PAGE`·`DEFAULT_SIZE`)과 Swagger 설명 문구(`PAGE_PARAM_DESCRIPTION`·`SIZE_PARAM_DESCRIPTION`)도 `PageRequests`의 상수라, 컨트롤러와 ApiSpec은 값을 직접 쓰지 않고 이 상수를 참조한다.
 - 요청자 식별이 필요한 고객 API는 `SecurityConfig.IDENTIFIED_PATHS`에 경로를 등록한다. 등록하지 않으면 식별 없이 열리므로 그런 API마다 "헤더 누락 400" E2E 테스트를 함께 쓴다 (D-19).
 
 ### 2-7. 요청자 식별 (로컬 실습용)

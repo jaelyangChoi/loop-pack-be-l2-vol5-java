@@ -4,6 +4,7 @@ import com.loopers.application.order.OrderFacade;
 import com.loopers.interfaces.api.ApiResponse;
 import com.loopers.interfaces.api.PageResponse;
 import com.loopers.interfaces.api.Requester;
+import com.loopers.support.paging.PageRequests;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,8 +35,8 @@ public class OrderController implements OrderApiSpec {
     @Override
     public ApiResponse<PageResponse<OrderDto.OrderSummaryResponse>> getList(
         @Requester Long userId,
-        @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "20") int size
+        @RequestParam(defaultValue = PageRequests.DEFAULT_PAGE) int page,
+        @RequestParam(defaultValue = PageRequests.DEFAULT_SIZE) int size
     ) {
         return ApiResponse.success(
             PageResponse.from(orderFacade.getMyList(userId, page, size), OrderDto.OrderSummaryResponse::from)

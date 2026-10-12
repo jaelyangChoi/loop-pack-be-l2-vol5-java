@@ -3,6 +3,7 @@ package com.loopers.interfaces.api.product;
 import com.loopers.application.product.ProductFacade;
 import com.loopers.interfaces.api.ApiResponse;
 import com.loopers.interfaces.api.PageResponse;
+import com.loopers.support.paging.PageRequests;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,8 +23,8 @@ public class ProductController implements ProductApiSpec {
     public ApiResponse<PageResponse<ProductDto.ProductResponse>> getList(
         @RequestParam(required = false) Long brandId,
         @RequestParam(defaultValue = "latest") String sort,
-        @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "20") int size
+        @RequestParam(defaultValue = PageRequests.DEFAULT_PAGE) int page,
+        @RequestParam(defaultValue = PageRequests.DEFAULT_SIZE) int size
     ) {
         return ApiResponse.success(
             PageResponse.from(productFacade.getList(brandId, sort, page, size), ProductDto.ProductResponse::from)

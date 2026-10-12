@@ -63,4 +63,30 @@ class PageRequestsTest {
             assertThat(sizeError.getCustomMessage()).isEqualTo("size 는 1 이상 100 이하여야 합니다.");
         }
     }
+
+    @DisplayName("요청 파라미터에 쓰는 기본값과 설명은,")
+    @Nested
+    class ParamDefaults {
+        @DisplayName("기본값이 허용 범위 안이라 파라미터를 생략해도 유효한 페이지 요청이 된다.")
+        @Test
+        void defaultsAreWithinAllowedRange() {
+            // act
+            PageRequest request = PageRequests.of(
+                Integer.parseInt(PageRequests.DEFAULT_PAGE), Integer.parseInt(PageRequests.DEFAULT_SIZE)
+            );
+
+            // assert
+            assertThat(request.getPageNumber()).isZero();
+            assertThat(request.getPageSize()).isBetween(1, PageRequests.MAX_PAGE_SIZE);
+        }
+
+        @DisplayName("설명 문구가 기본값과 최대 크기를 그대로 담아, 정책이 바뀌어도 문서와 어긋나지 않는다.")
+        @Test
+        void descriptionsContainDefaultsAndMaximum() {
+            assertThat(PageRequests.PAGE_PARAM_DESCRIPTION).contains("기본 " + PageRequests.DEFAULT_PAGE);
+            assertThat(PageRequests.SIZE_PARAM_DESCRIPTION)
+                .contains("1~" + PageRequests.MAX_PAGE_SIZE)
+                .contains("기본 " + PageRequests.DEFAULT_SIZE);
+        }
+    }
 }

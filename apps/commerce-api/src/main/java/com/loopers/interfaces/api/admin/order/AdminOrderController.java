@@ -3,6 +3,7 @@ package com.loopers.interfaces.api.admin.order;
 import com.loopers.application.order.AdminOrderFacade;
 import com.loopers.interfaces.api.ApiResponse;
 import com.loopers.interfaces.api.PageResponse;
+import com.loopers.support.paging.PageRequests;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,8 +22,8 @@ public class AdminOrderController implements AdminOrderApiSpec {
     @Override
     public ApiResponse<PageResponse<AdminOrderDto.OrderSummaryResponse>> getList(
         @RequestParam(required = false) Long userId,
-        @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "20") int size
+        @RequestParam(defaultValue = PageRequests.DEFAULT_PAGE) int page,
+        @RequestParam(defaultValue = PageRequests.DEFAULT_SIZE) int size
     ) {
         return ApiResponse.success(
             PageResponse.from(adminOrderFacade.getList(userId, page, size), AdminOrderDto.OrderSummaryResponse::from)

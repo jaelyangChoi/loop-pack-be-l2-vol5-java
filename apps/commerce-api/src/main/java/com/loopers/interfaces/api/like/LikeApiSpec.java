@@ -2,6 +2,7 @@ package com.loopers.interfaces.api.like;
 
 import com.loopers.interfaces.api.ApiResponse;
 import com.loopers.interfaces.api.PageResponse;
+import com.loopers.support.paging.PageRequests;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;
@@ -44,9 +45,9 @@ public interface LikeApiSpec {
         Long requesterId,
         @Parameter(name = "userId", description = "목록을 조회할 사용자의 ID (요청자와 같아야 함)")
         Long userId,
-        @Parameter(name = "page", description = "0부터 시작하는 페이지 번호 (기본 0)")
+        @Parameter(name = "page", description = PageRequests.PAGE_PARAM_DESCRIPTION)
         int page,
-        @Parameter(name = "size", description = "페이지 크기 1~100 (기본 20)")
+        @Parameter(name = "size", description = PageRequests.SIZE_PARAM_DESCRIPTION)
         int size
     );
 }

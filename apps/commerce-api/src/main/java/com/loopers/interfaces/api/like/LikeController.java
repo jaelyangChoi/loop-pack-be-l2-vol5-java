@@ -4,6 +4,7 @@ import com.loopers.application.like.LikeFacade;
 import com.loopers.interfaces.api.ApiResponse;
 import com.loopers.interfaces.api.PageResponse;
 import com.loopers.interfaces.api.Requester;
+import com.loopers.support.paging.PageRequests;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -44,8 +45,8 @@ public class LikeController implements LikeApiSpec {
     public ApiResponse<PageResponse<LikeDto.LikedProductResponse>> getMyLikes(
         @Requester Long requesterId,
         @PathVariable Long userId,
-        @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "20") int size
+        @RequestParam(defaultValue = PageRequests.DEFAULT_PAGE) int page,
+        @RequestParam(defaultValue = PageRequests.DEFAULT_SIZE) int size
     ) {
         return ApiResponse.success(
             PageResponse.from(likeFacade.getMyLikes(requesterId, userId, page, size), LikeDto.LikedProductResponse::from)
