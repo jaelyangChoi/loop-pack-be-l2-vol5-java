@@ -5,6 +5,7 @@ import com.loopers.interfaces.api.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -24,5 +25,14 @@ public class OrderController implements OrderApiSpec {
         @Valid @RequestBody OrderDto.CreateRequest request
     ) {
         return ApiResponse.success(OrderDto.OrderResponse.from(orderFacade.create(userId, request.toCommands())));
+    }
+
+    @PostMapping("/{orderId}/confirm")
+    @Override
+    public ApiResponse<OrderDto.OrderResponse> confirm(
+        @AuthenticationPrincipal Long userId,
+        @PathVariable Long orderId
+    ) {
+        return ApiResponse.success(OrderDto.OrderResponse.from(orderFacade.confirm(userId, orderId)));
     }
 }

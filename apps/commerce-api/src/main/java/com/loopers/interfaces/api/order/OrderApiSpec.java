@@ -21,4 +21,20 @@ public interface OrderApiSpec {
         Long userId,
         OrderDto.CreateRequest request
     );
+
+    @Operation(
+        summary = "주문 확정",
+        description = "본인의 확정 전(DRAFT) 주문을 확정합니다. 품목마다 재고를 차감하고 주문 합계를 포인트로 결제하며, 결제액과 결제 후 잔액을 "
+            + "응답의 payment 에 담습니다. 결제액은 확정 시점의 현재 가격이 아니라 주문 당시 합계입니다. "
+            + "하나의 트랜잭션이라 실패하면 재고와 포인트는 그대로입니다. 없는 주문과 다른 사용자의 주문은 404, "
+            + "이미 확정된 주문·삭제된 상품·재고 부족·포인트 부족은 409(각각 ORDER_ALREADY_CONFIRMED, PRODUCT_UNAVAILABLE, "
+            + "OUT_OF_STOCK, INSUFFICIENT_POINT)입니다."
+    )
+    @Parameter(name = "X-USER-ID", in = ParameterIn.HEADER, required = true, description = "요청자(사용자) ID")
+    ApiResponse<OrderDto.OrderResponse> confirm(
+        @Parameter(hidden = true)
+        Long userId,
+        @Parameter(name = "orderId", description = "확정할 주문의 ID")
+        Long orderId
+    );
 }

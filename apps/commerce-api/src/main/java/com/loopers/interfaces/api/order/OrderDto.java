@@ -3,6 +3,7 @@ package com.loopers.interfaces.api.order;
 import com.loopers.application.order.OrderInfo;
 import com.loopers.application.order.OrderItemCommand;
 import com.loopers.application.order.OrderItemInfo;
+import com.loopers.application.order.PaymentInfo;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 
@@ -23,14 +24,25 @@ public class OrderDto {
         }
     }
 
-    public record OrderResponse(Long id, String status, List<ItemResponse> items, long totalAmount) {
+    // payment 는 확정된 주문에만 있고, 확정 전(DRAFT)에는 null 이다.
+    public record OrderResponse(
+        Long id, String status, List<ItemResponse> items, long totalAmount, PaymentResponse payment
+    ) {
         public static OrderResponse from(OrderInfo info) {
             return new OrderResponse(
                 info.id(),
                 info.status().name(),
                 info.items().stream().map(ItemResponse::from).toList(),
-                info.totalAmount()
+                info.totalAmount(),
+                info.payment() == null ? null : PaymentResponse.from(info.payment())
             );
+        }
+    }
+
+    // 결제한 금액과 결제 뒤 남은 포인트 잔액.
+    public record PaymentResponse(long paidAmount, long balanceAfter) {
+        public static PaymentResponse from(PaymentInfo info) {
+            return new PaymentResponse(info.paidAmount(), info.balanceAfter());
         }
     }
 

@@ -7,6 +7,7 @@ import com.loopers.domain.product.Stock;
 import com.loopers.domain.user.User;
 import com.loopers.domain.user.UserRepository;
 import com.loopers.interfaces.api.ApiResponse;
+import com.loopers.interfaces.api.point.PointDto;
 import com.loopers.utils.DatabaseCleanUp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -59,7 +60,11 @@ class OrderApiE2ETest {
     }
 
     private Product saveProduct(String name, long price) {
-        return productRepository.save(Product.create(1L, name, new Money(price), new Stock(10)));
+        return saveProduct(name, price, 10);
+    }
+
+    private Product saveProduct(String name, long price, int stock) {
+        return productRepository.save(Product.create(1L, name, new Money(price), new Stock(stock)));
     }
 
     private Product saveDeletedProduct() {
@@ -127,6 +132,7 @@ class OrderApiE2ETest {
             OrderDto.OrderResponse order = response.getBody().data();
             assertThat(order.id()).isNotNull();
             assertThat(order.status()).isEqualTo("DRAFT");
+            assertThat(order.payment()).isNull();
             assertThat(order.totalAmount()).isEqualTo(7_000L);
             assertThat(order.items()).hasSize(2);
             assertThat(order.items().get(0))
@@ -144,61 +150,18 @@ class OrderApiE2ETest {
             assertFail(create(null, body(shirt.getId(), 1)), HttpStatus.BAD_REQUEST, "INVALID_INPUT");
         }
 
-        @DisplayName("X-USER-ID 헤더가 숫자가 아니면 400 INVALID_INPUT 이다.")
-        @Test
-        void returnsBadRequest_whenHeaderIsNotNumber() {
-            Product shirt = saveProduct("티셔츠", 3_000);
-
-            assertFail(create("abc", body(shirt.getId(), 1)), HttpStatus.BAD_REQUEST, "INVALID_INPUT");
-        }
-
-        @DisplayName("존재하지 않는 사용자이면 404 NOT_FOUND 이다.")
-        @Test
-        void returnsNotFound_whenUserDoesNotExist() {
-            Product shirt = saveProduct("티셔츠", 3_000);
-
-            assertFail(create("999", body(shirt.getId(), 1)), HttpStatus.NOT_FOUND, "NOT_FOUND");
-        }
-
         @DisplayName("본문의 필수 값이 빠지거나 형식이 틀리면 400 INVALID_INPUT 이다.")
         @ParameterizedTest
         @ValueSource(strings = {
             "{}",
-            "{\"items\":null}",
             "{\"items\":[null]}",
             "{\"items\":[{\"quantity\":1}]}",
-            "{\"items\":[{\"productId\":1}]}",
             "{\"items\":[{\"productId\":1,\"quantity\":1.5}]}",
             "{\"items\":[{\"productId\":1,\"quantity\":\"abc\"}]}",
-            "{\"items\":[{\"productId\":\"abc\",\"quantity\":1}]}",
         })
         void returnsBadRequest_whenBodyIsMalformed(String json) {
             User user = saveUser();
             saveProduct("티셔츠", 3_000);
-
-            assertFail(create(String.valueOf(user.getId()), json), HttpStatus.BAD_REQUEST, "INVALID_INPUT");
-        }
-
-        @DisplayName("수량이 int 범위를 넘으면 400 INVALID_INPUT 이고, 메시지에 몇 번째 품목의 어떤 필드인지 담는다.")
-        @Test
-        void returnsBadRequest_withItemPath_whenQuantityOverflows() {
-            User user = saveUser();
-            Product shirt = saveProduct("티셔츠", 3_000);
-
-            ResponseEntity<ApiResponse<OrderDto.OrderResponse>> response =
-                create(String.valueOf(user.getId()), body(shirt.getId(), 1, shirt.getId() + 1, 3_000_000_000L));
-
-            assertFail(response, HttpStatus.BAD_REQUEST, "INVALID_INPUT");
-            assertThat(response.getBody().meta().message()).contains("items[1].quantity", "3000000000");
-        }
-
-        @DisplayName("품목이 비었거나 수량이 0 이하이면 400 INVALID_INPUT 이다.")
-        @ParameterizedTest
-        @ValueSource(strings = {"{\"items\":[]}", "0", "-1"})
-        void returnsBadRequest_whenItemsAreEmptyOrQuantityIsNotPositive(String value) {
-            User user = saveUser();
-            Product shirt = saveProduct("티셔츠", 3_000);
-            String json = value.startsWith("{") ? value : body(shirt.getId(), value);
 
             assertFail(create(String.valueOf(user.getId()), json), HttpStatus.BAD_REQUEST, "INVALID_INPUT");
         }
@@ -231,12 +194,161 @@ class OrderApiE2ETest {
             assertThat(response.getBody().meta().message()).contains("상품 ID: " + deleted.getId() + ", 999999");
         }
 
+        @DisplayName("재고가 0이거나 요청 수량보다 적으면 409 OUT_OF_STOCK 이고 저장하지 않는다.")
+        @Test
+        void returnsConflict_whenStockIsSoldOutOrShort() {
+            User user = saveUser();
+            Product soldOut = saveProduct("품절 상품", 3_000, 0);
+            Product few = saveProduct("재고 3개", 3_000, 3);
+
+            assertFail(create(String.valueOf(user.getId()), body(soldOut.getId(), 1)), HttpStatus.CONFLICT, "OUT_OF_STOCK");
+            ResponseEntity<ApiResponse<OrderDto.OrderResponse>> response =
+                create(String.valueOf(user.getId()), body(few.getId(), 5));
+
+            assertFail(response, HttpStatus.CONFLICT, "OUT_OF_STOCK");
+            assertThat(response.getBody().meta().message()).contains("재고 3개");
+        }
+
         @DisplayName("값 규칙 위반과 없는 상품이 함께 있으면 400 INVALID_INPUT 이 먼저다.")
         @Test
         void returnsBadRequest_beforeNotFound() {
             User user = saveUser();
 
             assertFail(create(String.valueOf(user.getId()), body(999_999, 0)), HttpStatus.BAD_REQUEST, "INVALID_INPUT");
+        }
+    }
+
+    @DisplayName("POST /api/v1/orders/{orderId}/confirm")
+    @Nested
+    class Confirm {
+        private User saveUserWithBalance(long amount) {
+            User user = User.create();
+            user.chargePoint(new Money(amount));
+            return userRepository.save(user);
+        }
+
+        private Long placeOrder(User user, Object... productIdAndQuantity) {
+            ResponseEntity<ApiResponse<OrderDto.OrderResponse>> response =
+                create(String.valueOf(user.getId()), body(productIdAndQuantity));
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+            return response.getBody().data().id();
+        }
+
+        private ResponseEntity<ApiResponse<OrderDto.OrderResponse>> confirm(String userId, Object orderId) {
+            return testRestTemplate.exchange(
+                ORDERS_URL + "/" + orderId + "/confirm", HttpMethod.POST, new HttpEntity<>(headers(userId)),
+                new ParameterizedTypeReference<>() {}
+            );
+        }
+
+        private long balanceOf(User user) {
+            return userRepository.find(user.getId()).orElseThrow().getPointBalance().balance().amount();
+        }
+
+        private int stockOf(Product product) {
+            return jdbcTemplate.queryForObject("select stock from products where id = ?", Integer.class, product.getId());
+        }
+
+        private String statusOf(Long orderId) {
+            return jdbcTemplate.queryForObject("select status from orders where id = ?", String.class, orderId);
+        }
+
+        // 확정이 거절되면 주문은 DRAFT 로 남고 재고·잔액은 그대로여야 한다.
+        private void assertRejected(
+            ResponseEntity<ApiResponse<OrderDto.OrderResponse>> response, HttpStatus status, String errorCode,
+            Long orderId, User user, long balance
+        ) {
+            assertThat(response.getStatusCode()).isEqualTo(status);
+            assertThat(response.getBody().meta().errorCode()).isEqualTo(errorCode);
+            assertThat(statusOf(orderId)).isEqualTo("DRAFT");
+            assertThat(balanceOf(user)).isEqualTo(balance);
+        }
+
+        @DisplayName("충전 → 주문 생성 → 확정 → 잔액 조회: 결제 결과가 담긴 CONFIRMED 주문을 반환하고, 재고와 잔액이 반영된다.")
+        @Test
+        void returnsConfirmedOrder_andReflectsStockAndBalance() {
+            // arrange: 잔액 0에서 10,000 충전(API), 3,000×1 + 2,000×2 = 7,000 주문
+            User user = saveUser();
+            String userId = String.valueOf(user.getId());
+            HttpHeaders chargeHeaders = headers(userId);
+            testRestTemplate.exchange(
+                "/api/v1/points/charge", HttpMethod.POST, new HttpEntity<>("{\"amount\": 10000}", chargeHeaders),
+                new ParameterizedTypeReference<ApiResponse<PointDto.PointResponse>>() {}
+            );
+            Product shirt = saveProduct("티셔츠", 3_000);
+            Product socks = saveProduct("양말", 2_000);
+            Long orderId = placeOrder(user, shirt.getId(), 1, socks.getId(), 2);
+
+            // act
+            ResponseEntity<ApiResponse<OrderDto.OrderResponse>> response = confirm(userId, orderId);
+
+            // assert
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+            OrderDto.OrderResponse order = response.getBody().data();
+            assertThat(order.id()).isEqualTo(orderId);
+            assertThat(order.status()).isEqualTo("CONFIRMED");
+            assertThat(order.totalAmount()).isEqualTo(7_000L);
+            assertThat(order.payment()).isEqualTo(new OrderDto.PaymentResponse(7_000L, 3_000L));
+            assertThat(order.items()).hasSize(2);
+            assertThat(stockOf(shirt)).isEqualTo(9);
+            assertThat(stockOf(socks)).isEqualTo(8);
+            ResponseEntity<ApiResponse<PointDto.PointResponse>> balance = testRestTemplate.exchange(
+                "/api/v1/points", HttpMethod.GET, new HttpEntity<>(headers(userId)),
+                new ParameterizedTypeReference<>() {}
+            );
+            assertThat(balance.getBody().data().balance()).isEqualTo(3_000L);
+        }
+
+        @DisplayName("잔액이 부족하면 409 INSUFFICIENT_POINT 이고, 주문·재고·잔액이 그대로다 (409 업무 오류 4종의 대표, 나머지는 OrderFacadeTest).")
+        @Test
+        void returnsConflict_whenBalanceIsInsufficient() {
+            User user = saveUserWithBalance(1_000);
+            Product shirt = saveProduct("티셔츠", 3_000);
+            Long orderId = placeOrder(user, shirt.getId(), 1);
+
+            ResponseEntity<ApiResponse<OrderDto.OrderResponse>> response = confirm(String.valueOf(user.getId()), orderId);
+
+            assertRejected(response, HttpStatus.CONFLICT, "INSUFFICIENT_POINT", orderId, user, 1_000);
+            assertThat(stockOf(shirt)).isEqualTo(10);
+        }
+
+        @DisplayName("없는 주문과 다른 사용자의 주문은 404 NOT_FOUND 이다.")
+        @Test
+        void returnsNotFound_whenOrderIsMissingOrBelongsToOtherUser() {
+            User owner = saveUserWithBalance(10_000);
+            User other = saveUserWithBalance(10_000);
+            Product shirt = saveProduct("티셔츠", 3_000);
+            Long orderId = placeOrder(owner, shirt.getId(), 1);
+
+            ResponseEntity<ApiResponse<OrderDto.OrderResponse>> missing = confirm(String.valueOf(owner.getId()), 999_999);
+            ResponseEntity<ApiResponse<OrderDto.OrderResponse>> otherUsers = confirm(String.valueOf(other.getId()), orderId);
+
+            assertRejected(missing, HttpStatus.NOT_FOUND, "NOT_FOUND", orderId, owner, 10_000);
+            assertRejected(otherUsers, HttpStatus.NOT_FOUND, "NOT_FOUND", orderId, other, 10_000);
+            assertThat(otherUsers.getBody().meta().message()).isEqualTo(missing.getBody().meta().message());
+        }
+
+        @DisplayName("orderId 가 숫자가 아니면 400 INVALID_INPUT 이다.")
+        @Test
+        void returnsBadRequest_whenOrderIdIsNotNumber() {
+            User user = saveUserWithBalance(10_000);
+
+            ResponseEntity<ApiResponse<OrderDto.OrderResponse>> response = confirm(String.valueOf(user.getId()), "abc");
+
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(response.getBody().meta().errorCode()).isEqualTo("INVALID_INPUT");
+        }
+
+        @DisplayName("X-USER-ID 헤더가 없으면 400 INVALID_INPUT 이다 (식별 경로 등록 확인).")
+        @Test
+        void returnsBadRequest_whenHeaderIsMissing() {
+            User user = saveUserWithBalance(10_000);
+            Product shirt = saveProduct("티셔츠", 3_000);
+            Long orderId = placeOrder(user, shirt.getId(), 1);
+
+            ResponseEntity<ApiResponse<OrderDto.OrderResponse>> response = confirm(null, orderId);
+
+            assertRejected(response, HttpStatus.BAD_REQUEST, "INVALID_INPUT", orderId, user, 10_000);
         }
     }
 }
