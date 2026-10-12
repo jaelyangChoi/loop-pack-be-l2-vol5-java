@@ -25,7 +25,7 @@ public record OrderSummaryInfo(
             order.getStatus(),
             order.getTotalAmount().amount(),
             order.getItems().size(),
-            order.getPaymentResult() == null ? null : PaymentInfo.from(order.getPaymentResult()),
+            PaymentInfo.from(order.getPaymentResult()),
             order.getCreatedAt()
         );
     }

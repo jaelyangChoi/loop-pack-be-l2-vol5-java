@@ -23,6 +23,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -274,6 +275,9 @@ class OrderFacadeTest {
                 .as("빈 목록").isEqualTo(ErrorType.INVALID_INPUT);
             assertThat(rejected(() -> orderFacade.create(user.getId(), null)).getErrorType())
                 .as("목록 없음").isEqualTo(ErrorType.INVALID_INPUT);
+            assertThat(rejected(() -> orderFacade.create(
+                user.getId(), Arrays.asList(new OrderItemCommand(productId, 1), null)
+            )).getErrorType()).as("null 품목").isEqualTo(ErrorType.INVALID_INPUT);
             assertThat(rejected(() -> orderFacade.create(user.getId(), List.of(new OrderItemCommand(productId, 0))))
                 .getErrorType()).as("수량 0").isEqualTo(ErrorType.INVALID_INPUT);
             assertThat(rejected(() -> orderFacade.create(user.getId(), List.of(new OrderItemCommand(productId, -1))))

@@ -22,8 +22,7 @@ public class OrderService {
 
     /** 주문자와 무관하게 id 로 조회한다. 관리자 조회용이며 없으면 {@code NOT_FOUND} 다. */
     public Order get(Long orderId) {
-        return orderRepository.findById(orderId)
-            .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "주문을 찾을 수 없습니다."));
+        return orderRepository.findById(orderId).orElseThrow(OrderService::notFound);
     }
 
     /** 주문 목록을 최신순으로 조회한다. {@code userId} 가 {@code null} 이면 모든 주문이다. */
@@ -36,7 +35,10 @@ public class OrderService {
      * 순차 id 로 다른 사람의 주문이 존재하는지 알아내지 못하게 한다 (D-11).
      */
     public Order getMine(Long orderId, Long userId) {
-        return orderRepository.findByIdAndUserId(orderId, userId)
-            .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "주문을 찾을 수 없습니다."));
+        return orderRepository.findByIdAndUserId(orderId, userId).orElseThrow(OrderService::notFound);
+    }
+
+    private static CoreException notFound() {
+        return new CoreException(ErrorType.NOT_FOUND, "주문을 찾을 수 없습니다.");
     }
 }

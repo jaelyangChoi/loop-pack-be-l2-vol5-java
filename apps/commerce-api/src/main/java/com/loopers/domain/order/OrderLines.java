@@ -37,6 +37,6 @@ public record OrderLines(List<OrderLine> values) {
 
     /** 요청 순서대로의 상품 id. */
     public List<Long> productIds() {
-    return values.stream().map(OrderLine::productId).toList();
+        return values.stream().map(OrderLine::productId).toList();
     }
 }

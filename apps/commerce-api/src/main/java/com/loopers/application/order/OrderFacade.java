@@ -1,8 +1,8 @@
 package com.loopers.application.order;
 
 import com.loopers.domain.order.Order;
-import com.loopers.domain.order.OrderLine;
 import com.loopers.domain.order.OrderItem;
+import com.loopers.domain.order.OrderLine;
 import com.loopers.domain.order.OrderLines;
 import com.loopers.domain.order.OrderProduct;
 import com.loopers.domain.order.OrderService;
@@ -55,9 +55,7 @@ public class OrderFacade {
         requireAllFound(lines, found);
         requireEnoughStock(lines, found);
 
-        Map<Long, OrderProduct> products = found.values().stream()
-            .collect(Collectors.toMap(Product::getId, product -> new OrderProduct(product.getName(), product.getPrice())));
-        Order order = orderService.create(userId, lines, products);
+        Order order = orderService.create(userId, lines, toOrderProducts(found));
         return OrderInfo.from(order);
     }
 
@@ -82,6 +80,24 @@ public class OrderFacade {
         return OrderInfo.from(order);
     }
 
+    /**
+     * 본인의 주문 하나를 조회한다. 없는 주문과 다른 사용자의 주문은 구분하지 않고 NOT_FOUND 다.
+     */
+    @Transactional(readOnly = true)
+    public OrderInfo getMine(Long userId, Long orderId) {
+        requireRequester(userId);
+        return OrderInfo.from(orderService.getMine(orderId, userId));
+    }
+
+    /**
+     * 내 주문 목록을 최신순으로 요약해서 조회한다. 품목은 상세에서 본다.
+     */
+    @Transactional(readOnly = true)
+    public Page<OrderSummaryInfo> getMyList(Long userId, int page, int size) {
+        requireRequester(userId);
+        return orderService.getList(userId, PageRequests.of(page, size)).map(OrderSummaryInfo::from);
+    }
+
     // 주문한 상품이 모두 살아 있는지 확인한 뒤 품목마다 재고를 차감한다.
     private void deductStock(Order order) {
         Map<Long, Product> products = productService.getAllActiveByIds(order.productIds());
@@ -92,39 +108,33 @@ public class OrderFacade {
     // 삭제됐거나 없는 상품을 품목 순서대로 모두 주문 당시 이름으로 알린다.
     private void requireAllAvailable(Order order, Map<Long, Product> products) {
         List<String> unavailableNames = order.getItems().stream()
-            .filter(item -> !products.containsKey(item.getProductId()))
-            .map(OrderItem::getProductName)
-            .toList();
+                .filter(item -> !products.containsKey(item.getProductId()))
+                .map(OrderItem::getProductName)
+                .toList();
         if (!unavailableNames.isEmpty()) {
-            throw new CoreException(
-                ErrorType.PRODUCT_UNAVAILABLE,
-                ErrorType.PRODUCT_UNAVAILABLE.getMessage() + " (" + String.join(", ", unavailableNames) + ")"
-            );
+            throw withNames(ErrorType.PRODUCT_UNAVAILABLE, unavailableNames);
         }
     }
 
-    /** 본인의 주문 하나를 조회한다. 없는 주문과 다른 사용자의 주문은 구분하지 않고 NOT_FOUND 다. */
-    @Transactional(readOnly = true)
-    public OrderInfo getMine(Long userId, Long orderId) {
-        requireRequester(userId);
-        return OrderInfo.from(orderService.getMine(orderId, userId));
-    }
-
-    /** 내 주문 목록을 최신순으로 요약해서 조회한다. 품목은 상세에서 본다. */
-    @Transactional(readOnly = true)
-    public Page<OrderSummaryInfo> getMyList(Long userId, int page, int size) {
-        requireRequester(userId);
-        return orderService.getList(userId, PageRequests.of(page, size)).map(OrderSummaryInfo::from);
-    }
-
+    // null 목록과 null 품목은 그대로 OrderLines 에 넘겨, 값 규칙을 한 곳에서 거절한다.
     private OrderLines toLines(List<OrderItemCommand> items) {
         if (items == null) {
             return new OrderLines(null);
         }
-        if (items.stream().anyMatch(item -> item == null)) {
-            throw new CoreException(ErrorType.INVALID_INPUT, "주문 품목은 비어 있을 수 없습니다.");
-        }
-        return new OrderLines(items.stream().map(item -> new OrderLine(item.productId(), item.quantity())).toList());
+        return new OrderLines(
+                items.stream().map(item -> item == null ? null : new OrderLine(item.productId(), item.quantity())).toList()
+        );
+    }
+
+    private Map<Long, OrderProduct> toOrderProducts(Map<Long, Product> products) {
+        return products.values().stream().collect(
+                Collectors.toMap(Product::getId, product -> new OrderProduct(product.getName(), product.getPrice()))
+        );
+    }
+
+    // 클라이언트가 어느 상품이 문제인지 알 수 있게 기본 문구 뒤에 상품명을 덧붙인다.
+    private CoreException withNames(ErrorType errorType, List<String> names) {
+        return new CoreException(errorType, errorType.getMessage() + " (" + String.join(", ", names) + ")");
     }
 
     // 없거나 삭제된 상품을 요청 순서대로 모두 알려, 클라이언트가 한 번에 빼고 다시 요청할 수 있게 한다.
@@ -133,7 +143,7 @@ public class OrderFacade {
         if (!missing.isEmpty()) {
             String ids = missing.stream().map(String::valueOf).collect(Collectors.joining(", "));
             throw new CoreException(
-                ErrorType.NOT_FOUND, "존재하지 않는 상품이 포함되어 있습니다. (상품 ID: " + ids + ")"
+                    ErrorType.NOT_FOUND, "존재하지 않는 상품이 포함되어 있습니다. (상품 ID: " + ids + ")"
             );
         }
     }
@@ -141,14 +151,11 @@ public class OrderFacade {
     // 재고가 부족한 상품을 요청 순서대로 모두 알려, 클라이언트가 한 번에 수량을 줄이거나 빼고 다시 요청할 수 있게 한다.
     private void requireEnoughStock(OrderLines lines, Map<Long, Product> found) {
         List<String> shortNames = lines.values().stream()
-            .filter(line -> !found.get(line.productId()).hasEnoughStock(line.quantity()))
-            .map(line -> found.get(line.productId()).getName())
-            .toList();
+                .filter(line -> !found.get(line.productId()).hasEnoughStock(line.quantity()))
+                .map(line -> found.get(line.productId()).getName())
+                .toList();
         if (!shortNames.isEmpty()) {
-            throw new CoreException(
-                ErrorType.OUT_OF_STOCK,
-                ErrorType.OUT_OF_STOCK.getMessage() + " (" + String.join(", ", shortNames) + ")"
-            );
+            throw withNames(ErrorType.OUT_OF_STOCK, shortNames);
         }
     }
 

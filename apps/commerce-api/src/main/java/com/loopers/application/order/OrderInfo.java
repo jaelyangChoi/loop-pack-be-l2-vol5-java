@@ -27,7 +27,7 @@ public record OrderInfo(
             order.getStatus(),
             order.getItems().stream().map(OrderItemInfo::from).toList(),
             order.getTotalAmount().amount(),
-            order.getPaymentResult() == null ? null : PaymentInfo.from(order.getPaymentResult()),
+            PaymentInfo.from(order.getPaymentResult()),
             order.getCreatedAt()
         );
     }

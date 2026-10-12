@@ -41,7 +41,7 @@ public class OrderDto {
                 info.status().name(),
                 info.items().stream().map(ItemResponse::from).toList(),
                 info.totalAmount(),
-                info.payment() == null ? null : PaymentResponse.from(info.payment()),
+                PaymentResponse.from(info.payment()),
                 info.orderedAt()
             );
         }
@@ -57,7 +57,7 @@ public class OrderDto {
                 info.status().name(),
                 info.totalAmount(),
                 info.itemCount(),
-                info.payment() == null ? null : PaymentResponse.from(info.payment()),
+                PaymentResponse.from(info.payment()),
                 info.orderedAt()
             );
         }
@@ -65,7 +65,11 @@ public class OrderDto {
 
     // 결제한 금액과 결제 뒤 남은 포인트 잔액.
     public record PaymentResponse(long paidAmount, long balanceAfter) {
+        // 확정 전(DRAFT)에는 결제 결과가 없으므로 null 을 받으면 null 을 돌려준다. null 필드는 응답에서 생략된다.
         public static PaymentResponse from(PaymentInfo info) {
+            if (info == null) {
+                return null;
+            }
             return new PaymentResponse(info.paidAmount(), info.balanceAfter());
         }
     }
