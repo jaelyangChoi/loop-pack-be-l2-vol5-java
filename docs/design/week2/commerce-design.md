@@ -26,8 +26,8 @@ week2의 목표는 **기본 API를 간단하게 구현하고 TDD를 적용**하�
 | 2 | 구조와 의존 (ArchUnit 일치) | 완료 |
 | 3 | 도메인 관계 | 완료 |
 | 4 | 대표 흐름 | 완료 |
-| 5 | 기본 기능 설계 (API 계약) | 골격 (P-1 결정, 나머지 TBD) |
-| 6 | 설계 결정 기록 | 진행 중 (D-1 ~ D-21) |
+| 5 | 기본 기능 설계 (API 계약) | 완료 (모든 기능의 계약 확정) |
+| 6 | 설계 결정 기록 | 진행 중 (D-1 ~ D-22) |
 
 **작업 순서**
 
@@ -333,6 +333,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 
 - 구현됨: 식별 헤더의 누락·형식 오류와 없는 사용자는 `CustomerIdentityFilter`가 같은 `ApiResponse` 형식으로 응답한다 (D-19). `ApiControllerAdvice`는 `MissingRequestHeaderException`을 `INVALID_INPUT`으로, `@Valid` 위반(`MethodArgumentNotValidException`)도 `INVALID_INPUT`으로 매핑한다 (D-15).
 - 표의 `TBD`는 5-5의 미정 정책에서 결정한다.
+- **null 필드는 응답에서 생략된다** (`supports:jackson`의 `NON_NULL` 설정). 예: 확정 전(DRAFT) 주문의 응답에는 `payment`가 `null`이 아니라 키 자체가 없다 (D-22).
 
 **성공 응답 원칙 (D-13)**: 돌려줄 데이터가 없는 성공도 HTTP 200과 `ApiResponse.success()`로 응답한다 (204 No Content를 쓰지 않는다). 아래 표의 "성공 (본문 없음)"은 이 응답을 뜻한다.
 
@@ -375,10 +376,10 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 |---|---|---|---|---|
 | 포인트 충전 | `POST /api/v1/points/charge` | body `amount` (양의 정수) | 충전 후 잔액 | 누락·잘못된 타입·소수(`1.5`, `1000.0`)·0 이하·표현 범위 초과 → `INVALID_INPUT` (기존 잔액 유지), 충전 후 잔액이 표현 범위 초과 → `INVALID_INPUT` (기존 잔액 유지) |
 | 잔액 조회 | `GET /api/v1/points` | 요청자 | 저장된 잔액 | 헤더 누락 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND` |
-| 주문 생성 | `POST /api/v1/orders` | body `items`: `[{productId, quantity}]` (요청자 식별 필요) | DRAFT 주문 `{id, status, items: [{productId, productName, quantity, unitPrice, amount}], totalAmount, payment: null}`, 상품명·단가는 주문 당시 값, 재고·포인트 차감 없음 (D-20) | `items`·`productId`·`quantity` 누락, 형식 오류(소수·문자열·범위 초과 포함) → `INVALID_INPUT`. 품목 없음·수량 0 이하·같은 상품 중복 → `INVALID_INPUT` (상품 조회 전에 판단, 없는 상품이 섞여 있어도 이 오류가 먼저). 없거나 삭제된 상품 → `NOT_FOUND` (메시지에 상품 id 목록). 재고가 0이거나 요청 수량보다 적은 상품 → `OUT_OF_STOCK` (상품이 모두 존재할 때, 메시지에 상품명 목록, 재고는 차감하지 않음). 합계가 표현 범위 초과 → `INVALID_INPUT`. 헤더 누락 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND` |
-| 주문 확정 | `POST /api/v1/orders/{orderId}/confirm` | path `orderId` (요청자 식별 필요) | CONFIRMED 주문 `{id, status, items, totalAmount, payment: {paidAmount, balanceAfter}}`, 재고·포인트 차감, 결제액은 주문 합계 (D-21) | 없는·타인 주문 → `NOT_FOUND`, 이미 확정 → `ORDER_ALREADY_CONFIRMED`, 상품 삭제됨 → `PRODUCT_UNAVAILABLE` (메시지에 주문 당시 상품명), 재고 부족 → `OUT_OF_STOCK`, 잔액 부족 → `INSUFFICIENT_POINT`, `orderId` 형식 오류 → `INVALID_INPUT`, 헤더 누락 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND`. 오류 우선순위는 4-1 표의 순서이고 실패하면 재고·잔액·주문 상태는 그대로 |
-| 내 주문 목록 | `GET /api/v1/orders` | 요청자 | 내 주문 목록 | 페이징 TBD |
-| 내 주문 상세 | `GET /api/v1/orders/{orderId}` | path `orderId` | 품목·수량·금액·상태·결제액 | 없거나 타인 주문 → `NOT_FOUND` |
+| 주문 생성 | `POST /api/v1/orders` | body `items`: `[{productId, quantity}]` (요청자 식별 필요) | DRAFT 주문 `{id, status, items: [{productId, productName, quantity, unitPrice, amount}], totalAmount, orderedAt}` (확정 전이라 `payment`는 없음), 상품명·단가는 주문 당시 값, 재고·포인트 차감 없음 (D-20) | `items`·`productId`·`quantity` 누락, 형식 오류(소수·문자열·범위 초과 포함) → `INVALID_INPUT`. 품목 없음·수량 0 이하·같은 상품 중복 → `INVALID_INPUT` (상품 조회 전에 판단, 없는 상품이 섞여 있어도 이 오류가 먼저). 없거나 삭제된 상품 → `NOT_FOUND` (메시지에 상품 id 목록). 재고가 0이거나 요청 수량보다 적은 상품 → `OUT_OF_STOCK` (상품이 모두 존재할 때, 메시지에 상품명 목록, 재고는 차감하지 않음). 합계가 표현 범위 초과 → `INVALID_INPUT`. 헤더 누락 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND` |
+| 주문 확정 | `POST /api/v1/orders/{orderId}/confirm` | path `orderId` (요청자 식별 필요) | CONFIRMED 주문 `{id, status, items, totalAmount, payment: {paidAmount, balanceAfter}, orderedAt}`, 재고·포인트 차감, 결제액은 주문 합계 (D-21) | 없는·타인 주문 → `NOT_FOUND`, 이미 확정 → `ORDER_ALREADY_CONFIRMED`, 상품 삭제됨 → `PRODUCT_UNAVAILABLE` (메시지에 주문 당시 상품명), 재고 부족 → `OUT_OF_STOCK`, 잔액 부족 → `INSUFFICIENT_POINT`, `orderId` 형식 오류 → `INVALID_INPUT`, 헤더 누락 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND`. 오류 우선순위는 4-1 표의 순서이고 실패하면 재고·잔액·주문 상태는 그대로 |
+| 내 주문 목록 | `GET /api/v1/orders` | 요청자 (식별 필요), query `page`(0 이상, 기본 0)·`size`(1~100, 기본 20) | 내 주문만 최신순(id 내림차순 고정). 항목은 `id`, `status`, `totalAmount`, `itemCount`, `payment`(확정된 주문만), `orderedAt`이며 품목은 담지 않고 `content`·`page`·`size`·`totalElements`·`totalPages`로 응답 (D-22) | 잘못된 `page`·`size` → `INVALID_INPUT`, 헤더 누락 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND` |
+| 내 주문 상세 | `GET /api/v1/orders/{orderId}` | path `orderId` (요청자 식별 필요) | `{id, status, items: [{productId, productName, quantity, unitPrice, amount}], totalAmount, payment, orderedAt}`. 생성·확정 응답과 같은 모양, 품목은 주문 당시 값 (D-22) | 없거나 타인 주문 → `NOT_FOUND` (존재 여부를 숨김, D-11), `orderId` 형식 오류·헤더 누락 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND` |
 
 ### 5-3. 관리자
 
@@ -393,7 +394,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 | 상품 수정 | `PUT /api-admin/v1/products/{productId}` | body `name`(1~100자), `price`(1~1,000,000,000) (브랜드·재고는 변경 불가) | 수정된 상품 (위 형식) | 없거나 삭제된 상품 → `NOT_FOUND`, 필수 누락·입력 오류 → `INVALID_INPUT` |
 | 상품 삭제 | `DELETE /api-admin/v1/products/{productId}` | path `productId` | 성공 (200, 본문 없음) | 이미 삭제됐거나 없는 상품 → `NOT_FOUND` |
 | 재고 변경 | `PUT /api-admin/v1/products/{productId}/stock` | body `stock`(최종 수량, 0 이상) | 변경된 상품 (위 형식) | 누락·음수·소수 → `INVALID_INPUT`, 없거나 삭제된 상품 → `NOT_FOUND` |
-| 주문 목록·상세 | `GET /api-admin/v1/orders`, `GET /api-admin/v1/orders/{orderId}` | (구매자별 조건 TBD) | 구매자별 주문의 품목·상태·금액·결제 결과 | 없는 주문 → `NOT_FOUND` |
+| 주문 목록·상세 | `GET /api-admin/v1/orders`, `GET /api-admin/v1/orders/{orderId}` | 목록: query `userId`(선택), `page`(0 이상, 기본 0)·`size`(1~100, 기본 20). `userId`를 주면 그 구매자의 주문만, 없으면 전체를 최신순으로 고정 | 목록 항목은 고객 목록 항목에 구매자 `userId`를 더한 모양(품목 없음). 상세는 구매자와 무관하게 조회하며 `userId`·품목(주문 당시 상품명·단가)·상태·합계·결제 결과·주문 시각 (D-22) | 없는 주문 → `NOT_FOUND`, `orderId`·`userId` 형식 오류와 잘못된 `page`·`size` → `INVALID_INPUT`. 주문이 없거나 존재하지 않는 `userId`는 오류가 아니라 빈 목록 |
 
 - 관리자 API 접근: 관리자 허용, 일반 사용자·식별 없는 요청은 거절(403). 거절 시 DB를 바꾸지 않는다. 거절 본문은 과제 예시의 `sendError(403)`이 아니라 `ApiResponse.fail(FORBIDDEN)` 형식이다 (D-14).
 - 삭제 정책(기본 삭제 조건): 삭제되지 않은 상품이 연결된 브랜드의 삭제는 거절(재고 0 포함). 삭제된 브랜드·상품은 고객 조회·새 주문에서 제외하고 수정·재고 변경 대상으로도 사용하지 않는다. 삭제는 soft delete(`BaseEntity.delete()`, `deletedAt`)로 처리한다 (D-5).
@@ -670,10 +671,24 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 
 - **상황**: 주문 확정(T8)에서 결제액의 기준, 응답에 담을 결제 결과, 삭제된 상품과 재고 부족의 안내, 롤백 검증 방식을 정해야 했다.
 - **결정 (결제액)**: 결제액은 확정 시점의 현재 가격이 아니라 **주문 합계**(`order.totalAmount`, 주문 당시 단가 스냅샷)이다. 그 사이 관리자가 가격을 바꿔도 결제액은 주문 당시 합계다.
-- **결정 (응답)**: 주문 응답에 `payment: {paidAmount, balanceAfter}` 객체를 둔다. 확정 전(DRAFT)의 생성 응답은 `payment: null`이다. 생성·확정·조회가 같은 응답 모양을 쓴다.
+- **결정 (응답)**: 주문 응답에 `payment: {paidAmount, balanceAfter}` 객체를 둔다. 확정 전(DRAFT) 주문은 결제 결과가 없어 응답에서 `payment` 키가 빠진다(null 필드는 생략하는 JSON 설정, D-22). 생성·확정·조회가 같은 응답 모양을 쓴다.
 - **결정 (실패 안내)**: 삭제됐거나 없는 상품은 모두 모아 **주문 당시 상품명**으로 `PRODUCT_UNAVAILABLE` 메시지에 담는다(품목에 이름을 저장해 두었으므로 삭제된 상품도 이름으로 알린다, D-20). 확정의 재고 부족은 품목 순서대로 차감하다 처음 부족한 품목에서 멈추며 `ErrorType` 기본 문구를 쓴다.
 - **결정 (순서와 저장)**: 오류 우선순위는 4-1 표의 단계 순서이다. 이미 확정된 주문이 다른 오류로 보이지 않게 확정 가능 여부를 앞에서 확인하고, `Order.confirm` 안의 재검증은 불변식 보호용으로 둔다. 별도 `save` 없이 변경 감지로 주문·재고·잔액을 한 트랜잭션에서 저장한다. 포인트를 차감할 `User` 엔티티가 필요해 사용자를 조회하며 `PointFacade`와 같은 이중 조회가 생긴다 (D-19).
 - **근거**: 결제액을 주문 합계로 두면 고객이 주문 화면에서 본 금액과 실제 결제 금액이 같다. 결제 결과를 응답에 같은 모양으로 두면 생성·확정·조회가 하나의 응답 타입을 쓴다. 롤백을 실제 DB에서 재조회로 확인해야 변경 감지 기반 저장의 부분 반영을 놓치지 않는다 (D-10).
-- **비용**: 확정 시점에 상품 가격이 달라져도 주문 당시 가격으로 결제되므로 가격 변경이 기존 DRAFT 주문에는 반영되지 않는다. 같은 주문을 동시에 확정하거나 같은 재고를 동시에 차감하는 경쟁은 막지 않아(week3) 이중 결제·재고 초과 차감이 가능하며, 순차 요청에서만 정합성을 보장한다. DRAFT 주문의 `payment`가 `null`이라 클라이언트가 null을 처리해야 한다.
+- **비용**: 확정 시점에 상품 가격이 달라져도 주문 당시 가격으로 결제되므로 가격 변경이 기존 DRAFT 주문에는 반영되지 않는다. 같은 주문을 동시에 확정하거나 같은 재고를 동시에 차감하는 경쟁은 막지 않아(week3) 이중 결제·재고 초과 차감이 가능하며, 순차 요청에서만 정합성을 보장한다. 확정 전 주문은 `payment` 키가 없어 클라이언트가 없는 경우를 처리해야 한다.
 - **재검토 조건**: 결제 수단이 포인트 외로 늘거나 결제 이력이 필요하면 `PaymentResult`를 별도 Entity로 분리한다. week3에서 동시성(잠금·조건부 갱신)을 다룰 때 검사·차감 순서와 잠금 순서를 함께 본다.
 - **기각한 대안**: 확정 시점의 현재 가격으로 결제(주문 화면의 금액과 달라짐), 결제 결과를 응답에서 빼고 조회로만 확인(확정 직후 한 번 더 호출해야 함), 결제를 별도 Payment Entity로 분리(결제 수단이 포인트 하나라 현재는 과함), 변경 전에 전체 검사 후 차감(D-10).
+
+### D-22. 주문 조회는 고객 목록을 요약으로, 관리자 목록을 구매자 선택 필터로 두고, 모든 주문 응답에 주문 시각을 담는다
+
+- **상황**: 주문 조회(T9)에서 5-2·5-3에 `TBD`로 남은 내 주문 목록의 항목과 페이징, 관리자의 구매자별 조건, 응답에 담을 시각, 지연 로딩 품목의 N+1을 정해야 했다.
+- **결정 (고객 목록)**: 내 주문만(요청자로 한정, `userId` 파라미터 없음) 최신순(id 내림차순)으로 고정해 조회한다. 항목은 `{id, status, totalAmount, itemCount, payment, orderedAt}`이며 품목은 담지 않는다. `page`(0 이상, 기본 0)·`size`(1~100, 기본 20)는 `PageRequests`로 검증하고 `PageResponse`로 응답한다. 상태 필터는 두지 않는다.
+- **결정 (고객 상세)**: `getMine`으로 본인 주문만 조회하고 없는 주문과 타인 주문은 같은 `NOT_FOUND`다 (D-11). 응답은 생성·확정과 같은 주문 응답이다.
+- **결정 (관리자)**: 목록은 query `userId`를 선택으로 받는다. 주면 그 구매자의 주문만, 없으면 전체이고, 주문이 없거나 존재하지 않는 `userId`는 오류가 아니라 빈 목록이다(구매자를 따로 조회하지 않는다, D-18의 `brandId`와 같은 방식). 항목은 고객 목록 항목에 `userId`를 더한 모양이다. 상세는 구매자와 무관하게 조회하며 `userId`를 담고 없으면 `NOT_FOUND`다. 경계와 패키지는 D-14를 따른다 (`interfaces.api.admin.order`, `AdminOrderFacade`).
+- **결정 (주문 시각)**: 생성 시각(`createdAt`)을 `orderedAt`으로 생성·확정·상세·목록의 고객·관리자 응답 모두에 담는다.
+- **결정 (응답 표현)**: `supports:jackson`이 null 필드를 생략하므로(`NON_NULL`) 확정 전 주문은 `payment`가 `null`이 아니라 키가 없다. D-21의 "`payment: null`" 서술은 이 의미로 읽는다.
+- **결정 (N+1)**: 품목은 지연 로딩이며 `modules:jpa`의 `default_batch_fetch_size: 100`으로 목록에서 한 번의 `IN` 조회로 읽는다. 목록은 "주문 페이지 + 총 개수 + 품목 일괄 조회"로 주문 수와 무관하게 **정확히 SQL 3개**이며, `itemCount`는 이 컬렉션의 크기다. `OrderListQueryCountTest`가 Hibernate 통계로 주문 3건·8건에서 3개임을 고정하고, `default_batch_fetch_size`를 1로 덮으면 주문 4건에서 6개가 되어 실패하는 것을 확인했다.
+- **근거**: 목록에 품목까지 담으면 응답이 커지고 컬렉션 fetch join은 페이징과 함께 쓸 수 없다. 요약과 상세로 나누면 목록은 가볍고 상세는 한 번에 전체를 본다. `userId` 선택 필터는 관리자가 전체 현황과 구매자별 조회를 한 API로 하게 한다. 주문 내역은 시각이 있어야 구분된다.
+- **비용**: 목록에서 품목을 보려면 상세를 추가로 호출해야 한다. 정렬은 최신순 하나이고 상태·기간 필터가 없다. 관리자의 전체 조회는 주문이 많아지면 총 개수 쿼리 비용이 커진다. 존재하지 않는 `userId`(오타 등)가 오류가 아니라 빈 목록으로 보인다. batch fetch 설정은 모듈 공용이라 다른 지연 컬렉션에도 적용된다.
+- **재검토 조건**: 상태·기간 필터나 다른 정렬이 필요해질 때, 주문 수가 많아 총 개수 쿼리가 느려질 때, 목록 화면에서 품목을 바로 보여야 할 때.
+- **기각한 대안**: 목록에 품목까지 포함(응답이 크고 컬렉션 fetch join은 페이징 불가), 관리자 `userId` 필수(전체 현황을 볼 수 없음), 존재하지 않는 `userId`를 `NOT_FOUND`로 거절(사용자 조회가 늘고 D-18의 `brandId` 방식과 어긋남), 주문 시각을 관리자 응답에만 담기(고객이 주문 내역을 구분하지 못함), 상태 필터 도입(과제 범위 밖).
