@@ -67,6 +67,13 @@ Loopers 에서 제공하는 Spring Boot(Java 21) 멀티 모듈 커머스 템플�
 
 `BaseEntity`(`modules:jpa`)는 모든 JPA Entity가 상속하는 `@MappedSuperclass`로, `id`/`createdAt`/`updatedAt`/`deletedAt`과 멱등한 `delete()`/`restore()`를 제공하며 `guard()`를 오버라이드해 `@PrePersist`/`@PreUpdate` 시점 검증을 넣을 수 있습니다. 재사용성을 위해 이 외의 컬럼/동작은 추가하지 않는 것이 원칙입니다.
 
+### 목록 API와 응답 형식
+
+- 목록 API의 `page`·`size` 검증은 `support.paging.PageRequests`를, 응답은 `interfaces.api.PageResponse<T>`를 씁니다. `@RequestParam`의 `defaultValue`와 Swagger 설명은 리터럴 대신 `PageRequests`의 상수(`DEFAULT_PAGE`, `DEFAULT_SIZE`, `PAGE_PARAM_DESCRIPTION`, `SIZE_PARAM_DESCRIPTION`)를 참조합니다.
+- `supports:jackson`이 null 필드를 직렬화에서 뺍니다(`NON_NULL`). 값이 없는 필드는 `null`이 아니라 키 자체가 없는 응답이 됩니다.
+- 지연 로딩 컬렉션의 N+1은 `modules:jpa`의 `default_batch_fetch_size`로 줄입니다. 쿼리 수가 중요한 목록은 `OrderListQueryCountTest`처럼 SQL 개수를 테스트로 고정합니다.
+- 설계 결정의 이유와 알려진 한계는 `docs/design/week2/commerce-design.md`(6장 결정 기록)에 있습니다.
+
 ### 보안 설정과 요청자 식별 (`config`)
 
 `config.SecurityConfig`가 관리자 체인(`/api-admin/**`, 관리자 역할만 허용)과 고객 체인(`/api/**`, CSRF 끔, STATELESS)을 한곳에서 정의합니다. 직접 정의한 `SecurityFilterChain`이 있으면 Spring Boot의 기본 보안 체인은 만들어지지 않습니다. 필터 단계의 오류는 `ApiControllerAdvice`가 처리하지 못하므로 `SecurityErrorResponseWriter`가 같은 `ApiResponse` 형식으로 씁니다.

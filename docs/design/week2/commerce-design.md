@@ -3,7 +3,7 @@
 > **설계의 의도를 객체의 책임과 실행 가능한 규칙으로 표현한다.**
 
 고객·관리자의 요청을 `HTTP → application → domain → repository·DB → 응답`까지 연결하는 기본 기능(상품·브랜드·좋아요, 포인트·주문, 관리자)의 설계 문서.
-여러 태스크로 나눠 함께 채운다. `TBD`는 토론 후 확정할 칸이고, 확정된 내용만 단정적으로 적는다.
+확정된 내용만 단정적으로 적고, 구현하며 더 나은 판단이 나오면 이 문서를 고친다.
 
 출처: `docs/note/week2/발제.md`, `docs/note/week2/실습 과제.md`
 
@@ -17,25 +17,6 @@ week2의 목표는 **기본 API를 간단하게 구현하고 TDD를 적용**하�
 | week3로 이관 | 동시성 제어(잠금·조건부 갱신), 브랜드-상품 일괄 삭제와 중간 실패 rollback, 삭제 시 주문 참조 보존 설계 |
 
 삭제는 가급적 soft delete로 한다 (D-5). 삭제 관련 API는 과제의 "기본 삭제 조건" 동작만 단순하게 맞추고, 일괄 삭제·참조 보존 설계는 week3에서 한다.
-
-## 작성 진행 상태
-
-| 장 | 내용 | 상태 |
-|---|---|---|
-| 1 | 버드뷰 | 완료 |
-| 2 | 구조와 의존 (ArchUnit 일치) | 완료 |
-| 3 | 도메인 관계 | 완료 |
-| 4 | 대표 흐름 | 완료 |
-| 5 | 기본 기능 설계 (API 계약) | 완료 (모든 기능의 계약 확정) |
-| 6 | 설계 결정 기록 | 진행 중 (D-1 ~ D-22) |
-
-**작업 순서**
-
-1. 3장 도메인 관계 (P-10, P-5 포함)
-2. 4장 대표 흐름
-3. 기능 구현 직전에 해당 TBD를 결정: ~~P-4~~(결정됨, D-18), ~~P-8~~(결정됨, D-14·D-16·D-18), ~~P-9~~(결정됨, D-14)
-
-구현하며 더 나은 판단이 나오면 이 문서를 고친다.
 
 ---
 
@@ -58,7 +39,7 @@ week2의 목표는 **기본 API를 간단하게 구현하고 TDD를 적용**하�
 
 - 같은 상품을 다뤄도 고객의 조회와 관리자의 변경은 **입력·권한·응답 필드가 다른 별개의 계약**이다.
 - Redis·Kafka는 인프라에 구성돼 있으나 이번 기본 기능에서는 사용하지 않는다.
-- 로컬 실습 전제: `server.address=127.0.0.1`, 공개 배포와 실제 개인정보 사용 없음. 고정 관리자 헤더는 운영 인증 수단이 아니다.
+- 로컬 실습 전제: `server.address=127.0.0.1`, 공개 배포와 실제 개인정보 사용 없음. 관리자 로그인 같은 인증 수단은 범위 밖이다.
 
 ---
 
@@ -201,7 +182,7 @@ Order ── 품목 금액 합계 / 포인트 결제액·결제 결과
 
 **VO로 만들지 않는 것**: 상품·브랜드 이름(문자열 검증은 Entity에서, 범위는 D-12), 수량(`int`, 양수 검증은 `OrderItem`·`Stock`), 식별자. 의미가 혼동되지 않고 검증 반복이 두 곳 이하이기 때문이다. 반복이 늘면 `Quantity` VO를 재검토한다.
 
-### 3-3. 책임 배치 원칙 (안)
+### 3-3. 책임 배치 원칙
 
 | 구분 | 위치 | 예 |
 |---|---|---|
@@ -211,22 +192,7 @@ Order ── 품목 금액 합계 / 포인트 결제액·결제 결과
 
 조회 결과 조합을 Product가 아니라 application에 두는 이유: 브랜드 응답이 바뀔 때 Product 모델이 영향을 받지 않고, Product는 자신의 상태와 규칙에 집중한다. 비용은 조합 코드가 application에 필요하다는 점이다.
 
-### 3-4. 결정 현황
-
-| # | 항목 | 상태 |
-|---|---|---|
-| 1 | Money VO 도입 | **결정됨 (D-7)** |
-| 2 | Like의 분류 | **결정됨 (D-9)**: Entity, 복합키 |
-| 3 | PointBalance 구조 | **결정됨 (D-8)**: User에 내장된 VO |
-| 4 | Stock 구조 | **결정됨 (D-9)**: Product에 내장된 VO |
-| 5 | Order·OrderItem·결제 결과 | **결정됨 (D-9)**: 세부 필드는 4장에서 확정 |
-| 6 | 참조 방식 | **결정됨 (D-9)**: Aggregate 사이는 id 참조 |
-| 7 | User 모델 (P-10) | **결정됨 (D-8)**: 최소 Entity + `PointBalance` |
-| 8 | 좋아요 수 조회 방식과 `likes_desc` 정렬 비용, 이름·가격 허용 범위 (P-5) | **결정됨 (D-12)** |
-
-분류(Entity/VO)와 참조 방식(id/연관관계)은 별개의 결정이다. 분류를 먼저 정했다.
-
-### 3-5. 참조 방식과 모델 구성도
+### 3-4. 참조 방식과 모델 구성도
 
 **Aggregate 사이는 id(`Long`)로 참조한다** (D-9).
 
@@ -298,8 +264,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 - 오류 우선순위는 단계 번호 순서이다. 3단계를 먼저 두는 이유는 이미 확정된 주문이 재고 부족 오류로 보이지 않게 하기 위해서이다. 7단계의 `confirm`이 상태를 다시 검증하는 것은 불변식 보호용이라 역할이 다르다.
 - 트랜잭션 경계는 Facade이다. 5·6단계에서 예외가 나면 앞 단계의 변경이 모두 취소된다 (D-10).
 - `PaymentResult`는 결제액과 결제 후 잔액이다. 예: 결제액 7,000원, 결제 후 잔액 3,000원. 결제액은 확정 시점의 현재 가격이 아니라 **주문 합계(주문 당시 단가 스냅샷)**이다 (D-21).
-- 3단계의 `ensureConfirmable()`은 오류 우선순위용이고 7단계 `confirm` 안의 재검증은 불변식 보호용이다. 같은 검사처럼 보이지만 앞의 것을 지우면 확정된 주문이 재고·잔액 오류로 보인다.
-- 4~5단계는 Facade 안에서 "상품이 모두 살아 있는지 확인 → 품목마다 재고 차감"으로 묶여 있다 (`deductStock`). 삭제된 상품은 주문 당시 상품명으로 알린다 (D-21).
+- 4~5단계는 Facade 안에서 "상품이 모두 살아 있는지 확인 → 품목마다 재고 차감"으로 묶여 있다 . 삭제된 상품은 주문 당시 상품명으로 알린다 (D-21).
 
 ### 4-2. 관리자 상품 수정 → 고객 상품 상세 조회
 
@@ -325,14 +290,14 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 
 자신의 데이터를 다루는 고객 API(좋아요·포인트·주문)는 `X-USER-ID` 헤더가 필수다 (2-7). 브랜드 상세와 상품 목록·상세는 요청자를 식별하지 않아 헤더가 필요 없다 (D-2). 식별 오류는 기존 `ErrorType`으로 단순하게 처리하며, 식별이 필요한 경로에서는 Security 필터가 직접 응답한다 (D-2, D-19).
 
-| 상황 | ErrorType (안) |
+| 상황 | ErrorType |
 |---|---|
 | 헤더 누락·숫자가 아닌 값 | `INVALID_INPUT` |
 | 존재하지 않는 사용자 | `NOT_FOUND` |
 | path `userId`가 요청자와 다름 (소유자가 URL에 드러난 타인 리소스) | `FORBIDDEN` |
 
-- 구현됨: 식별 헤더의 누락·형식 오류와 없는 사용자는 `CustomerIdentityFilter`가 같은 `ApiResponse` 형식으로 응답한다 (D-19). `ApiControllerAdvice`는 `MissingRequestHeaderException`을 `INVALID_INPUT`으로, `@Valid` 위반(`MethodArgumentNotValidException`)도 `INVALID_INPUT`으로 매핑한다 (D-15).
-- 표의 `TBD`는 5-5의 미정 정책에서 결정한다.
+- 식별 헤더의 누락·형식 오류와 없는 사용자는 `CustomerIdentityFilter`가 같은 `ApiResponse` 형식으로 응답한다 (D-19). `ApiControllerAdvice`는 `MissingRequestHeaderException`을 `INVALID_INPUT`으로, `@Valid` 위반(`MethodArgumentNotValidException`)도 `INVALID_INPUT`으로 매핑한다 (D-15).
+- 알려진 한계: 식별 필터는 `CoreException`과 헤더 형식 오류만 공통 `ApiResponse`로 응답한다. 사용자 조회 중 DB 장애 같은 다른 예외는 컨테이너 기본 500으로 나갈 수 있다 (D-19).
 - **null 필드는 응답에서 생략된다** (`supports:jackson`의 `NON_NULL` 설정). 예: 확정 전(DRAFT) 주문의 응답에는 `payment`가 `null`이 아니라 키 자체가 없다 (D-22).
 
 **성공 응답 원칙 (D-13)**: 돌려줄 데이터가 없는 성공도 HTTP 200과 `ApiResponse.success()`로 응답한다 (204 No Content를 쓰지 않는다). 아래 표의 "성공 (본문 없음)"은 이 응답을 뜻한다.
@@ -357,8 +322,6 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 | 확정 시 상품 삭제됨 | `PRODUCT_UNAVAILABLE` | 409 | 주문 폐기·재주문 안내 | "주문할 수 없는 상품입니다. 주문 상품을 확인해 주세요." 삭제된 상품의 주문 당시 이름을 모두 덧붙임. 예: "… (티셔츠, 모자)" |
 
 - 업무 규칙 위반 4개 코드는 모두 409로 매핑한다. 기존 `CONFLICT`는 **현재 상태와 충돌하는 범용 코드**로 두고, 사용처는 메시지를 항상 직접 지정한다 (D-13).
-- `ErrorType` 4개, `ErrorTypeHttpStatusMapper` switch, `ErrorTypeHttpStatusMapperTest`는 구현되어 있다.
-
 ### 5-1. 상품·브랜드·좋아요 (고객)
 
 | 기능 | method · path | 입력 | 성공 | 대표 오류 |
@@ -425,21 +388,6 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 | 삭제된 상품의 좋아요 | 삭제된 상품에 새 좋아요 / 자신의 기존 좋아요 취소 | `NOT_FOUND` / 취소 성공 |
 | 확정 시 검증 | 상품 삭제됨 / 재고 부족 / 잔액 부족 | 각각 `PRODUCT_UNAVAILABLE` / `OUT_OF_STOCK` / `INSUFFICIENT_POINT`로 거절, 상태·재고·잔액 변경 없음 |
 
-### 5-5. 미정 정책 (토론 필요)
-
-| # | 질문 | 영향 받는 것 |
-|---|---|---|
-| P-1 | ~~로컬 실습용 사용자 식별 방식~~ | **결정됨 (D-2)**: `X-USER-ID` 헤더, 오류는 기존 `ErrorType` |
-| P-2 | ~~브랜드·상품 삭제는 물리/논리 중 무엇인가~~ | **결정됨 (D-5)**: 가급적 soft delete. 일괄 삭제·참조 보존 설계는 week3 |
-| P-3 | ~~주문의 중복 상품 품목은 합산하는가 거절하는가~~ | **결정됨 (D-6)**: 거절 (`INVALID_INPUT`) |
-| P-4 | ~~상품 목록: 정렬 동률 보조 기준, 페이지 기본값·최대 크기, 잘못된 정렬값 처리~~ | **결정됨 (D-18)**: 동률은 상품 id 내림차순, `page` 기본 0·`size` 기본 20(1~100), 잘못된 값은 `INVALID_INPUT` |
-| P-5 | ~~상품 이름·가격, 브랜드 이름의 허용 범위~~ | **결정됨 (D-12)**: 브랜드 이름 1~50자, 상품 이름 1~100자, 가격 1~1,000,000,000원 |
-| P-6 | ~~좋아요 중복 등록·없는 관계 취소, 타인 `userId` 목록 접근~~ | **결정됨 (D-4, D-11)**: 멱등 성공, 타인 `userId`의 목록 접근은 `FORBIDDEN`. 동시 요청 경쟁은 week3 이관 |
-| P-7 | ~~이미 CONFIRMED인 주문 확정, 타인 주문, 재고·잔액 부족의 `ErrorType`~~ | **결정됨 (D-3)**: 의미 단위 errorCode + 행동 안내 메시지 |
-| P-8 | ~~고객/관리자 응답 필드 구분(예: 관리자에게만 재고 노출)~~ | **브랜드는 결정됨 (D-14)**: 고객 `id`·이름, 관리자는 생성·수정 시각 추가. **관리자 상품은 결정됨 (D-16)**. **고객 상품은 결정됨 (D-18)**: 브랜드 정보·좋아요 수를 담고 재고는 노출하지 않음 |
-| P-9 | ~~관리자 controller의 패키지·클래스 분리 방식(`interfaces.api.admin.*`)~~ | **결정됨 (D-14)**: `interfaces.api.admin.{feature}` + `Admin` 접두사, application은 같은 기능 패키지에서 Facade만 분리 |
-| P-10 | 사용자(User)를 도메인 모델로 둘지, 식별자만 쓸지? fixture 범위는? | **결정됨 (D-8)**: 최소 User Entity + `PointBalance` VO |
-
 ---
 
 ## 6. 설계 결정 기록
@@ -454,8 +402,8 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 ### D-2. 고객 식별은 로컬 실습·테스트용 `X-USER-ID` 헤더로 단순 구현한다
 
 - **상황**: 과제는 로컬 실습용 식별만 요구하고, week2의 목표는 기본 API와 TDD다.
-- **결정**: 자신의 데이터를 다루는 고객 API(좋아요·포인트·주문)는 `X-USER-ID` 헤더로 요청자를 식별한다. 오류는 기존 `ErrorType`을 쓴다 (누락·형식 오류 `INVALID_INPUT`, 없는 사용자 `NOT_FOUND`). 처음에는 Controller가 헤더를 받고 별도 추상화는 두지 않기로 했으나, 헤더 읽기와 사용자 존재 확인이 Controller·Facade에 흩어져 반복돼 Security 필터 한 곳으로 옮겼다 (D-19).
-- **결정 (카탈로그 조회 예외)**: 요청자에 따라 결과가 달라지지 않는 브랜드 상세와 상품 목록·상세는 헤더를 요구하지 않고 사용자 존재도 확인하지 않는다. 처음에는 모든 고객 API에 헤더를 필수로 두었으나, 식별 정보가 쓰이지 않는 조회에 요청마다 사용자 조회만 늘어서 바꿨다. 과제의 "식별 누락·없는 사용자를 거절하고, 자신의 좋아요·포인트·주문만 다루도록 확인"은 자신의 데이터를 다루는 기능에 해당한다고 읽었다.
+- **결정**: 자신의 데이터를 다루는 고객 API(좋아요·포인트·주문)는 `X-USER-ID` 헤더로 요청자를 식별한다. 오류는 기존 `ErrorType`을 쓴다 (누락·형식 오류 `INVALID_INPUT`, 없는 사용자 `NOT_FOUND`). 헤더 읽기와 사용자 존재 확인은 Security 필터 한 곳에서 한다 (D-19).
+- **결정 (카탈로그 조회 예외)**: 요청자에 따라 결과가 달라지지 않는 브랜드 상세와 상품 목록·상세는 헤더를 요구하지 않고 사용자 존재도 확인하지 않는다. 식별 정보가 쓰이지 않는 조회에 헤더를 요구하면 요청마다 사용자 조회만 늘기 때문이다. 과제의 "식별 누락·없는 사용자를 거절하고, 자신의 좋아요·포인트·주문만 다루도록 확인"은 자신의 데이터를 다루는 기능에 해당한다고 읽었다.
 - **비용**: 헤더는 위조할 수 있어 로컬 전용이다. 운영 인증을 도입하면 Controller 시그니처와 오류 계약을 바꿔야 한다. 카탈로그 조회에서 식별을 요구하지 않는 해석이 과제의 의도와 다르면 해당 경로를 `SecurityConfig.IDENTIFIED_PATHS`에 등록하고 Controller가 `@Requester`로 받게 하면 된다 (D-19).
 - **재검토 조건**: 운영 인증 방식(JWT 등)을 정할 때.
 
@@ -534,11 +482,11 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 ### D-10. 주문 확정은 단일 트랜잭션에서 도메인 행동이 각자 검증하고, 예외 시 전체 rollback한다
 
 - **상황**: 확정은 재고, 포인트, 주문 상태를 함께 바꾸고 중간에 실패할 수 있다. 변경 전에 전체를 먼저 검사할지, 각 행동이 검증하고 실패 시 취소할지 정해야 했다.
-- **결정**: Facade의 `@Transactional` 안에서 4-1의 순서로 도메인 행동이 각자 규칙을 검증한다. 예외가 나면 앞 단계의 변경이 모두 취소된다. 오류 우선순위는 4-1 표의 단계 순서이다. `PaymentResult`는 결제액과 결제 후 잔액이다.
+- **결정**: Facade의 `@Transactional` 안에서 4-1의 순서로 도메인 행동이 각자 규칙을 검증한다. 예외가 나면 앞 단계의 변경이 모두 취소된다. 오류 우선순위는 4-1 표의 단계 순서이다.
 - **비용**: fake Repository 기반 application 테스트에서는 실패 후 메모리 객체가 이미 변경돼 있을 수 있다. 그래서 실패 시 재고·잔액 유지는 실제 DB 통합 테스트에서 flush/clear 후 재조회로 확인한다.
 - **재검토 조건**: 메모리에서도 부분 변경을 막아야 하는 요구가 생기거나, week3의 동시성 설계에서 검사 순서와 잠금 순서를 바꿀 때.
 - **기각한 대안**: 변경 전에 전체 재고·잔액을 먼저 일괄 검사. 도메인 행동의 검증과 중복되어 규칙이 두 곳에 생긴다.
-- **구현 메모 (T8)**: 확정은 변경 감지로 저장하고 별도 `save`를 부르지 않는다. 롤백은 `@Transactional` 없는 통합 테스트(`OrderFacadeTest`)에서 실패 뒤 재고·잔액·주문 상태를 저장소에서 다시 읽어 확인한다 (재고 차감 후 잔액 부족, 앞 품목 차감 후 뒤 품목 재고 부족 등). 세부 결정은 D-21.
+- **구현 메모**: 확정은 변경 감지로 저장하고 별도 `save`를 부르지 않는다. 롤백은 `@Transactional` 없는 통합 테스트(`OrderFacadeTest`)에서 실패 뒤 재고·잔액·주문 상태를 저장소에서 다시 읽어 확인한다 (재고 차감 후 잔액 부족, 앞 품목 차감 후 뒤 품목 재고 부족 등). 세부 결정은 D-21.
 
 ### D-11. 타인 리소스 접근은 소유자가 URL에 드러나는지에 따라 구분한다
 
@@ -551,7 +499,6 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 - **비용**: `ErrorType.FORBIDDEN`을 추가하고 `ErrorTypeHttpStatusMapper`에 403 매핑과 테스트를 갱신해야 한다. "타인" 처리가 두 가지가 된다.
 - **재검토 조건**: 주문도 403으로 통일해야 하는 요구가 생기거나 운영 인증을 도입할 때.
 - **기각한 대안**: 모두 `NOT_FOUND`는 목록 요청에서 의미가 부정확하다. 모두 `FORBIDDEN`은 순차 ID로 주문 존재 여부를 알 수 있다.
-- **구현 메모**: `ErrorType` 추가 항목은 `ORDER_ALREADY_CONFIRMED`, `OUT_OF_STOCK`, `INSUFFICIENT_POINT`, `PRODUCT_UNAVAILABLE`, `FORBIDDEN` 5개이다.
 
 ### D-12. 좋아요 수는 관계에서 집계하고, 이름·가격 범위는 정해진 값으로 검증한다
 
@@ -585,20 +532,20 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 
 ### D-14. 관리자 API는 `admin` 패키지와 `Admin` 접두사로 나누고, 거절은 ApiResponse 형식의 403으로 응답한다
 
-- **상황**: 첫 관리자 API(브랜드)를 만들면서 패키지·클래스 분리, 관리자 경계의 거절 응답, 고객·관리자 응답 필드, 관리자 목록 조건(P-8, P-9, 5-3 TBD)을 정해야 했다.
+- **상황**: 첫 관리자 API(브랜드)를 만들면서 패키지·클래스 분리, 관리자 경계의 거절 응답, 고객·관리자 응답 필드, 관리자 목록 조건을 정해야 했다.
 - **결정 (분리)**: interfaces는 `interfaces.api.admin.{feature}`에 `Admin{Feature}ApiSpec`·`Admin{Feature}Controller`·`Admin{Feature}Dto`를 둔다. application은 같은 `application.{feature}` 안에서 Facade만 `Admin{Feature}Facade`로 나누고 `admin` 하위 패키지는 두지 않는다. `Info`는 고객·관리자가 함께 쓰고 응답 Dto가 필요한 필드만 고른다.
-- **결정 (경계)**: 과제가 제시한 `config.AdminBoundaryConfig`(`/api-admin/**` → `hasRole("ADMIN")`)를 쓰되, 거절(미식별·권한 부족 모두)은 `sendError(403)` 대신 403과 `ApiResponse.fail("FORBIDDEN", ...)` 본문으로 쓴다. 이 체인은 `/api-admin/**`에만 적용되고, 직접 정의한 `SecurityFilterChain`이 있으면 Boot의 기본 체인이 생기지 않아 고객 API에는 보안이 걸리지 않는다. (당시 기준이다. 이후 `SecurityConfig`에 고객 체인이 추가돼 `/api/**`에도 식별 필터가 걸린다, D-19.)
+- **결정 (경계)**: 과제가 제시한 `config.AdminBoundaryConfig`(`/api-admin/**` → `hasRole("ADMIN")`)를 쓰되, 거절(미식별·권한 부족 모두)은 `sendError(403)` 대신 403과 `ApiResponse.fail("FORBIDDEN", ...)` 본문으로 쓴다. 이 체인은 `/api-admin/**`에만 적용된다. 고객 체인(`/api/**`)은 따로 있으며 식별 필터가 맡는다 (D-19).
 - **결정 (응답)**: 브랜드 응답은 고객 `{id, name}`, 관리자 `{id, name, createdAt, updatedAt}`이다. 등록·수정 시각은 관리에 필요하지만 고객에게는 불필요한 내부 정보이다.
 - **결정 (목록)**: 관리자 브랜드 목록은 `page`(0 이상, 기본 0)·`size`(1~100, 기본 20)를 받고, 삭제되지 않은 브랜드를 id 내림차순으로 고정해 `content`·`page`·`size`·`totalElements`·`totalPages`로 응답한다. 범위를 벗어난 값은 `INVALID_INPUT`이다. 정렬은 Repository 메소드 이름에 고정해 호출하는 쪽의 `Sort`에 영향받지 않는다.
 - **근거**: Spring은 빈 이름을 클래스 단순명으로 만들어서, 패키지만 다르고 이름이 같은 `BrandController` 두 개는 기동 시 빈 이름 충돌이 난다. 접두사로 이름도 구분하면 `admin` 경로와 패키지가 대응한다. Security 필터는 Controller보다 앞에서 동작해 `ApiControllerAdvice`가 거절을 처리하지 못하므로, 모든 응답이 `ApiResponse` 형식이라는 원칙을 지키려면 거절 본문을 설정에서 직접 써야 한다. 브랜드가 계속 늘 수 있어 전체 조회는 피한다.
-- **비용**: 과제 예시 코드보다 설정이 길다(`ObjectMapper`로 직접 응답을 쓴다). 고객·관리자 Dto가 따로 있어 같은 필드를 두 번 선언한다. `Page`/`Pageable`을 domain Repository 인터페이스와 Facade 반환에 쓴다(계층 규칙에는 어긋나지 않는다). `page`·`size` 검증이 관리자 브랜드 Facade에 있어 상품 목록(P-4)에서 같은 규칙을 다시 쓸 때 공용으로 뽑을지 판단한다.
+- **비용**: 과제 예시 코드보다 설정이 길다(`ObjectMapper`로 직접 응답을 쓴다). 고객·관리자 Dto가 따로 있어 같은 필드를 두 번 선언한다. `Page`/`Pageable`을 domain Repository 인터페이스와 Facade 반환에 쓴다(계층 규칙에는 어긋나지 않는다). `page`·`size` 검증이 관리자 브랜드 Facade에 있어 상품 목록에서 같은 규칙을 다시 쓸 때 공용으로 뽑을지 판단한다.
 - **재검토 조건**: 운영 인증을 도입하면 `AdminBoundaryConfig`(이후 `SecurityConfig`의 관리자 체인으로 통합, D-19)를 교체한다(로그인 기능은 범위 밖). 관리자 기능이 늘어 `admin` 패키지가 커지면 application도 `admin` 하위 패키지로 나누는 것을 검토한다.
 - **기각한 대안**: 기능 패키지 안에 고객·관리자 Controller를 함께 두기(관리자 경계가 패키지로 드러나지 않음), 패키지만 다르고 이름이 같은 Controller(빈 이름 충돌, `@RestController("...")`로 이름을 직접 지정해야 함), 과제 예시의 `sendError(403)`(응답 형식 불일치), 목록 전체 조회(페이징 없음).
 
 ### D-15. 입력 검증은 "형식은 Dto, 값 규칙은 도메인"으로 나눈다
 
 - **상황**: 필수 누락 검사가 Dto마다 `required(...)` 호출이라 읽기 어려웠고, 이름 필드만 빠져 있어 이름이 빠진 요청이 존재하지 않는 브랜드·상품을 가리키면 400이 아니라 404가 났다(Facade가 조회를 먼저 한다). 또 Jackson 기본값이 정수 필드의 소수(`1.5`)를 소수점을 버리고 받아들여, 성공 응답을 받아도 입력과 다른 금액·수량이 저장됐다.
-- **결정**: (1) 요청 본문의 필수 누락은 Dto의 `@NotNull`과 Controller의 `@Valid`로 조회 전에 `INVALID_INPUT`(400)으로 거절한다. `ApiControllerAdvice`가 `MethodArgumentNotValidException`을 `INVALID_INPUT`으로 바꾸고, `@NotNull` 위반 메시지는 "`{field}` 는 필수입니다."이다. (2) 공백뿐·길이·범위 같은 값 규칙은 도메인(`Brand`, `Product`, `Money`, `Stock`)에만 둔다. Dto에는 `@NotBlank`·`@Size`·`@Min`을 쓰지 않고, 도메인의 `null` 방어는 안전망으로 남긴다. (3) `supports:jackson`에서 `ACCEPT_FLOAT_AS_INT`를 꺼서, 정수 필드에 소수(`1.5`, `89000.9`, `1000.0` 포함)가 오면 400으로 거절한다. (4) 본문을 읽지 못한 오류의 메시지는 문제 필드의 위치를 담는다. 배열 원소는 `items[1].quantity`처럼 인덱스로 표기하고, `int`·`long` 범위를 넘는 값은 "필드 'items[1].quantity'의 값 '3000000000'이(가) 예상 타입(Integer)의 범위를 넘었습니다."로 안내한다(`ApiControllerAdvice`). 범위 초과를 던지는 Jackson 예외는 필드 경로가 없어 파서의 현재 위치로 경로를 만든다.
+- **결정**: (1) 요청 본문의 필수 누락은 Dto의 `@NotNull`과 Controller의 `@Valid`로 조회 전에 `INVALID_INPUT`(400)으로 거절한다. `ApiControllerAdvice`가 `MethodArgumentNotValidException`을 `INVALID_INPUT`으로 바꾸고, `@NotNull` 위반 메시지는 "`{field}` 는 필수입니다."이다. (2) 공백뿐·길이·범위 같은 값 규칙은 도메인(`Brand`, `Product`, `Money`, `Stock`)에만 둔다. Dto에는 `@NotBlank`·`@Size`·`@Min`을 쓰지 않고, 도메인의 `null` 방어는 안전망으로 남긴다. (3) `supports:jackson`에서 `ACCEPT_FLOAT_AS_INT`를 꺼서, 정수 필드에 소수(`1.5`, `89000.9`, `1000.0` 포함)가 오면 400으로 거절한다. (4) 본문을 읽지 못한 오류의 메시지는 문제 필드의 위치를 담는다. 배열 원소는 `items[1].quantity`처럼 인덱스로 표기하고, `int`·`long` 범위를 넘는 값은 범위 초과로 안내한다(`ApiControllerAdvice`, `RequestBodyErrorPaths`).
 - **근거**: 선언부에서 필수 필드가 바로 읽히고 Swagger 스키마에도 필수로 표시된다. 값 규칙이 한 곳에만 있어 Dto와 도메인이 어긋나지 않는다. 다른 객체를 조회해야 하는 검증(3-3)은 형식 오류보다 뒤에 두는 것이 일관된 순서이다. 소수를 버리면 성공 응답과 저장값이 달라 금액 오류가 조용히 생긴다.
 - **비용**: Controller에서 `@Valid`를 빠뜨리면 컴파일러가 못 잡고 `Long`을 풀 때 NPE(500)가 난다(필수 누락 테스트가 잡는다). `supports:jackson`은 `commerce-batch`·`commerce-streamer`와 공용이라 두 앱의 요청 파싱도 소수를 거절한다. `1000.0`처럼 값이 정수여도 소수 표기이면 거절한다. 공백뿐인 이름이 존재하지 않는 브랜드를 가리키면 값 규칙보다 존재 확인이 먼저라 404가 난다.
 - **재검토 조건**: 필수 외 형식 제약(`@Pattern` 등)이 필요해지면 도메인 규칙과 중복되지 않는지 먼저 본다. batch·streamer에서 소수 표기를 받아야 하는 입력이 생기면 모듈별 설정으로 나눈다.
@@ -606,7 +553,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 
 ### D-16. 관리자 상품 응답·목록은 브랜드와 같은 규칙으로 두고, 브랜드 삭제 시 상품 확인은 Facade가 한다
 
-- **상황**: 관리자 상품 API의 응답 필드·목록 조건(P-8 상품, 5-3 TBD)과, 브랜드 삭제 거절에서 상품 연결 여부를 어디서 확인할지 정해야 했다.
+- **상황**: 관리자 상품 API의 응답 필드·목록 조건과, 브랜드 삭제 거절에서 상품 연결 여부를 어디서 확인할지 정해야 했다.
 - **결정 (응답·목록)**: 관리자 상품 응답은 `{id, brandId, name, price, stock, createdAt, updatedAt}`이고 등록·수정·상세·목록·재고 변경이 같은 형식을 쓴다. 브랜드 이름은 담지 않는다(id 참조, D-9). 재고 변경은 `PUT /{productId}/stock`에 `{stock}`(최종 수량)을 보내고 변경된 상품 전체를 응답한다. 목록은 브랜드 필터 없이 `page`·`size` 규칙과 id 내림차순을 쓴다(D-14). `page`·`size` 검증은 `support.paging.PageRequests`로 공용화했다.
 - **결정 (고객과의 관계)**: 과제가 고객·관리자 응답 필드의 구분을 요구하므로 구분은 유지하되, `ProductInfo`·Repository 쿼리·`ProductService`·페이징 규칙은 공유하고 관리자 응답 record만 따로 둔다. 고객 상품 응답은 브랜드 정보·좋아요 수를 담아 따로 정한다.
 - **결정 (브랜드 삭제)**: `AdminBrandFacade.delete`가 `ProductService.hasActiveProducts`로 삭제되지 않은 상품(재고 0 포함)이 있는지 확인하고, 있으면 `CONFLICT`+메시지로 삭제 전에 거절한다 (D-13). 상품 등록 시 브랜드 존재 확인은 `AdminProductFacade`가 `BrandService`로 한다 (3-3).
@@ -618,8 +565,8 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 ### D-17. 좋아요 취소는 상품을 조회하지 않고 항상 성공시키고, 내 목록은 삭제 상품 제외를 단일 쿼리로 처리한다
 
 - **상황**: 설계 안에서 취소 규칙이 어긋났다. 4-3은 "취소는 상품을 조회하지 않는다"고 했고, 5-1 표는 취소의 대표 오류로 "없는 상품 → `NOT_FOUND`"를 적었다. 또 내 좋아요 목록의 응답 필드·페이징·정렬·삭제된 상품 처리 방식이 정해져 있지 않았다.
-- **결정 (취소)**: 취소는 사용자만 확인하고 상품은 조회하지 않아, 관계가 없으면 아무것도 하지 않고 200으로 응답한다. 삭제된 상품과 한 번도 존재한 적 없는 `productId`도 같다. 등록은 사용자 확인 → 상품 조회(없거나 삭제됨 `NOT_FOUND`) → 이미 있으면 그대로 성공, 없으면 저장이다. (여기서 "사용자 확인"은 당시 Facade가 하던 것이며, 이후 식별 필터가 앞단에서 대신한다. D-19)
-- **결정 (내 목록)**: 항목은 `id`, `brandId`, 이름, 가격이고(재고·시각 제외), `page`(0 이상, 기본 0)·`size`(1~100, 기본 20)를 받아 `PageResponse`로 응답한다. 정렬은 최근에 좋아요한 순이며 같은 시각이면 상품 id 내림차순으로 고정한다. 삭제된 상품 제외는 좋아요와 상품을 id로 join하는 한 번의 쿼리(`ProductRepository.findAllActiveLikedBy`)에서 처리한다. 검사 순서는 소유자 비교(`FORBIDDEN`) → 페이지 형식(`INVALID_INPUT`) → 요청자 존재(`NOT_FOUND`) → 조회였으나, 요청자 존재 확인은 이후 식별 필터가 맨 앞에서 한다 (D-19).
+- **결정 (취소)**: 취소는 상품을 조회하지 않아, 관계가 없으면 아무것도 하지 않고 200으로 응답한다. 삭제된 상품과 한 번도 존재한 적 없는 `productId`도 같다. 등록은 상품 조회(없거나 삭제됨 `NOT_FOUND`) → 이미 있으면 그대로 성공, 없으면 저장이다. 요청자 존재 확인은 식별 필터가 앞단에서 한다 (D-19).
+- **결정 (내 목록)**: 항목은 `id`, `brandId`, 이름, 가격이고(재고·시각 제외), `page`(0 이상, 기본 0)·`size`(1~100, 기본 20)를 받아 `PageResponse`로 응답한다. 정렬은 최근에 좋아요한 순이며 같은 시각이면 상품 id 내림차순으로 고정한다. 삭제된 상품 제외는 좋아요와 상품을 id로 join하는 한 번의 쿼리(`ProductRepository.findAllActiveLikedBy`)에서 처리한다. 검사 순서는 요청자 존재(식별 필터, `NOT_FOUND`) → 소유자 비교(`FORBIDDEN`) → 페이지 형식(`INVALID_INPUT`) → 조회이다 (D-19).
 - **근거**: 취소의 목적은 "내 관계를 없애는 것"이라 상품의 상태와 무관하고, 상품을 조회하면 삭제된 상품의 관계를 취소할 방법을 따로 만들어야 한다. 좋아요를 먼저 페이징한 뒤 삭제된 상품을 걸러 내면 페이지가 비고 총 개수가 틀리므로 한 쿼리가 필요하다. 소유자 비교를 먼저 하면 존재하지 않는 `userId`를 보내도 사용자 존재 여부가 드러나지 않는다 (D-11). 형식 오류를 조회 전에 거절하는 기준은 D-15와 같다.
 - **비용**: 존재한 적 없는 `productId`로 취소해도 오류를 알려 주지 않아 클라이언트의 잘못된 id를 걸러 내지 못한다. 등록은 존재 확인 후 저장이라 같은 사용자의 동시 중복 등록은 기본키 충돌로 실패할 수 있고, 이 오류 계약은 week3(D-4)에서 정한다. 목록 항목에는 재고·시각·좋아요한 시각이 없으며 고객 상품 응답이 정해지면 통합한다. 복합키 엔티티의 `save`가 `merge`라 새 행에도 조회가 한 번 더 나간다. 상품별 좋아요 수 집계(`product_id` 조건)는 기본키 `(user_id, product_id)`로는 인덱스를 못 타므로 D-12에서 정한 `product_id` 보조 인덱스(`idx_likes_product_id`)를 고객 상품 조회 구현 때 추가했다 (D-18).
 - **재검토 조건**: 클라이언트가 잘못된 `productId`를 구분해야 하면 취소에 `NOT_FOUND`를 검토한다(존재한 적 없는 id만 거절). 고객 상품 응답이 정해지면 내 목록 항목을 그에 맞춘다. 좋아요 수가 많아져 집계가 느려지면 D-12의 카운터 비정규화를 week3와 함께 검토한다.
@@ -627,8 +574,8 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 
 ### D-18. 고객 상품 목록·상세는 브랜드 정보와 좋아요 수를 조합해 응답하고, 재고는 노출하지 않는다
 
-- **상황**: 고객 상품 조회의 정렬 동률, 잘못된 입력, 브랜드 필터, 응답 필드, 재고 노출 여부(P-4, P-8 고객 상품)를 정해야 했다.
-- **결정 (입력)**: `sort`는 `latest`(기본)·`price_asc`·`likes_desc`이며 소문자와 정확히 일치해야 한다. `page`(0 이상, 기본 0)·`size`(1~100, 기본 20)는 `PageRequests`를 쓴다. 허용 값이 아닌 `sort`, 범위 밖 `page`·`size`, 숫자가 아닌 `brandId`·`productId`는 `INVALID_INPUT`이다. 값이 빈 문자열인 파라미터(`?sort=`, `?size=`)는 Spring이 생략으로 보고 기본값을 쓰며, 그 동작을 그대로 따른다(`ProductSort.from("")`은 `INVALID_INPUT`이지만 HTTP 단계에서는 거기까지 오지 않는다).
+- **상황**: 고객 상품 조회의 정렬 동률, 잘못된 입력, 브랜드 필터, 응답 필드, 재고 노출 여부를 정해야 했다.
+- **결정 (입력)**: `sort`는 `latest`(기본)·`price_asc`·`likes_desc`이며 소문자와 정확히 일치해야 한다. `page`(0 이상, 기본 0)·`size`(1~100, 기본 20)는 `PageRequests`를 쓴다. 허용 값이 아닌 `sort`, 범위 밖 `page`·`size`, 숫자가 아닌 `brandId`·`productId`는 `INVALID_INPUT`이다. 값이 빈 문자열인 파라미터(`?sort=`, `?size=`)는 Spring이 생략으로 보고 기본값을 쓰며, 그 동작을 그대로 따른다.
 - **결정 (정렬)**: 동률은 모두 상품 id 내림차순으로 이어 정렬한다(`latest`는 곧 id 내림차순). `likes_desc`는 상품에 좋아요를 left join하고 `group by`로 집계해 `좋아요 수 내림차순, id 내림차순`으로 정렬하며 좋아요 0개 상품도 포함한다. count 쿼리는 join하지 않는다. `ProductRepository.findAllActive(brandId, sort, pageable)`가 정렬을 구현에서 고정해, 호출하는 쪽의 `Sort`에 영향받지 않는다.
 - **결정 (브랜드 필터)**: `brandId`가 없으면 전체, 존재하지 않거나 삭제된 브랜드이면 오류가 아니라 빈 목록(200)이다. 브랜드를 따로 조회하지 않는다.
 - **결정 (응답)**: 상세와 목록 항목은 `{id, name, price, brand: {id, name}, likeCount}`이다. 목록은 `PageResponse`로 감싼다. 재고 수량도 품절 여부도 담지 않고 생성·수정 시각도 담지 않는다. 재고는 관리자 응답에만 있으며(D-16), 재고 부족은 주문 생성·확정 때 `OUT_OF_STOCK`으로 알린다. 조합은 application의 `ProductFacade`가 하고 `ProductDetailInfo(ProductInfo, BrandInfo, likeCount)`로 전달한다.
@@ -646,16 +593,21 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 - **결정 (필터)**: `config.CustomerIdentityFilter`가 헤더 형식과 사용자 존재(DB)를 확인한다. 헤더 누락과 숫자가 아닌 값은 400 `INVALID_INPUT`, 없는 사용자는 404 `NOT_FOUND`로 직접 응답하고 다음으로 넘기지 않는다. 통과하면 `userId`(`Long`)를 인증 주체로 두고 Controller는 `@Requester Long`으로 받는다. 오류 계약은 기존 그대로 두고 401로 바꾸지 않는다. 필터 단계의 오류는 `ApiControllerAdvice`가 처리하지 못하므로 `SecurityErrorResponseWriter`가 같은 `ApiResponse` 형식으로 쓴다(관리자 403도 이 클래스를 함께 쓴다).
 - **결정 (경로 목록)**: 식별이 필요한 경로를 `SecurityConfig.IDENTIFIED_PATHS` 하나로 관리하고 그 경로에서만 필터가 동작한다. 현재 `/api/v1/points/**`, `/api/v1/products/*/likes`, `/api/v1/users/*/likes`, `/api/v1/orders/**`이다(주문 경로는 확정·조회 API도 이 접두사로 이미 포함된다). 그 밖의 경로(카탈로그)는 헤더를 읽지도 사용자를 조회하지도 않는다. 권한 규칙도 같은 목록을 쓰며(`authenticated`, 나머지 `permitAll`) 필터가 이미 거절하므로 안전망이다.
 - **결정 (설정 위치)**: `AdminBoundaryConfig`를 `SecurityConfig`로 바꾸고 관리자 체인(`/api-admin/**`, `@Order(1)`)과 고객 체인(`/api/**`, `@Order(2)`)을 한 클래스에서 정의한다. 고객 체인은 CSRF를 끄고 세션을 만들지 않는다(STATELESS). 헤더로 식별해 쿠키 세션이 없고 기존 E2E도 CSRF 토큰 없이 호출하기 때문이다. 관리자 체인은 그대로다. 필터는 빈으로 등록하면 모든 요청의 서블릿 필터로도 등록되므로 `SecurityConfig`가 직접 만들어 고객 체인에만 넣는다. 과제 예시의 `config.AdminBoundaryConfig`와 클래스 이름이 달라진다.
-- **결정 (등록 누락 방지)**: 목록에 등록하지 않은 식별 API는 식별 없이 열리고 인증 주체가 익명이 된다. 이때 `@Requester` 파라미터를 만드는 `RequesterArgumentResolver`가 인증 정보가 없거나 주체가 `Long`이 아니면 `INTERNAL_ERROR`(500)와 "요청자 식별 정보가 없습니다. 식별이 필요한 경로로 등록됐는지 확인하세요."로 거절한다. 400·403이나 조용한 성공으로 보이지 않고 설정 실수로 드러나며(`unlike`는 `null`이면 지울 행이 없어 성공했었다), 요청자를 받는 모든 컨트롤러(좋아요·포인트·주문)가 같은 보장을 받는다. 식별이 필요한 API마다 "헤더 누락 400" E2E 테스트를 쓰는 규칙도 유지하고 CLAUDE.md에 적었다.
+- **결정 (등록 누락 방지)**: 목록에 등록하지 않은 식별 API는 식별 없이 열리고 인증 주체가 익명이 된다. 이때 `@Requester` 파라미터를 만드는 `RequesterArgumentResolver`가 인증 정보가 없거나 주체가 `Long`이 아니면 `INTERNAL_ERROR`(500)와 "요청자 식별 정보가 없습니다. 식별이 필요한 경로로 등록됐는지 확인하세요."로 거절한다. 400·403이나 조용한 성공으로 보이지 않고 설정 실수로 드러나며, 요청자를 받는 모든 컨트롤러(좋아요·포인트·주문)가 같은 보장을 받는다. 식별이 필요한 API마다 "헤더 누락 400" E2E 테스트를 쓰는 규칙도 유지하고 CLAUDE.md에 적었다.
 - **결정 (신뢰 경계)**: 요청자 id를 믿는 경계는 이 필터와 `@Requester` 리졸버다. Facade는 필터를 거친 존재하는 사용자의 id가 `null`이 아니라는 전제로 존재를 다시 조회하지도 `null`을 방어하지도 않는다(`LikeFacade`·`OrderFacade`·`PointFacade`의 클래스 주석에 적는다). 엔티티가 필요한 `PointFacade`·`OrderFacade.confirm`은 조회를 유지한다.
 - **근거**: 헤더 읽기와 존재 확인을 한 곳에 두면 API마다 반복이 사라지고 오류 계약이 일관된다. 헤더가 오면 어디서든 검증하는 방식은 카탈로그에도 사용자 조회와 헤더 오류가 생기므로, 식별이 필요한 경로를 직접 관리하는 쪽을 택했다.
-- **비용**: 포인트(이후 주문) 요청은 필터와 Facade에서 사용자를 두 번 조회해 기본키 조회가 1회 늘어난다. `open-in-view: false`라 영속성 컨텍스트가 달라 1차 캐시로 줄지 않는다. 좋아요는 `LikeFacade`의 조회를 옮긴 것이라 쿼리 수가 같다. 캐시는 측정 근거 없는 최적화이고 삭제 반영이 늦어지므로 두지 않는다. 필터가 `config`에서 `domain.user.UserService`에 의존한다(ArchUnit은 `config`를 제한하지 않는다). 숫자가 아닌 헤더의 오류 메시지가 "요청 파라미터 'X-USER-ID' (타입: Long)…"에서 "요청 헤더 'X-USER-ID'의 값 'abc'이(가) 잘못되었습니다."로 바뀌었다(코드와 상태는 같다). 검사 순서가 바뀌어 요청자 존재 확인이 항상 맨 앞이며, 존재하지 않는 요청자가 남의 `userId` 목록을 요청하면 `FORBIDDEN`이 아니라 `NOT_FOUND`이고, 존재하지 않는 요청자의 잘못된 `page`·`size`도 400보다 404가 먼저다. 경로의 `*`가 형식을 가리지 않아 `/products/abc/likes`도 헤더 확인이 먼저다. 등록을 빠뜨린 경로는 식별 없이 열린다. 요청자 `null` 검증은 HTTP 경계(`RequesterArgumentResolver`)에서만 하므로 경계 밖에서 Facade를 직접 호출하면 보호되지 않는다. 그래서 Facade 단위의 `null` 테스트는 `RequesterArgumentResolverTest`로 옮겼다.
-- **재검토 조건**: 운영 인증(JWT 등)을 정할 때는 서명된 토큰을 DB 없이 검증하는 방식으로 이 필터를 대체한다. 식별 경로가 늘어 목록 관리가 번거로워지면 애노테이션 기반 등록을 검토한다.
+- **비용**:
+  - 포인트·주문 확정 요청은 필터와 Facade에서 사용자를 두 번 조회해 기본키 조회가 1회 늘어난다. `open-in-view: false`라 영속성 컨텍스트가 달라 1차 캐시로 줄지 않는다. 좋아요는 `LikeFacade`의 조회를 옮긴 것이라 쿼리 수가 같다. 캐시는 측정 근거 없는 최적화이고 삭제 반영이 늦어지므로 두지 않는다.
+  - 필터가 `config`에서 `domain.user.UserService`에 의존한다(ArchUnit은 `config`를 제한하지 않는다).
+  - 검사 순서상 요청자 존재 확인이 항상 맨 앞이다. 존재하지 않는 요청자가 남의 `userId` 목록을 요청하면 `FORBIDDEN`이 아니라 `NOT_FOUND`이고, 잘못된 `page`·`size`도 400보다 404가 먼저다. 경로의 `*`가 형식을 가리지 않아 `/products/abc/likes`도 헤더 확인이 먼저다.
+  - 등록을 빠뜨린 경로는 식별 없이 열린다. 요청자 `null` 검증은 HTTP 경계(`RequesterArgumentResolver`)에서만 하므로 경계 밖에서 Facade를 직접 호출하면 보호되지 않는다. 그래서 `null` 테스트는 `RequesterArgumentResolverTest`에 있다.
+  - 알려진 한계: 필터는 `CoreException`(없는 사용자)과 `NumberFormatException`(헤더 형식)만 `ApiResponse`로 바꿔 쓴다. 사용자 조회 중 DB 장애 같은 다른 예외는 필터 단계라 `ApiControllerAdvice`가 받지 못하고 컨테이너 기본 500 응답으로 나갈 수 있으며, 이때 본문이 공통 `ApiResponse` 형식이 아니다.
+- **재검토 조건**: 운영 인증(JWT 등)을 정할 때는 서명된 토큰을 DB 없이 검증하는 방식으로 이 필터를 대체한다. 식별 경로가 늘어 목록 관리가 번거로워지면 애노테이션 기반 등록을 검토한다. 필터의 비-`CoreException` 예외 처리는 DB 의존을 없애는 운영 인증 도입 때 함께 사라지므로, 그 전에 DB 장애 응답 형식이 문제가 되면 필터에서 `RuntimeException`을 `INTERNAL_ERROR`로 쓰는 것을 검토한다.
 - **기각한 대안**: 헤더가 오면 어디서든 검증(카탈로그에도 사용자 조회와 헤더 오류가 생김), 공개 경로를 예외로 두기(사용자가 식별 필요 경로 목록을 직접 관리하는 쪽을 선택), Controller마다 `@RequestHeader`와 `ArgumentResolver`(반복과 존재 확인 분산이 남음), Facade에서 다시 조회(필터와 책임이 겹치고 요청마다 조회가 늘어남), 필터에서 사용자 캐시(측정 근거 없음, 삭제 반영 지연), 요청자를 별도 타입으로 도입(시그니처가 모두 바뀌고 application이 그 타입에 의존), Facade마다 `null` 가드를 호출(한 번 만들었으나 Facade가 늘 때마다 호출을 잊을 수 있고 `PointFacade`처럼 빠진 곳이 이미 있어 경계 한 곳 검증으로 바꿈), 내장 `@AuthenticationPrincipal(errorOnInvalidType = true)`(타입이 맞지 않을 때 `ClassCastException`으로 일반 500이라 원인 메시지가 사라지고 인증 정보가 아예 없으면 `null`이 그대로 들어옴).
 
 ### D-20. 주문 품목은 주문 당시 상품명·단가를 복사해 저장하고, 값 규칙은 상품 조회 전에 도메인이 판단한다
 
-- **상황**: 주문 생성(T7)에서 품목에 무엇을 저장할지, 값 규칙 위반과 없는 상품 중 어느 오류를 먼저 알릴지, `Order`가 상품을 어떻게 받을지 정해야 했다. 발제의 `OrderItem`은 "상품 식별자·수량·단가"였다.
+- **상황**: 주문 생성에서 품목에 무엇을 저장할지, 값 규칙 위반과 없는 상품 중 어느 오류를 먼저 알릴지, `Order`가 상품을 어떻게 받을지 정해야 했다. 발제의 `OrderItem`은 "상품 식별자·수량·단가"였다.
 - **결정 (스냅샷)**: `OrderItem`은 상품 id, **주문 당시 상품명**, 수량, 주문 당시 단가, 품목 금액(단가 × 수량)을 저장하고, 합계는 품목 금액의 합이다. 브랜드명은 저장하지 않는다. 주문은 항상 `DRAFT`로 만들어지며 재고와 포인트를 건드리지 않는다.
 - **결정 (모델)**: 요청 한 줄은 `OrderLine(productId, quantity)`, 목록은 `OrderLines`(하나 이상, 수량 1 이상, 같은 상품 중복 금지 D-6)이며 저장하지 않는다. `Order.create(userId, OrderLines, Map<Long, OrderProduct>)`는 상품 Entity가 아니라 이름·가격만 가진 `OrderProduct`를 받아 `domain.order`가 `domain.product`에 의존하지 않는다. 맵에 품목의 상품이 없으면 호출하는 쪽의 오류이므로 `INTERNAL_ERROR`로 거절한다(정상 흐름에서는 Facade가 먼저 404로 거르므로 일어나지 않는 안전망이다).
 - **결정 (검사 순서)**: 요청자 확인 → 값 규칙(`OrderLines`, `INVALID_INPUT`) → 상품 일괄 조회와 존재 확인(`NOT_FOUND`) → 재고 확인(`OUT_OF_STOCK`) → 합계 범위(`INVALID_INPUT`). 값 규칙이 먼저라서 잘못된 요청은 DB를 조회하지 않고, 수량 0과 없는 상품이 함께 있으면 404가 아니라 400이다. 조회가 먼저인 관리자 API(D-15의 비용)와 순서가 다르다.
@@ -663,13 +615,13 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 - **결정 (오류 메시지)**: 없거나 삭제된 상품은 요청 순서대로 모든 id를 메시지에 담아 한 번에 빼고 다시 요청할 수 있게 한다.
 - **결정 (계층)**: Facade는 `interfaces`가 도메인 타입을 알지 않도록 application의 입력 형식 `OrderItemCommand(productId, quantity)`를 받아 `OrderLine`으로 바꾼다. `Order.items`는 `LAZY`이고 `OrderInfo`로의 변환은 트랜잭션 안에서 한다. `/api/v1/orders/**`를 `IDENTIFIED_PATHS`에 등록해 식별 필터가 적용되며(D-19), Facade는 사용자를 다시 조회하지 않는다.
 - **근거**: 단가를 얻으려고 상품을 이미 조회하므로 상품명 저장에 추가 조회가 없다. 단가만 복사하면 주문 내역에 "당시 가격 + 현재 이름"이 섞이고, 삭제된 상품의 이름을 보여 주려면 삭제된 상품을 읽는 조회가 따로 필요하다. 값 규칙을 도메인 타입에 두면 Facade의 `if`로 새어 나가지 않고 `Order.create`가 검증을 건너뛸 수 없다. `Order`가 상품 전체가 아니라 필요한 값만 받으면 Aggregate 사이를 id로 분리한 D-9의 취지가 유지되고 단위 테스트에 상품 Entity가 필요 없다.
-- **비용**: 상품명이 품목에 중복 저장되고, 이후 상품명을 고쳐도 기존 주문에는 반영되지 않는다(주문 내역으로는 맞는 동작이다). 타입이 늘었다(`OrderLine`, `OrderLines`, `OrderProduct`, `OrderItemCommand`). 맵 누락 검사가 Facade의 존재 확인과 겹쳐 보이지만 하나는 사용자 입력 오류(404), 하나는 호출 계약 위반(500)이라 의미가 다르다. 주문 목록(T9)에서 품목을 지연 로딩하면 N+1이 생기므로 그때 batch fetch와 쿼리 수 테스트로 다룬다.
+- **비용**: 상품명이 품목에 중복 저장되고, 이후 상품명을 고쳐도 기존 주문에는 반영되지 않는다(주문 내역으로는 맞는 동작이다). 타입이 늘었다(`OrderLine`, `OrderLines`, `OrderProduct`, `OrderItemCommand`). 맵 누락 검사가 Facade의 존재 확인과 겹쳐 보이지만 하나는 사용자 입력 오류(404), 하나는 호출 계약 위반(500)이라 의미가 다르다. 주문 목록에서 품목을 지연 로딩하면 N+1이 생기므로 batch fetch와 쿼리 수 테스트로 다룬다 (D-22).
 - **재검토 조건**: 브랜드명 등 표시 정보가 더 필요해지면 스냅샷 필드를 늘린다. 주문 생성의 상품 조회가 느려지면 상품 id 인덱스 조회를 점검한다. 결제 수단이나 배송 정보가 생기면 `Order` 필드를 다시 나눈다.
 - **기각한 대안**: 상품 id·수량·단가만 저장하고 조회할 때 상품을 읽기(삭제된 상품 조회 필요, 현재 이름과 당시 가격이 섞임), 조회를 먼저 하고 `Order.create`가 값 규칙을 검사하기(잘못된 요청도 DB를 조회하고 없는 상품 404가 먼저 나감), `Order.create`가 `Product`를 직접 받기(Aggregate 의존), Facade가 `OrderLine`을 직접 받기(interfaces가 도메인 타입을 알게 됨), 중복 상품 합산(D-6).
 
 ### D-21. 주문 확정은 주문 합계를 결제하고, 결제 결과를 응답에 담으며, 실패하면 전체를 되돌린다
 
-- **상황**: 주문 확정(T8)에서 결제액의 기준, 응답에 담을 결제 결과, 삭제된 상품과 재고 부족의 안내, 롤백 검증 방식을 정해야 했다.
+- **상황**: 주문 확정에서 결제액의 기준, 응답에 담을 결제 결과, 삭제된 상품과 재고 부족의 안내, 롤백 검증 방식을 정해야 했다.
 - **결정 (결제액)**: 결제액은 확정 시점의 현재 가격이 아니라 **주문 합계**(`order.totalAmount`, 주문 당시 단가 스냅샷)이다. 그 사이 관리자가 가격을 바꿔도 결제액은 주문 당시 합계다.
 - **결정 (응답)**: 주문 응답에 `payment: {paidAmount, balanceAfter}` 객체를 둔다. 확정 전(DRAFT) 주문은 결제 결과가 없어 응답에서 `payment` 키가 빠진다(null 필드는 생략하는 JSON 설정, D-22). 생성·확정·조회가 같은 응답 모양을 쓴다.
 - **결정 (실패 안내)**: 삭제됐거나 없는 상품은 모두 모아 **주문 당시 상품명**으로 `PRODUCT_UNAVAILABLE` 메시지에 담는다(품목에 이름을 저장해 두었으므로 삭제된 상품도 이름으로 알린다, D-20). 확정의 재고 부족은 품목 순서대로 차감하다 처음 부족한 품목에서 멈추며 `ErrorType` 기본 문구를 쓴다.
@@ -681,7 +633,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 
 ### D-22. 주문 조회는 고객 목록을 요약으로, 관리자 목록을 구매자 선택 필터로 두고, 모든 주문 응답에 주문 시각을 담는다
 
-- **상황**: 주문 조회(T9)에서 5-2·5-3에 `TBD`로 남은 내 주문 목록의 항목과 페이징, 관리자의 구매자별 조건, 응답에 담을 시각, 지연 로딩 품목의 N+1을 정해야 했다.
+- **상황**: 주문 조회에서 내 주문 목록의 항목과 페이징, 관리자의 구매자별 조건, 응답에 담을 시각, 지연 로딩 품목의 N+1을 정해야 했다.
 - **결정 (고객 목록)**: 내 주문만(요청자로 한정, `userId` 파라미터 없음) 최신순(id 내림차순)으로 고정해 조회한다. 항목은 `{id, status, totalAmount, itemCount, payment, orderedAt}`이며 품목은 담지 않는다. `page`(0 이상, 기본 0)·`size`(1~100, 기본 20)는 `PageRequests`로 검증하고 `PageResponse`로 응답한다. 상태 필터는 두지 않는다.
 - **결정 (고객 상세)**: `getMine`으로 본인 주문만 조회하고 없는 주문과 타인 주문은 같은 `NOT_FOUND`다 (D-11). 응답은 생성·확정과 같은 주문 응답이다.
 - **결정 (관리자)**: 목록은 query `userId`를 선택으로 받는다. 주면 그 구매자의 주문만, 없으면 전체이고, 주문이 없거나 존재하지 않는 `userId`는 오류가 아니라 빈 목록이다(구매자를 따로 조회하지 않는다, D-18의 `brandId`와 같은 방식). 항목은 고객 목록 항목에 `userId`를 더한 모양이다. 상세는 구매자와 무관하게 조회하며 `userId`를 담고 없으면 `NOT_FOUND`다. 경계와 패키지는 D-14를 따른다 (`interfaces.api.admin.order`, `AdminOrderFacade`).
