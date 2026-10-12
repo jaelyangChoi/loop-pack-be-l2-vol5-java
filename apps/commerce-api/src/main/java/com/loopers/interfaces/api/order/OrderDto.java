@@ -3,10 +3,12 @@ package com.loopers.interfaces.api.order;
 import com.loopers.application.order.OrderInfo;
 import com.loopers.application.order.OrderItemCommand;
 import com.loopers.application.order.OrderItemInfo;
+import com.loopers.application.order.OrderSummaryInfo;
 import com.loopers.application.order.PaymentInfo;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 
+import java.time.ZonedDateTime;
 import java.util.List;
 
 public class OrderDto {
@@ -24,9 +26,14 @@ public class OrderDto {
         }
     }
 
-    // payment 는 확정된 주문에만 있고, 확정 전(DRAFT)에는 null 이다.
+    // payment 는 확정된 주문에만 있고, 확정 전(DRAFT)에는 null 이다. orderedAt 은 주문을 만든 시각이다.
     public record OrderResponse(
-        Long id, String status, List<ItemResponse> items, long totalAmount, PaymentResponse payment
+        Long id,
+        String status,
+        List<ItemResponse> items,
+        long totalAmount,
+        PaymentResponse payment,
+        ZonedDateTime orderedAt
     ) {
         public static OrderResponse from(OrderInfo info) {
             return new OrderResponse(
@@ -34,7 +41,24 @@ public class OrderDto {
                 info.status().name(),
                 info.items().stream().map(ItemResponse::from).toList(),
                 info.totalAmount(),
-                info.payment() == null ? null : PaymentResponse.from(info.payment())
+                info.payment() == null ? null : PaymentResponse.from(info.payment()),
+                info.orderedAt()
+            );
+        }
+    }
+
+    // 목록의 항목. 품목은 담지 않고 개수만 담는다. 품목은 상세에서 본다.
+    public record OrderSummaryResponse(
+        Long id, String status, long totalAmount, int itemCount, PaymentResponse payment, ZonedDateTime orderedAt
+    ) {
+        public static OrderSummaryResponse from(OrderSummaryInfo info) {
+            return new OrderSummaryResponse(
+                info.id(),
+                info.status().name(),
+                info.totalAmount(),
+                info.itemCount(),
+                info.payment() == null ? null : PaymentResponse.from(info.payment()),
+                info.orderedAt()
             );
         }
     }

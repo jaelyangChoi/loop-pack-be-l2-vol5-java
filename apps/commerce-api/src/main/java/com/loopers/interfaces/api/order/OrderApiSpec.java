@@ -1,6 +1,7 @@
 package com.loopers.interfaces.api.order;
 
 import com.loopers.interfaces.api.ApiResponse;
+import com.loopers.interfaces.api.PageResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;
@@ -35,6 +36,34 @@ public interface OrderApiSpec {
         @Parameter(hidden = true)
         Long userId,
         @Parameter(name = "orderId", description = "확정할 주문의 ID")
+        Long orderId
+    );
+
+    @Operation(
+        summary = "내 주문 목록 조회",
+        description = "내 주문을 최신순으로 요약해 조회합니다. 항목은 상태, 합계, 품목 수, 결제 결과(확정된 주문만), 주문 시각이며 "
+            + "품목은 상세 조회에서 봅니다."
+    )
+    @Parameter(name = "X-USER-ID", in = ParameterIn.HEADER, required = true, description = "요청자(사용자) ID")
+    ApiResponse<PageResponse<OrderDto.OrderSummaryResponse>> getList(
+        @Parameter(hidden = true)
+        Long userId,
+        @Parameter(name = "page", description = "0부터 시작하는 페이지 번호 (기본 0)")
+        int page,
+        @Parameter(name = "size", description = "페이지 크기 1~100 (기본 20)")
+        int size
+    );
+
+    @Operation(
+        summary = "내 주문 상세 조회",
+        description = "내 주문의 품목(주문 당시 상품명·단가), 합계, 상태, 결제 결과(확정된 주문만), 주문 시각을 조회합니다. "
+            + "없는 주문과 다른 사용자의 주문은 구분하지 않고 404입니다."
+    )
+    @Parameter(name = "X-USER-ID", in = ParameterIn.HEADER, required = true, description = "요청자(사용자) ID")
+    ApiResponse<OrderDto.OrderResponse> get(
+        @Parameter(hidden = true)
+        Long userId,
+        @Parameter(name = "orderId", description = "조회할 주문의 ID")
         Long orderId
     );
 }
