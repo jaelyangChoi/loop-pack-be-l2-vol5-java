@@ -418,18 +418,19 @@ class ProductRepositoryTest {
     @DisplayName("상품 테이블 스키마는,")
     @Nested
     class Schema {
-        @DisplayName("브랜드별 상품 조회(목록 필터, 브랜드 삭제 확인)를 위한 brand_id 인덱스를 가진다.")
+        @DisplayName("브랜드별 상품 조회(목록 필터, 브랜드 삭제 확인)를 위해 brand_id 로 시작하는 (brand_id, deleted_at, price, id DESC) 인덱스를 가진다.")
         @Test
-        void hasBrandIdIndex() {
-            // act
-            Integer count = jdbcTemplate.queryForObject(
-                "select count(*) from information_schema.statistics "
-                    + "where table_schema = database() and table_name = 'products' and index_name = 'idx_products_brand_id'",
-                Integer.class
+        void hasBrandPriceIndexWithDescendingId() {
+            // act: 컬럼을 인덱스 안의 순서대로, 정렬 방향(A 오름차순, D 내림차순)과 함께 읽는다.
+            List<String> columns = jdbcTemplate.queryForList(
+                "select concat(column_name, ':', collation) from information_schema.statistics "
+                    + "where table_schema = database() and table_name = 'products' "
+                    + "and index_name = 'idx_products_brand_price_id' order by seq_in_index",
+                String.class
             );
 
-            // assert
-            assertThat(count).isPositive();
+            // assert: price asc, id desc 정렬을 인덱스만으로 얻으려면 id 가 내림차순이어야 한다.
+            assertThat(columns).containsExactly("brand_id:A", "deleted_at:A", "price:A", "id:D");
         }
     }
 
