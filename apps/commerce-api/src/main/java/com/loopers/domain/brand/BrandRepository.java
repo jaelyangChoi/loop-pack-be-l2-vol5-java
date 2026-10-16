@@ -19,6 +19,12 @@ public interface BrandRepository {
      */
     Optional<Brand> findActiveForUpdate(Long id);
 
+    /**
+     * 삭제되지 않은 브랜드를 공유 잠금(FOR SHARE)으로 조회한다. 같은 브랜드를 공유 잠금으로 읽는 요청끼리는 서로 기다리지
+     * 않지만, 브랜드를 바꾸거나 삭제하는 요청(배타 잠금)과는 차례로 처리된다. 반드시 Facade 의 트랜잭션 안에서 호출한다.
+     */
+    Optional<Brand> findActiveForShare(Long id);
+
     /** 삭제되지 않은 브랜드를 id 내림차순으로 조회한다. 정렬은 Pageable 이 아니라 구현이 고정한다. */
     Page<Brand> findAllActive(Pageable pageable);
 

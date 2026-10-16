@@ -24,7 +24,8 @@ public class AdminProductFacade {
     @Transactional
     public ProductInfo create(Long brandId, String name, long price, int stock) {
         // 브랜드는 다른 Aggregate 라 존재 여부를 여기서 확인한다. 상품은 brandId 만 가진다.
-        brandService.get(brandId);
+        // 공유 잠금으로 읽어 브랜드 삭제(배타 잠금)와 차례로 처리한다. 등록끼리는 서로 기다리지 않는다 (D-27).
+        brandService.getForShare(brandId);
         Product product = productService.create(brandId, name, new Money(price), new Stock(stock));
         return ProductInfo.from(product);
     }

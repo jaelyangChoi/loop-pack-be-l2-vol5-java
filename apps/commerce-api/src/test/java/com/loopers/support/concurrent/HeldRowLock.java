@@ -29,6 +29,7 @@ public final class HeldRowLock implements AutoCloseable {
     private final CountDownLatch acquired = new CountDownLatch(1);
     private final CountDownLatch releaseSignal = new CountDownLatch(1);
     private final Future<?> transaction;
+    private volatile boolean releaseRequested;
 
     private HeldRowLock(
         PlatformTransactionManager transactionManager, JdbcTemplate jdbcTemplate,
@@ -36,15 +37,17 @@ public final class HeldRowLock implements AutoCloseable {
     ) {
         this.transaction = executor.submit(() -> new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
             jdbcTemplate.queryForList(lockSql, lockArgs);
-            jdbcTemplate.update(changeSql, changeArgs);
+            if (changeSql != null) {
+                jdbcTemplate.update(changeSql, changeArgs);
+            }
             acquired.countDown();
             awaitRelease();
         }));
     }
 
     /**
-     * {@code lockSql}(예: {@code select id from products where id = ? for update})로 잠금을 쥐고 {@code changeSql} 을
-     * 같은 트랜잭션에서 수행한 뒤, {@link #release()} 를 부를 때까지 commit 하지 않고 기다린다. 잠금을 쥘 때까지 기다린다.
+     * {@code lockSql}(예: {@code select id from products where id = ? for update})로 잠금을 쥐고 {@code changeSql}(없으면
+     * {@code null})을 같은 트랜잭션에서 수행한 뒤, {@link #release()} 를 부를 때까지 commit 하지 않고 기다린다. 잠금을 쥘 때까지 기다린다.
      */
     public static HeldRowLock acquire(
         PlatformTransactionManager transactionManager, JdbcTemplate jdbcTemplate,
@@ -66,6 +69,7 @@ public final class HeldRowLock implements AutoCloseable {
 
     /** 쥐고 있던 잠금을 풀고 변경을 commit 한다. */
     public void release() {
+        releaseRequested = true;
         releaseSignal.countDown();
         try {
             transaction.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -77,11 +81,19 @@ public final class HeldRowLock implements AutoCloseable {
         }
     }
 
-    /** 실패한 테스트에서도 잠금이 남지 않도록 풀고 스레드를 정리한다. */
+    /**
+     * 실패한 테스트에서도 잠금이 남지 않도록 풀고 스레드를 정리한다. {@link #release()} 를 부르기 전에 잠금을 쥔 트랜잭션이
+     * 스스로 끝났다면(제한 시간 초과) 그 사이의 결과는 잠금이 걸린 상태가 아니었으므로 테스트를 실패시킨다.
+     */
     @Override
     public void close() {
+        boolean endedOnItsOwn = !releaseRequested && transaction.isDone();
+        releaseRequested = true;
         releaseSignal.countDown();
         executor.shutdownNow();
+        if (endedOnItsOwn) {
+            throw new AssertionError("잠금을 쥔 트랜잭션이 release 전에 끝났다. 그동안의 결과는 잠금이 걸린 상태가 아니었다.");
+        }
     }
 
     private void awaitRelease() {

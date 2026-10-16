@@ -75,6 +75,14 @@ public final class ConcurrentRequests {
      * 모두 끝난 뒤 결과를 돌려준다. 잠금을 쥔 테스트 트랜잭션을 푸는 데 쓴다. 서비스 호출 안에는 개입하지 않는다.
      */
     public static Results run(List<Runnable> requests, Runnable afterAllEntered) {
+        return run(requests, afterAllEntered, RESULT_TIMEOUT_SECONDS);
+    }
+
+    /**
+     * {@link #run(List, Runnable)} 와 같지만 요청마다 결과를 기다리는 제한 시간을 정한다. 잠금이 걸려 있는 동안에도 요청이
+     * 막히지 않고 끝나야 하는 검증에서 짧게 준다. 제한 시간을 넘기면 업무 거절로 세지 않고 테스트를 실패시킨다.
+     */
+    public static Results run(List<Runnable> requests, Runnable afterAllEntered, long resultTimeoutSeconds) {
         int count = requests.size();
         ExecutorService executor = Executors.newFixedThreadPool(count);
         CountDownLatch ready = new CountDownLatch(count);
@@ -103,7 +111,7 @@ public final class ConcurrentRequests {
 
             List<Outcome> outcomes = new ArrayList<>();
             for (Future<Outcome> future : futures) {
-                outcomes.add(future.get(RESULT_TIMEOUT_SECONDS, TimeUnit.SECONDS));
+                outcomes.add(future.get(resultTimeoutSeconds, TimeUnit.SECONDS));
             }
             return new Results(outcomes);
         } catch (TimeoutException e) {

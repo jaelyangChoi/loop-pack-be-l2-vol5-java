@@ -32,6 +32,11 @@ public class BrandRepositoryImpl implements BrandRepository {
     }
 
     @Override
+    public Optional<Brand> findActiveForShare(Long id) {
+        return brandJpaRepository.findActiveForShare(id);
+    }
+
+    @Override
     public Page<Brand> findAllActive(Pageable pageable) {
         return brandJpaRepository.findAllByDeletedAtIsNullOrderByIdDesc(pageable);
     }

@@ -20,6 +20,10 @@ public interface BrandJpaRepository extends JpaRepository<Brand, Long> {
     @Query("select b from Brand b where b.id = :id and b.deletedAt is null")
     Optional<Brand> findActiveForUpdate(@Param("id") Long id);
 
+    @Lock(LockModeType.PESSIMISTIC_READ)
+    @Query("select b from Brand b where b.id = :id and b.deletedAt is null")
+    Optional<Brand> findActiveForShare(@Param("id") Long id);
+
     Page<Brand> findAllByDeletedAtIsNullOrderByIdDesc(Pageable pageable);
 
     List<Brand> findAllByIdInAndDeletedAtIsNull(Collection<Long> ids);
