@@ -351,7 +351,9 @@ AdminBrandController → AdminBrandFacade.delete(brandId)   ← @Transactional �
 ### D-29. 실패는 테스트 구성의 저장 경계에서 주입한다
 
 - **상황**: rollback은 최소 한 번의 실제 변경 SQL이 나간 뒤 다음 단계가 실패해야 검증된다. 앞 단계를 mock하면 DB rollback을 볼 수 없다.
-- **결정**: 테스트에서만 Hibernate `StatementInspector`로 N번째 변경 문장에 예외를 던진다. 서비스 트랜잭션 종료 후 새 경계에서 재조회한다.
+- **결정**: 테스트에서만 Hibernate `StatementInspector`(`FailingStatementInspector`)로 지정한 접두사의 N번째 변경 문장에 예외를 던진다. 서비스 트랜잭션 종료 후 영속성 컨텍스트를 거치지 않는 `JdbcTemplate`으로 새로 읽는다. 등록은 `@SpringBootTest(properties = "spring.jpa.properties.hibernate.session_factory.statement_inspector=…")`로 해당 테스트 클래스에만 한다.
+- **실측 (브랜드 일괄 삭제, 구현 완료)**: 동작을 확인했다. 첫 `update products`에서 실패시키면 그 앞에 `update brands`가 실제로 전송되어 있었고(inspector 기록으로 assertion), 예외는 Facade 밖으로 전달되었으며, 브랜드·상품이 모두 변경 전 상태로 남았다. 예외는 감싸져 나올 수 있어 원인 사슬에 주입한 예외가 있는지로 확인한다.
+- **배치와의 관계**: 현재 `hibernate.jdbc.batch_size`가 꺼져 있다. 나중에 켜면 같은 SQL의 UPDATE가 묶여 "N번째 상품 UPDATE"라는 지점이 사라질 수 있으므로, 실패 지점을 *첫 번째* 상품 UPDATE로 두고 앞선 변경 SQL이 나갔는지 기록으로 확인한다.
 - **근거**: 운영 코드를 건드리지 않고 실제 SQL 전송 뒤에 실패할 수 있다. 테스트 메서드의 자동 rollback과 구분하려고 테스트를 부모 트랜잭션으로 감싸지 않는다.
 - **비용**: Hibernate 내부 확장점에 의존하며 문장 문자열 매칭이 느슨할 수 있다.
 - **재검토 조건**: 확장점이 동작하지 않으면 repository 구현을 테스트 설정에서 감싸는 방식을 보고하고 정한다.
@@ -365,8 +367,8 @@ AdminBrandController → AdminBrandFacade.delete(brandId)   ← @Transactional �
 |---|---|
 | 잠금 대기 한도를 짧게 두는 방법. DB 독립적인 JPA 표준 `jakarta.persistence.lock.timeout` hint를 먼저 시도하고, 방언이 무시하면 한계로 기록한다. 세션 변수 `innodb_lock_wait_timeout`·커넥션 설정은 마지막 수단이다 | Hibernate 6.x와 MySQL 8.0 공식 문서, 실측. MySQL에는 밀리초 대기 구문이 없어 hint가 적용되지 않을 수 있다 |
 | Hibernate가 MySQL 8.0에서 `PESSIMISTIC_READ`를 `for share`로 생성하는지 | 생성 SQL 로그로 확인 |
-| `IN … ORDER BY id FOR UPDATE`의 실제 잠금 범위와 실행 계획 | `EXPLAIN`과 `performance_schema.data_locks` 조회 |
-| `StatementInspector`로 변경 문장 실패 주입이 되는지 | 구현 첫 단계에서 확인 |
+| `IN … ORDER BY id FOR UPDATE`의 실제 잠금 범위와 실행 계획 | `EXPLAIN`과 `performance_schema.data_locks` 조회. 브랜드 삭제의 `where brand_id = ? and deleted_at is null order by id for update`는 SQL에 `for update`와 `order by id`가 붙는 것까지 확인했고, 잠금 범위는 미확인 |
+| ~~`StatementInspector`로 변경 문장 실패 주입이 되는지~~ | **확인됨** (D-29 실측). 주문 확정 실패 주입(`update users` 등)은 태스크 2에서 같은 장치로 확인 |
 | 갭 잠금의 영향(이웃 브랜드 상품 등록 대기) | 필요하면 실측하고, 영향이 크면 문서에 한계로 기록 |
 
 이 문서의 성능·잠금 범위에 관한 서술은 *실측 전 가설*이며, 실측하지 않은 항목을 검증됐다고 쓰지 않는다.
