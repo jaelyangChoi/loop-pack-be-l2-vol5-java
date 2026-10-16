@@ -257,7 +257,7 @@ AdminBrandController → AdminBrandFacade.delete(brandId)   ← @Transactional �
 | `OrderConcurrencyTest` 포인트 경쟁 | 한 사용자 잔액 10,000, 서로 다른 4,000원 DRAFT 3개, 충분한 재고 | 확정 2 / 잔액 부족 1 / 기술 오류 0 / 최종 잔액 2,000. 거절된 주문의 재고 유지 |
 | `OrderConcurrencyTest` 충전과 결제 | 잔액 10,000에서 2,000 충전과 7,000 확정을 함께 실행 | 두 요청 성공 / 기술 오류 0 / 최종 잔액 5,000 |
 | `OrderConcurrencyTest` 같은 주문 확정 | 하나의 DRAFT를 여러 요청이 동시에 확정 | 성공 1, 나머지 `ORDER_ALREADY_CONFIRMED`, 재고·잔액이 한 번만 차감 |
-| 브랜드 삭제 vs 상품 등록 (선택 확장) | 브랜드 삭제와 같은 브랜드의 상품 등록을 동시에 실행 | 어느 순서든 *삭제 후 살아남은 상품이 없거나*, 등록이 `NOT_FOUND`로 거절. 삭제된 브랜드에 미삭제 상품이 남지 않음 |
+| 브랜드 삭제 vs 상품 등록 (선택 확장, `ProductCreateConcurrencyTest`) | ① 삭제 1개와 등록 4개를 동시에 실행(20회 반복) ② 테스트 트랜잭션이 브랜드 삭제를 commit 하지 않은 채 쥔 상태에서 등록 ③ 브랜드 공유 잠금이 걸린 상태에서 등록 3개 ④ 상품 등록이 commit 하지 않은 채 쥔 상태에서 삭제 | ① 삭제된 브랜드 아래에 미삭제 상품이 남지 않음(등록은 삭제 앞에서 성공해 함께 삭제되거나 뒤에서 `NOT_FOUND`) ② 등록이 `NOT_FOUND`로 거절되고 상품이 만들어지지 않음 ③ 등록끼리 기다리지 않고 모두 성공 ④ 삭제가 등록을 기다린 뒤 새 상품까지 삭제 |
 | 관리자 재고 설정 vs 확정 | 같은 상품에 재고 설정 1개와 확정 5개를 동시에 실행 | 확정은 모두 성공, 재고는 15~20(설정이 잠금 순서의 어디에 오느냐). 설정 전 값(10 이하)으로 남지 않음. 재고 설정은 절대값을 쓰므로 확정과의 경쟁만으로는 잠금 누락이 드러나지 않는다 |
 | 관리자 수정·삭제·재고 설정이 동시에 commit 된 변경을 덮는지 (`AdminWriteStaleOverwriteTest`) | 테스트 트랜잭션이 상품·브랜드 행을 잠그고 재고 차감 또는 삭제를 수행한 채, 서비스 요청을 줄 세운 뒤 풀어 줌 | 재고 차감은 유지(수정·삭제 뒤에도 9), 삭제는 되살아나지 않고 요청은 `NOT_FOUND`. 확정은 최신 재고(20)에서 차감, 삭제된 상품은 `PRODUCT_UNAVAILABLE` |
 | 브랜드 삭제 vs 확정 | 같은 브랜드 상품의 확정과 삭제를 동시에 실행 | 확정이 먼저면 삭제 후 DRAFT가 아닌 CONFIRMED 주문이 유지, 삭제가 먼저면 `PRODUCT_UNAVAILABLE`. 상품이 되살아나지 않음 |
@@ -339,6 +339,7 @@ AdminBrandController → AdminBrandFacade.delete(brandId)   ← @Transactional �
   - 상품 등록은 브랜드를 `FOR SHARE`로 읽어 삭제(X)와 직렬화하고, 등록끼리는 동시에 진행한다.
 - **근거**: 순환 대기가 생기려면 서로 다른 순서가 필요하다 (2-3). 브랜드 행이 문지기라서 삭제와 등록 사이의 "삭제 후 미삭제 상품이 남는" 경쟁이 닫히고, 상품 INSERT가 삭제의 갭 잠금과 엇갈리지 않는다.
 - **비용**: 새 경로는 이 순서를 지켜야 한다. RR의 보조 인덱스 범위 잠금 때문에 같은 갭을 향한 INSERT가 잠깐 기다릴 수 있다.
+- **실측**: 잠금을 적용하기 전에는 삭제 1개와 등록 4개를 동시에 실행한 20회 중 8회에서 삭제된 브랜드 아래에 미삭제 상품 4개가 남았다(week2 D-16이 넘긴 한계의 재현). 공유 잠금을 적용하자 20회 모두 남지 않았고, 일반 조회로 되돌리면 다시 실패한다. 공유 잠금 대신 배타 잠금으로 바꾸면 "등록끼리 기다리지 않는다" 테스트가 5초 제한 시간을 넘겨 실패한다.
 - **재검토 조건**: 잠금을 둘 이상 잡는 유스케이스가 늘어나면 순서 표를 갱신하고 교착 테스트를 추가한다. 주문과 브랜드를 함께 잡는 유스케이스가 생겨도 이 순서(주문 먼저)를 그대로 따른다.
 - **기각한 대안**: 상품 등록의 `FOR UPDATE`(같은 브랜드의 등록끼리 서로 기다림), 품목 순서대로 하나씩 잠그기(순서가 요청마다 달라 교착).
 
@@ -370,7 +371,7 @@ AdminBrandController → AdminBrandFacade.delete(brandId)   ← @Transactional �
 | 항목 | 확인 방법 |
 |---|---|
 | 잠금 대기 한도를 짧게 두는 방법. DB 독립적인 JPA 표준 `jakarta.persistence.lock.timeout` hint를 먼저 시도하고, 방언이 무시하면 한계로 기록한다. 세션 변수 `innodb_lock_wait_timeout`·커넥션 설정은 마지막 수단이다 | Hibernate 6.x와 MySQL 8.0 공식 문서, 실측. MySQL에는 밀리초 대기 구문이 없어 hint가 적용되지 않을 수 있다 |
-| Hibernate가 MySQL 8.0에서 `PESSIMISTIC_READ`를 `for share`로 생성하는지 | 생성 SQL 로그로 확인 |
+| ~~Hibernate가 MySQL 8.0에서 `PESSIMISTIC_READ`를 `for share`로 생성하는지~~ | **확인됨**. 상품 등록의 브랜드 조회가 `... where id=? and deleted_at is null for share`로 나가고, 삭제의 브랜드 조회는 `for update`로 나간다 |
 | `IN … ORDER BY id FOR UPDATE`의 실제 잠금 범위와 실행 계획 | `EXPLAIN`과 `performance_schema.data_locks` 조회. 브랜드 삭제의 `where brand_id = ? and deleted_at is null order by id for update`는 SQL에 `for update`와 `order by id`가 붙는 것까지 확인했고, 잠금 범위는 미확인 |
 | ~~`StatementInspector`로 변경 문장 실패 주입이 되는지~~ | **확인됨** (D-29 실측). 주문 확정도 같은 장치로 확인: 재고 UPDATE가 전송된 뒤 첫 `update users`에서 실패시키면 재고·잔액·상태·결제 결과가 모두 변경 전으로 돌아간다 |
 | 갭 잠금의 영향(이웃 브랜드 상품 등록 대기) | 필요하면 실측하고, 영향이 크면 문서에 한계로 기록 |
