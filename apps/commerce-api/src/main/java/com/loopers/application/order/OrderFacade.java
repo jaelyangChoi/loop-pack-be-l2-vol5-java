@@ -67,11 +67,13 @@ public class OrderFacade {
      */
     @Transactional
     public OrderInfo confirm(Long userId, Long orderId) {
-        Order order = orderService.getMine(orderId, userId);
-        User user = userService.get(userId);
+        // 잠금 순서는 주문 → 상품(id 오름차순) → 사용자다 (D-27). 각 행은 트랜잭션에서 처음 읽을 때 잠가서 낡은 값으로
+        // 판단하지 않는다. 사용자 조회는 필터가 존재를 보장해 실패하지 않으므로 상품 뒤로 옮겨도 오류 우선순위는 같다.
+        Order order = orderService.getMineForUpdate(orderId, userId);
         order.ensureConfirmable(); // 이미 확정된 주문이 재고·잔액 오류로 보이지 않게 먼저 거절한다
 
         deductStock(order);
+        User user = userService.getForUpdate(userId);
         user.payPoint(order.getTotalAmount());
         order.confirm(new PaymentResult(order.getTotalAmount(), user.getPointBalance().balance()));
         return OrderInfo.from(order);
@@ -95,7 +97,7 @@ public class OrderFacade {
 
     // 주문한 상품이 모두 살아 있는지 확인한 뒤 품목마다 재고를 차감한다.
     private void deductStock(Order order) {
-        Map<Long, Product> products = productService.getAllActiveByIds(order.productIds());
+        Map<Long, Product> products = productService.getAllActiveByIdsForUpdate(order.productIds());
         requireAllAvailable(order, products);
         order.getItems().forEach(item -> products.get(item.getProductId()).decreaseStock(item.getQuantity()));
     }

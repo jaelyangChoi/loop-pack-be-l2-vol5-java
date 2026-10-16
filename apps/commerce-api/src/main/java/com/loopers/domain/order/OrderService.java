@@ -38,6 +38,14 @@ public class OrderService {
         return orderRepository.findByIdAndUserId(orderId, userId).orElseThrow(OrderService::notFound);
     }
 
+    /**
+     * 본인의 주문을 잠그고 조회한다. 없음·타인의 주문 처리는 {@link #getMine} 과 같다. 주문 상태를 바꾸는 유스케이스(확정)의
+     * 첫 주문 조회로 쓴다.
+     */
+    public Order getMineForUpdate(Long orderId, Long userId) {
+        return orderRepository.findByIdAndUserIdForUpdate(orderId, userId).orElseThrow(OrderService::notFound);
+    }
+
     private static CoreException notFound() {
         return new CoreException(ErrorType.NOT_FOUND, "주문을 찾을 수 없습니다.");
     }

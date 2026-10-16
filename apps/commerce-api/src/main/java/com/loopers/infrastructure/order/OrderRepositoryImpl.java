@@ -20,6 +20,11 @@ public class OrderRepositoryImpl implements OrderRepository {
     }
 
     @Override
+    public Optional<Order> findByIdAndUserIdForUpdate(Long id, Long userId) {
+        return orderJpaRepository.findByIdAndUserIdForUpdate(id, userId);
+    }
+
+    @Override
     public Optional<Order> findByIdAndUserId(Long id, Long userId) {
         return orderJpaRepository.findByIdAndUserId(id, userId);
     }

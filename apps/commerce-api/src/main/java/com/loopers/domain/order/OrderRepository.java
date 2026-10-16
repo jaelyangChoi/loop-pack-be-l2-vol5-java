@@ -11,6 +11,12 @@ public interface OrderRepository {
     /** 주문자가 {@code userId} 인 주문만 조회한다. 다른 사용자의 주문은 없는 주문과 구분하지 않는다. */
     Optional<Order> findByIdAndUserId(Long id, Long userId);
 
+    /**
+     * 주문자가 {@code userId} 인 주문을 배타 잠금(FOR UPDATE)으로 조회한다. 같은 주문을 동시에 확정하는 요청은 먼저 잡은
+     * 트랜잭션이 끝날 때까지 기다린다. 반드시 Facade 의 트랜잭션 안에서, 이 주문을 처음 읽는 조회로 호출한다.
+     */
+    Optional<Order> findByIdAndUserIdForUpdate(Long id, Long userId);
+
     /** 주문자와 무관하게 id 로 조회한다. 관리자 조회용이다. */
     Optional<Order> findById(Long id);
 

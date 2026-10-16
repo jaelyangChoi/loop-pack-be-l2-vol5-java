@@ -20,6 +20,11 @@ public interface ProductJpaRepository extends JpaRepository<Product, Long> {
 
     Page<Product> findAllByDeletedAtIsNullOrderByIdDesc(Pageable pageable);
 
+    // 여러 상품을 id 오름차순으로 한 번에 잠근다. 품목 순서대로 하나씩 잠그면 요청마다 순서가 달라 교착이 생긴다.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Product p where p.id in :ids and p.deletedAt is null order by p.id")
+    List<Product> findAllActiveByIdsForUpdate(@Param("ids") Collection<Long> ids);
+
     // 잠금 순서를 id 오름차순으로 고정해 같은 상품들을 잠그는 요청끼리 서로 엇갈리지 않게 한다.
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from Product p where p.brandId = :brandId and p.deletedAt is null order by p.id")

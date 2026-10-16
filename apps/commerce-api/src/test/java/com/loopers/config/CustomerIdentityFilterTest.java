@@ -158,5 +158,10 @@ class CustomerIdentityFilterTest {
         public Optional<User> find(Long id) {
             return existingIds.contains(id) ? Optional.of(User.create()) : Optional.empty();
         }
+
+        @Override
+        public Optional<User> findForUpdate(Long id) {
+            throw new UnsupportedOperationException("필터는 사용자를 잠그지 않는다.");
+        }
     }
 }

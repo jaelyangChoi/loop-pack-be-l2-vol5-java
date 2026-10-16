@@ -16,6 +16,12 @@ public interface ProductRepository {
     /** id 목록에 해당하는 삭제되지 않은 상품을 한 번에 조회한다. 삭제됐거나 없는 id 는 결과에 없다. */
     List<Product> findAllActiveByIds(Collection<Long> ids);
 
+    /**
+     * id 목록에 해당하는 삭제되지 않은 상품을 id 오름차순으로 한 번에 배타 잠금(FOR UPDATE)하며 조회한다. 삭제됐거나 없는
+     * id 는 결과에 없다. 반드시 Facade 의 트랜잭션 안에서, 이 상품들을 처음 읽는 조회로 호출한다.
+     */
+    List<Product> findAllActiveByIdsForUpdate(Collection<Long> ids);
+
     /** 삭제되지 않은 상품을 id 내림차순으로 조회한다. 정렬은 Pageable 이 아니라 구현이 고정한다. */
     Page<Product> findAllActive(Pageable pageable);
 
