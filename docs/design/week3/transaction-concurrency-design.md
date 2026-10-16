@@ -117,7 +117,7 @@ InnoDB는 PostgreSQL의 REPEATABLE READ와 달라서 **갱신 유실을 감지�
 **남는 위험**
 
 1. 상품을 품목 순서대로 하나씩 잠그면 순서가 깨진다. 반드시 정렬된 `IN` 조회 하나로 잡는다.
-2. RR에서 `brand_id` 보조 인덱스 범위 잠금은 next-key·갭 잠금을 잡는다. 이웃 브랜드에 상품을 넣는 요청이 잠깐 기다릴 수 있다. 순환이 아니라 불필요한 대기다.
+2. 브랜드 삭제의 상품 잠금(`brand_id` 보조 인덱스 범위, RR)은 next-key·갭 잠금을 잡는다. 실측(`LockBehaviorCharacterizationTest`): 같은 브랜드의 상품 수정·등록과 **직전 브랜드(id가 바로 앞)의 상품 등록**이 삭제가 끝날 때까지 기다린다. 다음 브랜드나 먼 브랜드의 등록, 다른 브랜드 상품 수정, 일반 조회는 기다리지 않는다. 순환이 아니라 삭제 한 건 동안의 불필요한 대기다. 확정의 `IN` 조회는 기본 키로 찾은 행만 잠가 인접 상품과 등록을 막지 않는다.
 3. 나중에 추가되는 경로가 전역 순서를 어기면 교착이 생긴다. 이 표를 규칙으로 유지한다.
 4. 가장 큰 비용은 교착보다 **커넥션 점유**다. 한 상품에 요청이 몰리면 대기 요청이 풀을 비워 무관한 요청이 커넥션 획득 대기 3초를 넘길 수 있다.
 
@@ -125,7 +125,7 @@ InnoDB는 PostgreSQL의 REPEATABLE READ와 달라서 **갱신 유실을 감지�
 
 - InnoDB는 교착을 즉시 감지해 한쪽을 rollback한다. 잠금 대기 초과는 `innodb_lock_wait_timeout`(기본 50초)을 따른다.
 - 교착·대기 초과는 **기술 오류**로 집계하고 `OUT_OF_STOCK`·`INSUFFICIENT_POINT`로 바꾸지 않는다. 이 둘은 복구 방법이 다르다 (D-28).
-- 대기 한도를 기본 50초보다 짧게 두되 방법은 열린 항목이다 (7장).
+- 대기 한도는 기본 50초이며 이번 범위에서는 바꾸지 않는다. 실측 결과와 적용 방법은 D-28과 7장에 있다. 커넥션 획득 대기가 3초라서, 잠금을 기다리는 요청이 풀을 비우면 무관한 요청도 3초 뒤 실패할 수 있다는 점이 한계다.
 
 ---
 
@@ -349,6 +349,7 @@ AdminBrandController → AdminBrandFacade.delete(brandId)   ← @Transactional �
 - **결정**: `OUT_OF_STOCK`·`INSUFFICIENT_POINT`는 잠금 후 현재 상태를 판단한 결과에만 쓴다. 교착·대기 초과·커넥션 획득 실패는 기술 오류(`INTERNAL_ERROR` 계열)로 전파하고 테스트가 별도로 집계한다. 재시도는 하지 않는다.
 - **근거**: 업무 거절과 기술 실패는 복구 방법이 다르다. 기술 오류를 품절로 바꾸면 운영 원인을 잃고, 테스트의 "기술 오류 0" 기대값이 의미를 잃는다.
 - **비용**: 드문 교착이 사용자에게 500으로 보일 수 있다.
+- **대기 한도 (실측)**: 기술 오류로 전파되는 잠금 대기 초과는 기본 50초 뒤에 나타난다. MySQL에서 JPA 힌트로는 유한한 대기를 줄 수 없고(`lock.timeout=0`만 NOWAIT로 동작, 그 외 값은 무시), 세션 변수로만 가능하다(7장). 이번 범위에서는 설정을 바꾸지 않고 한계로 둔다.
 - **재검토 조건**: 운영에서 교착이 관찰되면 새 트랜잭션에서 횟수·대기 한도를 둔 재시도를 검토한다.
 - **기각한 대안**: 모든 실패를 `OUT_OF_STOCK`으로 변환, 무제한 재시도.
 
@@ -370,10 +371,10 @@ AdminBrandController → AdminBrandFacade.delete(brandId)   ← @Transactional �
 
 | 항목 | 확인 방법 |
 |---|---|
-| 잠금 대기 한도를 짧게 두는 방법. DB 독립적인 JPA 표준 `jakarta.persistence.lock.timeout` hint를 먼저 시도하고, 방언이 무시하면 한계로 기록한다. 세션 변수 `innodb_lock_wait_timeout`·커넥션 설정은 마지막 수단이다 | Hibernate 6.x와 MySQL 8.0 공식 문서, 실측. MySQL에는 밀리초 대기 구문이 없어 hint가 적용되지 않을 수 있다 |
+| ~~잠금 대기 한도를 짧게 두는 방법~~ | **실측 완료, 설정은 적용하지 않음**. JPA 표준 힌트 `jakarta.persistence.lock.timeout`은 MySQL 8.0에서 `0`(`for update nowait`로 즉시 `LockTimeoutException`)만 의미가 있고, 그 외 값(예: 500)은 SQL에 아무 절도 붙지 않아 무시된다(보유자가 풀 때까지 기다림). 유한한 대기는 MySQL 세션 변수 `innodb_lock_wait_timeout`으로만 가능하며, 줄이면 그 시간 뒤 `PessimisticLockException`(근본 원인 "Lock wait timeout exceeded")으로 실패한다. 적용 방법 후보는 jdbc-url의 `sessionVariables=innodb_lock_wait_timeout=N` 또는 풀의 `connection-init-sql`이다. 운영 튜닝이며 `modules` 공유 설정이라 이번 범위에 넣지 않았다 |
 | ~~Hibernate가 MySQL 8.0에서 `PESSIMISTIC_READ`를 `for share`로 생성하는지~~ | **확인됨**. 상품 등록의 브랜드 조회가 `... where id=? and deleted_at is null for share`로 나가고, 삭제의 브랜드 조회는 `for update`로 나간다 |
-| `IN … ORDER BY id FOR UPDATE`의 실제 잠금 범위와 실행 계획 | `EXPLAIN`과 `performance_schema.data_locks` 조회. 브랜드 삭제의 `where brand_id = ? and deleted_at is null order by id for update`는 SQL에 `for update`와 `order by id`가 붙는 것까지 확인했고, 잠금 범위는 미확인 |
+| ~~`IN … ORDER BY id FOR UPDATE`의 실제 잠금 범위와 실행 계획~~ | **행동으로 확인**. 앱 계정은 `performance_schema.data_locks`를 읽을 수 없어(권한 거부) 별도 세션이 잠금 대기를 1초로 줄이고 문장을 시도해 막히는지로 관찰했다. `EXPLAIN`: 삭제의 상품 조회는 `idx_products_brand_id`(`type=ref`), 확정의 `IN` 조회는 `PRIMARY`(`type=range`). 범위는 2-3의 실측과 같다 |
 | ~~`StatementInspector`로 변경 문장 실패 주입이 되는지~~ | **확인됨** (D-29 실측). 주문 확정도 같은 장치로 확인: 재고 UPDATE가 전송된 뒤 첫 `update users`에서 실패시키면 재고·잔액·상태·결제 결과가 모두 변경 전으로 돌아간다 |
-| 갭 잠금의 영향(이웃 브랜드 상품 등록 대기) | 필요하면 실측하고, 영향이 크면 문서에 한계로 기록 |
+| ~~갭 잠금의 영향(이웃 브랜드 상품 등록 대기)~~ | **실측 완료**. 삭제 중 직전 브랜드의 상품 등록만 기다린다(2-3). 영향은 삭제 한 건 동안으로 제한되어 한계로만 기록한다 |
 
-이 문서의 성능·잠금 범위에 관한 서술은 *실측 전 가설*이며, 실측하지 않은 항목을 검증됐다고 쓰지 않는다.
+이 문서의 성능·잠금 범위에 관한 서술 중 위 표에서 취소선으로 표시하지 않은 것은 *실측 전 가설*이며, 실측하지 않은 항목을 검증됐다고 쓰지 않는다. 잠금 범위의 실측은 InnoDB 8.0 동작이므로 MySQL 버전을 바꾸면 `LockBehaviorCharacterizationTest`로 다시 확인한다.
