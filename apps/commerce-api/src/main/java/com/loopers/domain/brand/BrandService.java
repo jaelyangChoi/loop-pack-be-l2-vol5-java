@@ -23,6 +23,12 @@ public class BrandService {
             .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 브랜드입니다."));
     }
 
+    /** 삭제되지 않은 브랜드를 잠그고 조회한다. 브랜드를 바꾸는 유스케이스의 첫 조회로 쓴다. */
+    public Brand getForUpdate(Long brandId) {
+        return brandRepository.findActiveForUpdate(brandId)
+            .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 브랜드입니다."));
+    }
+
     public Brand create(String name) {
         return brandRepository.save(Brand.create(name));
     }

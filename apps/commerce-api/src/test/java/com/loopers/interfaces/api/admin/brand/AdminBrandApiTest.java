@@ -320,20 +320,21 @@ class AdminBrandApiTest {
                 .andExpect(jsonPath("$.meta.errorCode").value("NOT_FOUND"));
         }
 
-        @DisplayName("삭제되지 않은 상품이 연결되어 있으면 409 CONFLICT 이고, 브랜드는 그대로 조회된다.")
+        @DisplayName("삭제되지 않은 상품이 연결되어 있으면 재고가 0이어도 200 성공이고, 연결 상품도 함께 삭제된다.")
         @Test
-        void returnsConflict_andKeepsBrand_whenActiveProductExists() throws Exception {
+        void deletesBrandWithLinkedProducts() throws Exception {
             Brand brand = saveBrand("루퍼스");
-            productRepository.save(Product.create(brand.getId(), "품절 상품", new Money(89_000), new Stock(0)));
+            Product soldOut = productRepository.save(
+                Product.create(brand.getId(), "품절 상품", new Money(89_000), new Stock(0)));
 
             mvc.perform(delete(BRANDS + "/" + brand.getId()).with(admin()).with(csrf()))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.meta.errorCode").value("CONFLICT"))
-                .andExpect(jsonPath("$.meta.message")
-                    .value("연결된 상품이 있어 브랜드를 삭제할 수 없습니다. 상품을 먼저 삭제해 주세요."));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.meta.result").value("SUCCESS"));
 
             mvc.perform(get(BRANDS + "/" + brand.getId()).with(admin()))
-                .andExpect(status().isOk());
+                .andExpect(status().isNotFound());
+            mvc.perform(get("/api-admin/v1/products/" + soldOut.getId()).with(admin()))
+                .andExpect(status().isNotFound());
         }
 
         @DisplayName("연결된 상품을 삭제한 뒤에는 브랜드를 삭제할 수 있다.")

@@ -19,6 +19,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Optional;
 
@@ -36,6 +38,9 @@ class ProductRepositoryTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @Autowired
     private DatabaseCleanUp databaseCleanUp;
@@ -139,47 +144,50 @@ class ProductRepositoryTest {
         }
     }
 
-    @DisplayName("브랜드에 삭제되지 않은 상품이 있는지 확인할 때,")
+    @DisplayName("브랜드의 삭제되지 않은 상품을 잠그고 조회할 때,")
     @Nested
-    class ExistsActiveByBrandId {
-        @DisplayName("삭제되지 않은 상품이 있으면 true 이다.")
-        @Test
-        void returnsTrue_whenActiveProductExists() {
-            // arrange
-            saveProduct(1L, "러닝화", 10);
-
-            // act & assert
-            assertThat(productRepository.existsActiveByBrandId(1L)).isTrue();
+    class FindAllActiveByBrandIdForUpdate {
+        // 잠금 조회는 트랜잭션 안에서만 호출할 수 있다. 운영에서는 Facade 의 @Transactional 이 그 역할을 한다.
+        private List<Product> findForUpdate(Long brandId) {
+            return new TransactionTemplate(transactionManager)
+                .execute(status -> productRepository.findAllActiveByBrandIdForUpdate(brandId));
         }
 
-        @DisplayName("재고가 0인 상품도 삭제되지 않았다면 true 이다.")
+        @DisplayName("재고가 0인 상품도 포함해 id 오름차순으로 반환한다.")
         @Test
-        void returnsTrue_whenActiveProductHasNoStock() {
+        void returnsActiveProducts_includingNoStock_orderedById() {
             // arrange
-            saveProduct(1L, "품절", 0);
+            Product first = saveProduct(1L, "러닝화", 10);
+            Product second = saveProduct(1L, "품절", 0);
+            Product third = saveProduct(1L, "양말", 3);
 
-            // act & assert
-            assertThat(productRepository.existsActiveByBrandId(1L)).isTrue();
+            // act
+            List<Product> products = findForUpdate(1L);
+
+            // assert
+            assertThat(products).extracting(Product::getId)
+                .containsExactly(first.getId(), second.getId(), third.getId());
         }
 
-        @DisplayName("삭제된 상품만 있으면 false 이다.")
+        @DisplayName("삭제된 상품과 다른 브랜드의 상품은 제외한다.")
         @Test
-        void returnsFalse_whenOnlyDeletedProductsExist() {
+        void excludesDeletedAndOtherBrandProducts() {
             // arrange
+            Product active = saveProduct(1L, "러닝화", 10);
             saveDeletedProduct(1L, "삭제됨");
-
-            // act & assert
-            assertThat(productRepository.existsActiveByBrandId(1L)).isFalse();
-        }
-
-        @DisplayName("다른 브랜드의 상품은 영향을 주지 않는다.")
-        @Test
-        void returnsFalse_whenOnlyOtherBrandProductsExist() {
-            // arrange
             saveProduct(2L, "다른 브랜드", 10);
 
-            // act & assert
-            assertThat(productRepository.existsActiveByBrandId(1L)).isFalse();
+            // act
+            List<Product> products = findForUpdate(1L);
+
+            // assert
+            assertThat(products).extracting(Product::getId).containsExactly(active.getId());
+        }
+
+        @DisplayName("연결된 상품이 없으면 빈 목록이다.")
+        @Test
+        void returnsEmpty_whenNoProducts() {
+            assertThat(findForUpdate(1L)).isEmpty();
         }
     }
 

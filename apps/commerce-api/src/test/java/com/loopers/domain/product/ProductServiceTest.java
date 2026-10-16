@@ -142,23 +142,6 @@ class ProductServiceTest {
         }
     }
 
-    @DisplayName("브랜드에 삭제되지 않은 상품이 있는지 확인할 때,")
-    @Nested
-    class HasActiveProducts {
-        @DisplayName("삭제되지 않은 상품이 있으면 true, 없거나 삭제된 상품뿐이면 false 이다.")
-        @Test
-        void returnsWhetherActiveProductExists() {
-            // arrange
-            saveProduct(1L, "러닝화");
-            saveDeletedProduct(2L, "삭제됨");
-
-            // act & assert
-            assertThat(productService.hasActiveProducts(1L)).isTrue();
-            assertThat(productService.hasActiveProducts(2L)).isFalse();
-            assertThat(productService.hasActiveProducts(3L)).isFalse();
-        }
-    }
-
     @DisplayName("사용자가 좋아요한 상품 목록을 조회할 때,")
     @Nested
     class GetLikedList {

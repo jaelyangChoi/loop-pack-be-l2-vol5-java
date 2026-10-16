@@ -9,6 +9,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -46,7 +47,8 @@ public class ProductService {
         return productRepository.findAllActiveLikedBy(userId, pageable);
     }
 
-    public boolean hasActiveProducts(Long brandId) {
-        return productRepository.existsActiveByBrandId(brandId);
+    /** 브랜드의 삭제되지 않은 상품을 모두 잠그고 조회한다(id 오름차순, 재고 0 포함). 브랜드 삭제의 첫 상품 조회로 쓴다. */
+    public List<Product> getAllActiveByBrandForUpdate(Long brandId) {
+        return productRepository.findAllActiveByBrandIdForUpdate(brandId);
     }
 }

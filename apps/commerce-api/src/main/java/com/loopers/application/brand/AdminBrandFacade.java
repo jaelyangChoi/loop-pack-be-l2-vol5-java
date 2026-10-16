@@ -2,9 +2,8 @@ package com.loopers.application.brand;
 
 import com.loopers.domain.brand.Brand;
 import com.loopers.domain.brand.BrandService;
+import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductService;
-import com.loopers.support.error.CoreException;
-import com.loopers.support.error.ErrorType;
 import com.loopers.support.paging.PageRequests;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -35,11 +34,10 @@ public class AdminBrandFacade {
 
     @Transactional
     public void delete(Long brandId) {
-        Brand brand = brandService.get(brandId);
-        // 상품은 다른 Aggregate 라 연결 여부를 여기서 확인한다. 재고가 0이어도 삭제되지 않은 상품은 연결된 것이다.
-        if (productService.hasActiveProducts(brandId)) {
-            throw new CoreException(ErrorType.CONFLICT, "연결된 상품이 있어 브랜드를 삭제할 수 없습니다. 상품을 먼저 삭제해 주세요.");
-        }
+        // 브랜드를 먼저, 상품을 id 오름차순으로 잠근다 (전역 잠금 순서, D-27). 연결 상품은 재고 0이어도 함께 삭제한다.
+        // 상품은 다른 Aggregate 라 여기서 조합한다. 예외를 잡지 않으므로 중간에 실패하면 전체가 rollback 된다 (D-23).
+        Brand brand = brandService.getForUpdate(brandId);
+        productService.getAllActiveByBrandForUpdate(brandId).forEach(Product::delete);
         brand.delete();
     }
 

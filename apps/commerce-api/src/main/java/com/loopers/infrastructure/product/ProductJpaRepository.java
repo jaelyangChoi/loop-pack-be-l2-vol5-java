@@ -3,7 +3,9 @@ package com.loopers.infrastructure.product;
 import com.loopers.domain.product.Product;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -18,7 +20,10 @@ public interface ProductJpaRepository extends JpaRepository<Product, Long> {
 
     Page<Product> findAllByDeletedAtIsNullOrderByIdDesc(Pageable pageable);
 
-    boolean existsByBrandIdAndDeletedAtIsNull(Long brandId);
+    // 잠금 순서를 id 오름차순으로 고정해 같은 상품들을 잠그는 요청끼리 서로 엇갈리지 않게 한다.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Product p where p.brandId = :brandId and p.deletedAt is null order by p.id")
+    List<Product> findAllActiveByBrandIdForUpdate(@Param("brandId") Long brandId);
 
     // 고객 상품 목록 쿼리 3종(latest, price_asc, likes_desc).
     // - 정렬은 쿼리에 고정한다. 호출하는 쪽이 Pageable 에 Sort 를 실어도 반영하지 않으며, 동률은 모두 상품 id 내림차순이다.

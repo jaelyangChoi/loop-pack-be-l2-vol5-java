@@ -178,36 +178,21 @@ class AdminBrandFacadeTest {
             assertThat(missing.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
         }
 
-        @DisplayName("삭제되지 않은 상품이 연결되어 있으면 CONFLICT 로 거절하고, 브랜드는 그대로 남는다.")
+        @DisplayName("삭제되지 않은 상품이 연결되어 있으면 재고가 0이어도 함께 삭제한다.")
         @Test
-        void rejectsWithConflict_andKeepsBrand_whenActiveProductExists() {
+        void deletesLinkedProducts_includingNoStock() {
             // arrange
             Brand brand = saveBrand("루퍼스");
-            saveProduct(brand.getId(), 10, false);
+            Product inStock = saveProduct(brand.getId(), 10, false);
+            Product soldOut = saveProduct(brand.getId(), 0, false);
 
             // act
-            CoreException exception = assertThrows(CoreException.class, () -> adminBrandFacade.delete(brand.getId()));
+            adminBrandFacade.delete(brand.getId());
 
             // assert
-            assertThat(exception.getErrorType()).isEqualTo(ErrorType.CONFLICT);
-            assertThat(exception.getCustomMessage())
-                .isEqualTo("연결된 상품이 있어 브랜드를 삭제할 수 없습니다. 상품을 먼저 삭제해 주세요.");
-            assertThat(brandRepository.findActive(brand.getId())).isPresent();
-        }
-
-        @DisplayName("재고가 0인 상품이 연결되어 있어도 CONFLICT 로 거절한다.")
-        @Test
-        void rejectsWithConflict_whenActiveProductHasNoStock() {
-            // arrange
-            Brand brand = saveBrand("루퍼스");
-            saveProduct(brand.getId(), 0, false);
-
-            // act
-            CoreException exception = assertThrows(CoreException.class, () -> adminBrandFacade.delete(brand.getId()));
-
-            // assert
-            assertThat(exception.getErrorType()).isEqualTo(ErrorType.CONFLICT);
-            assertThat(brandRepository.findActive(brand.getId())).isPresent();
+            assertThat(brandRepository.findActive(brand.getId())).isEmpty();
+            assertThat(productRepository.findActive(inStock.getId())).isEmpty();
+            assertThat(productRepository.findActive(soldOut.getId())).isEmpty();
         }
 
         @DisplayName("연결된 상품을 모두 삭제하면 브랜드를 삭제할 수 있다.")
@@ -224,13 +209,13 @@ class AdminBrandFacadeTest {
             assertThat(brandRepository.findActive(brand.getId())).isEmpty();
         }
 
-        @DisplayName("다른 브랜드의 상품은 삭제를 막지 않는다.")
+        @DisplayName("다른 브랜드의 상품은 삭제하지 않는다.")
         @Test
-        void deletesBrand_whenOnlyOtherBrandProductsExist() {
+        void keepsOtherBrandProducts() {
             // arrange
             Brand brand = saveBrand("루퍼스");
             Brand other = saveBrand("다른 브랜드");
-            saveProduct(other.getId(), 10, false);
+            Product otherProduct = saveProduct(other.getId(), 10, false);
 
             // act
             adminBrandFacade.delete(brand.getId());
@@ -238,6 +223,7 @@ class AdminBrandFacadeTest {
             // assert
             assertThat(brandRepository.findActive(brand.getId())).isEmpty();
             assertThat(brandRepository.findActive(other.getId())).isPresent();
+            assertThat(productRepository.findActive(otherProduct.getId())).isPresent();
         }
     }
 
