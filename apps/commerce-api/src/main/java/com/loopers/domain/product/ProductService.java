@@ -25,6 +25,12 @@ public class ProductService {
             .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 상품입니다."));
     }
 
+    /** 삭제되지 않은 상품 하나를 잠그고 조회한다. 상품을 바꾸는 관리자 유스케이스의 첫 조회로 쓴다. */
+    public Product getForUpdate(Long productId) {
+        return productRepository.findActiveForUpdate(productId)
+            .orElseThrow(() -> new CoreException(ErrorType.NOT_FOUND, "존재하지 않는 상품입니다."));
+    }
+
     /** 여러 상품을 한 번에 조회해 id 로 찾을 수 있게 돌려준다. 삭제됐거나 없는 상품은 담기지 않는다. */
     public Map<Long, Product> getAllActiveByIds(Collection<Long> ids) {
         return productRepository.findAllActiveByIds(ids).stream()

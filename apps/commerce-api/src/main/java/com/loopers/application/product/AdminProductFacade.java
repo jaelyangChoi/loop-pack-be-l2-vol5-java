@@ -31,21 +31,22 @@ public class AdminProductFacade {
 
     @Transactional
     public ProductInfo update(Long productId, String name, long price) {
-        Product product = productService.get(productId);
+        // 변경 감지가 모든 컬럼을 쓰므로, 처음 읽을 때부터 잠가서 확정이 차감한 재고나 삭제 표시를 낡은 값으로 덮지 않는다 (D-24).
+        Product product = productService.getForUpdate(productId);
         product.update(name, new Money(price));
         return ProductInfo.from(product);
     }
 
     @Transactional
     public ProductInfo changeStock(Long productId, int stock) {
-        Product product = productService.get(productId);
+        Product product = productService.getForUpdate(productId);
         product.changeStock(stock);
         return ProductInfo.from(product);
     }
 
     @Transactional
     public void delete(Long productId) {
-        productService.get(productId).delete();
+        productService.getForUpdate(productId).delete();
     }
 
     @Transactional(readOnly = true)

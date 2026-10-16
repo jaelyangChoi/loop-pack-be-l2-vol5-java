@@ -27,7 +27,8 @@ public class AdminBrandFacade {
 
     @Transactional
     public BrandInfo update(Long brandId, String name) {
-        Brand brand = brandService.get(brandId);
+        // 변경 감지가 모든 컬럼을 쓰므로, 처음 읽을 때부터 잠가서 동시에 삭제된 브랜드를 되살리지 않는다 (D-24).
+        Brand brand = brandService.getForUpdate(brandId);
         brand.update(name);
         return BrandInfo.from(brand);
     }

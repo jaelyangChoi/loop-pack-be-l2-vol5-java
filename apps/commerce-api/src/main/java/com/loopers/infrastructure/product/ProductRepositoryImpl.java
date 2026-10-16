@@ -56,6 +56,11 @@ public class ProductRepositoryImpl implements ProductRepository {
     }
 
     @Override
+    public Optional<Product> findActiveForUpdate(Long id) {
+        return productJpaRepository.findActiveForUpdate(id);
+    }
+
+    @Override
     public List<Product> findAllActiveByIdsForUpdate(Collection<Long> ids) {
         // 빈 목록으로 IN 조회를 하면 DB 에 따라 문법 오류가 나므로 조회하지 않는다.
         if (ids.isEmpty()) {

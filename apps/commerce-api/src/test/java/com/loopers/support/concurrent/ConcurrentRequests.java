@@ -67,10 +67,19 @@ public final class ConcurrentRequests {
 
     /** 요청을 모두 동시에 출발시키고, 모두 끝난 뒤 결과를 돌려준다. */
     public static Results run(List<Runnable> requests) {
+        return run(requests, () -> { });
+    }
+
+    /**
+     * 요청을 모두 동시에 출발시키고, <b>모든 요청이 서비스 호출에 들어간 뒤</b> {@code afterAllEntered} 를 한 번 실행하고,
+     * 모두 끝난 뒤 결과를 돌려준다. 잠금을 쥔 테스트 트랜잭션을 푸는 데 쓴다. 서비스 호출 안에는 개입하지 않는다.
+     */
+    public static Results run(List<Runnable> requests, Runnable afterAllEntered) {
         int count = requests.size();
         ExecutorService executor = Executors.newFixedThreadPool(count);
         CountDownLatch ready = new CountDownLatch(count);
         CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch entered = new CountDownLatch(count);
         try {
             List<Future<Outcome>> futures = new ArrayList<>();
             for (Runnable request : requests) {
@@ -79,6 +88,7 @@ public final class ConcurrentRequests {
                     if (!start.await(READY_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
                         throw new IllegalStateException("출발 신호를 받지 못했다.");
                     }
+                    entered.countDown();
                     return execute(request);
                 }));
             }
@@ -86,6 +96,10 @@ public final class ConcurrentRequests {
                 throw new AssertionError("모든 요청 스레드가 제한 시간 안에 준비되지 않았다.");
             }
             start.countDown();
+            if (!entered.await(READY_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                throw new AssertionError("모든 요청이 제한 시간 안에 서비스 호출에 들어가지 않았다.");
+            }
+            afterAllEntered.run();
 
             List<Outcome> outcomes = new ArrayList<>();
             for (Future<Outcome> future : futures) {
