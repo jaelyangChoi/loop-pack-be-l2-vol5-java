@@ -1,0 +1,62 @@
+package com.loopers.application.product;
+
+import com.loopers.domain.brand.BrandService;
+import com.loopers.domain.common.Money;
+import com.loopers.domain.product.Product;
+import com.loopers.domain.product.ProductService;
+import com.loopers.domain.product.Stock;
+import com.loopers.support.paging.PageRequests;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * 관리자용 상품 유스케이스.
+ */
+@RequiredArgsConstructor
+@Component
+public class AdminProductFacade {
+
+    private final BrandService brandService;
+    private final ProductService productService;
+
+    @Transactional
+    public ProductInfo create(Long brandId, String name, long price, int stock) {
+        // 브랜드는 다른 Aggregate 라 존재 여부를 여기서 확인한다. 상품은 brandId 만 가진다.
+        // 공유 잠금으로 읽어 브랜드 삭제(배타 잠금)와 차례로 처리한다. 등록끼리는 서로 기다리지 않는다 (D-27).
+        brandService.getForShare(brandId);
+        Product product = productService.create(brandId, name, new Money(price), new Stock(stock));
+        return ProductInfo.from(product);
+    }
+
+    @Transactional
+    public ProductInfo update(Long productId, String name, long price) {
+        // 변경 감지가 모든 컬럼을 쓰므로, 처음 읽을 때부터 잠가서 확정이 차감한 재고나 삭제 표시를 낡은 값으로 덮지 않는다 (D-24).
+        Product product = productService.getForUpdate(productId);
+        product.update(name, new Money(price));
+        return ProductInfo.from(product);
+    }
+
+    @Transactional
+    public ProductInfo changeStock(Long productId, int stock) {
+        Product product = productService.getForUpdate(productId);
+        product.changeStock(stock);
+        return ProductInfo.from(product);
+    }
+
+    @Transactional
+    public void delete(Long productId) {
+        productService.getForUpdate(productId).delete();
+    }
+
+    @Transactional(readOnly = true)
+    public ProductInfo get(Long productId) {
+        return ProductInfo.from(productService.get(productId));
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ProductInfo> getList(int page, int size) {
+        return productService.getList(PageRequests.of(page, size)).map(ProductInfo::from);
+    }
+}
