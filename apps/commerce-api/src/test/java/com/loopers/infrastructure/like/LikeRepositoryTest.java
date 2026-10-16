@@ -179,5 +179,24 @@ class LikeRepositoryTest {
             // assert
             assertThat(count).isPositive();
         }
+
+        @DisplayName("기본키 컬럼 순서는 (product_id, user_id)이다.")
+        @Test
+        void hasPrimaryKeyOrderedByProductIdThenUserId() {
+            // 상품별 좋아요 수 집계(product_id 조건)가 기본키의 왼쪽 접두로 인덱스를 타는 것이 이 순서에 달려 있다.
+            // act & assert
+            assertThat(indexColumns("PRIMARY")).containsExactly("product_id", "user_id");
+        }
+
+        // 인덱스의 컬럼을 인덱스 안의 순서대로 돌려준다.
+        private List<String> indexColumns(String indexName) {
+            return jdbcTemplate.queryForList(
+                "select column_name from information_schema.statistics "
+                    + "where table_schema = database() and table_name = 'likes' and index_name = ? "
+                    + "order by seq_in_index",
+                String.class,
+                indexName
+            );
+        }
     }
 }

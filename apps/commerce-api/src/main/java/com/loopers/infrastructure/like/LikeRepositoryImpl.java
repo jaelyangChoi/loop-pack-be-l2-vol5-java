@@ -22,7 +22,7 @@ public class LikeRepositoryImpl implements LikeRepository {
 
     @Override
     public boolean exists(Long userId, Long productId) {
-        return likeJpaRepository.existsById(new LikeId(userId, productId));
+        return likeJpaRepository.existsById(new LikeId(productId, userId));
     }
 
     @Override

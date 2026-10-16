@@ -17,7 +17,8 @@ import java.time.ZonedDateTime;
  */
 @Getter
 @Entity
-// 기본키 (user_id, product_id)는 product_id 조건 집계에 쓸 수 없어 상품별 좋아요 수 집계용 보조 인덱스를 둔다 (D-12).
+// 기본키는 LikeId 의 선언 순서대로 (product_id, user_id)이다. idx_likes_product_id 는 상품별 좋아요 수 집계(D-12)용으로 두었으며
+// 기본키 접두와 겹치지만 이번 변경에서는 그대로 둔다.
 @Table(name = "likes", indexes = @Index(name = "idx_likes_product_id", columnList = "product_id"))
 public class Like {
 
@@ -32,7 +33,7 @@ public class Like {
 
     public static Like create(Long userId, Long productId) {
         Like like = new Like();
-        like.id = new LikeId(userId, productId);
+        like.id = new LikeId(productId, userId);
         like.likedAt = ZonedDateTime.now();
         return like;
     }
