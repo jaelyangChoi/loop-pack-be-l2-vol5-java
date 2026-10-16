@@ -20,8 +20,9 @@ import java.util.stream.Collectors;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 상품 목록 요청 한 번이 보내는 SQL 의 반복 지연을 잰다(준비 실행 20회, 측정 100회, 순차). 앱이 보내는 4개 문장을 같은 순서로
- * 실행하므로 "SQL 합계"는 요청의 DB 시간이며, HTTP 지연이 아니다.
+ * 상품 목록 요청 한 번이 보내는 SQL 의 반복 지연을 잰다(준비 실행 20회, 측정 100회, 순차). 앱이 보내는 문장을 같은 순서로
+ * 실행하므로 "SQL 합계"는 요청의 DB 시간이며, HTTP 지연이 아니다. 브랜드 없는 {@code likes_desc} 는 집계 테이블에서 상품 id 를
+ * 먼저 읽고 상품을 조회하는 2단계라 "list" 에 두 문장의 시간을 합친다.
  *
  * <p>로컬 docker MySQL 의 {@code loopers} 에 {@code sql/perf-seed.sql} 을 적재한 상태를 대상으로 하므로 환경변수
  * {@code PERF_JDBC_URL} 이 있을 때만 실행하고, 평소 {@code check} 에서는 건너뛴다(skip 으로 표시된다). SELECT 만 실행한다.
@@ -50,13 +51,17 @@ class ProductQueryLatencyBenchmarkTest {
             + "and (" + brand + " is null or p1_0.brand_id=" + brand + ") order by p1_0.price,p1_0.id desc limit 20";
     }
 
-    private static String likesDescList(String brand) {
+    // 브랜드를 지정한 likes_desc: 상품과 좋아요 집계를 left join 해 집계 내림차순으로 정렬한다.
+    private static String likesDescListOfBrand(String brand) {
         return "select " + PRODUCT_COLUMNS + " from products p1_0 "
-            + "left join likes l1_0 on l1_0.product_id=p1_0.id "
-            + "where p1_0.deleted_at is null and (" + brand + " is null or p1_0.brand_id=" + brand + ") group by p1_0.id "
-            + "order by count(case when l1_0.user_id is not null and l1_0.product_id is not null then 1 else null end) desc,"
-            + "p1_0.id desc limit 20";
+            + "left join product_like_counts c1_0 on c1_0.product_id=p1_0.id "
+            + "where p1_0.deleted_at is null and p1_0.brand_id=" + brand + " "
+            + "order by coalesce(c1_0.like_count,0) desc,p1_0.id desc limit 20";
     }
+
+    // 브랜드 없는 likes_desc 1단계: 집계 테이블에서 페이지의 상품 id 만 읽는다.
+    private static final String LIKES_DESC_IDS =
+        "select c1_0.product_id from product_like_counts c1_0 order by c1_0.like_count desc,c1_0.product_id desc limit 20";
 
     private static String count(String brand) {
         return "select count(p1_0.id) from products p1_0 "
@@ -70,15 +75,21 @@ class ProductQueryLatencyBenchmarkTest {
     }
 
     @Test
+    @DisplayName("브랜드 없이 가격 낮은 순 첫 페이지 요청의 SQL 지연을 기록한다 (전역 가격순 인덱스 후보 비교용)")
+    void measurePriceAscWithoutBrandRequest() throws SQLException {
+        measure("price_asc all", priceAscList("NULL"), count("NULL"));
+    }
+
+    @Test
     @DisplayName("브랜드 7 좋아요 많은 순 첫 페이지 요청의 SQL 지연을 기록한다 (비교용)")
     void measureLikesDescRequest() throws SQLException {
-        measure("likes_desc brand7", likesDescList("7"), count("7"));
+        measure("likes_desc brand7", likesDescListOfBrand("7"), count("7"));
     }
 
     @Test
     @DisplayName("브랜드 없이 좋아요 많은 순 첫 페이지 요청의 SQL 지연을 기록한다 (병목 기준선)")
     void measureLikesDescWithoutBrandRequest() throws SQLException {
-        measure("likes_desc all", likesDescList("NULL"), count("NULL"));
+        measure("likes_desc all", null, count("NULL"));
     }
 
     private void measure(String label, String listSql, String countSql) throws SQLException {
@@ -114,7 +125,7 @@ class ProductQueryLatencyBenchmarkTest {
         }
     }
 
-    // 앱과 같은 순서로 4개 문장을 실행한다: 목록, 총 개수, 목록의 브랜드, 목록의 좋아요 수.
+    // 앱과 같은 순서로 문장을 실행한다: 목록, 총 개수, 목록의 브랜드, 목록의 좋아요 수(집계 테이블 PK 조회).
     private Map<String, Long> runRequest(Statement statement, String listSql, String countSql) throws SQLException {
         Map<String, Long> nanos = new LinkedHashMap<>();
         long start = System.nanoTime();
@@ -122,7 +133,19 @@ class ProductQueryLatencyBenchmarkTest {
         long t = System.nanoTime();
         List<Long> productIds = new ArrayList<>();
         List<Long> brandIds = new ArrayList<>();
-        try (ResultSet rs = statement.executeQuery(listSql)) {
+        String effectiveListSql = listSql;
+        if (effectiveListSql == null) {
+            // 브랜드 없는 likes_desc: 집계 테이블에서 페이지의 상품 id 를 읽고, 그 id 로 상품을 조회한다.
+            List<Long> pageIds = new ArrayList<>();
+            try (ResultSet rs = statement.executeQuery(LIKES_DESC_IDS)) {
+                while (rs.next()) {
+                    pageIds.add(rs.getLong(1));
+                }
+            }
+            effectiveListSql = "select " + PRODUCT_COLUMNS + " from products p1_0 where p1_0.id in (" + join(pageIds)
+                + ") and p1_0.deleted_at is null";
+        }
+        try (ResultSet rs = statement.executeQuery(effectiveListSql)) {
             int columns = rs.getMetaData().getColumnCount();
             while (rs.next()) {
                 for (int c = 1; c <= columns; c++) {
@@ -144,8 +167,8 @@ class ProductQueryLatencyBenchmarkTest {
         nanos.put("brands", System.nanoTime() - t);
 
         t = System.nanoTime();
-        drain(statement, "select l1_0.product_id,count(*) from likes l1_0 where l1_0.product_id in ("
-            + join(productIds) + ") group by l1_0.product_id");
+        drain(statement, "select c1_0.product_id,c1_0.like_count from product_like_counts c1_0 "
+            + "where c1_0.product_id in (" + join(productIds) + ") and c1_0.like_count>0");
         nanos.put("likes", System.nanoTime() - t);
 
         nanos.put("total", System.nanoTime() - start);

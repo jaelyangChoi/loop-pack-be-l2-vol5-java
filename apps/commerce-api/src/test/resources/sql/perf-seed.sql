@@ -1,5 +1,5 @@
 -- 4주차 상품 목록 조회 측정용 seed. 같은 입력이면 항상 같은 자료가 만들어진다(난수 없음).
--- 성능 측정에서만 쓴다. local 프로필 앱이 ddl-auto: create 로 만든 비어 있는 테이블(brands, products, users, likes)에 적재한다.
+-- 성능 측정에서만 쓴다. local 프로필 앱이 ddl-auto: create 로 만든 비어 있는 테이블(brands, products, users, likes, product_like_counts)에 적재한다.
 -- 앱을 다시 띄우면 지워지므로 필요할 때 다시 적재한다. 절차는 docs/design/week4/product-list-baseline.md 참고.
 -- 임시 테이블 perf_seq 만 만들었다 지우며, 다른 테이블의 데이터는 건드리지 않는다.
 --
@@ -59,5 +59,11 @@ JOIN perf_seq k
            END
 WHERE p.n BETWEEN 1 AND 10200;
 
+-- 상품별 좋아요 수 집계(노출 상품만 행을 가진다). 앱이 같은 규칙으로 유지한다.
+INSERT INTO product_like_counts (product_id, like_count)
+SELECT p.id, (SELECT COUNT(*) FROM likes l WHERE l.product_id = p.id)
+FROM products p
+WHERE p.deleted_at IS NULL;
+
 DROP TABLE perf_seq;
-ANALYZE TABLE brands, products, users, likes;
+ANALYZE TABLE brands, products, users, likes, product_like_counts;
