@@ -25,6 +25,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import java.util.ArrayList;
 import java.util.List;
 
 @SpringBootTest
@@ -412,6 +413,132 @@ class ProductRepositoryTest {
             assertThat(secondPage.getContent()).hasSize(1);
             assertThat(secondPage.getTotalElements()).isEqualTo(3);
             assertThat(secondPage.getTotalPages()).isEqualTo(2);
+        }
+    }
+
+    @DisplayName("좋아요 수 집계(product_like_counts)는,")
+    @Nested
+    class LikeCountRows {
+        private long rows(Long productId) {
+            return jdbcTemplate.queryForObject(
+                "select count(*) from product_like_counts where product_id = ?", Long.class, productId);
+        }
+
+        private Product saveWithPrice(Long brandId, String name, long price) {
+            return productRepository.save(Product.create(brandId, name, new Money(price), new Stock(1)));
+        }
+
+        private void like(Long userId, Product product) {
+            likeRepository.save(Like.create(userId, product.getId()));
+        }
+
+        private void delete(Product product) {
+            product.delete();
+            productRepository.save(product);
+        }
+
+        @DisplayName("상품을 저장하면 좋아요 0개로 만들어지고, 브랜드 없는 좋아요순 목록에 포함된다.")
+        @Test
+        void createsRowWithZero_whenProductIsSaved() {
+            // arrange & act
+            Product product = saveWithPrice(1L, "새 상품", 1_000);
+
+            // assert
+            assertThat(rows(product.getId())).isEqualTo(1);
+            assertThat(jdbcTemplate.queryForObject(
+                "select like_count from product_like_counts where product_id = ?", Long.class, product.getId())).isZero();
+            assertThat(productRepository.findAllActive(null, ProductSort.LIKES_DESC, PageRequest.of(0, 10)).getContent())
+                .extracting(Product::getId).containsExactly(product.getId());
+        }
+
+        @DisplayName("삭제 처리해 저장하면 행이 지워지고, 삭제된 상품이 위에 있어도 페이지는 크기를 채운다.")
+        @Test
+        void removesRow_andFillsPage_afterDelete() {
+            // arrange: 좋아요 5·4·3·2·1개. 가장 많은 상품을 삭제한다.
+            List<Product> products = new ArrayList<>();
+            for (int i = 1; i <= 5; i++) {
+                products.add(saveWithPrice(1L, "상품" + i, 1_000));
+            }
+            for (int i = 0; i < 5; i++) {
+                for (long userId = 1; userId <= 5 - i; userId++) {
+                    like(userId, products.get(i));
+                }
+            }
+            Product mostLiked = products.get(0);
+            delete(mostLiked);
+
+            // act
+            Page<Product> page = productRepository.findAllActive(null, ProductSort.LIKES_DESC, PageRequest.of(0, 3));
+
+            // assert
+            assertThat(rows(mostLiked.getId())).isZero();
+            assertThat(page.getContent()).extracting(Product::getId)
+                .containsExactly(products.get(1).getId(), products.get(2).getId(), products.get(3).getId());
+            assertThat(page.getTotalElements()).isEqualTo(4);
+            assertThat(page.getTotalPages()).isEqualTo(2);
+        }
+
+        @DisplayName("삭제 상품의 행이 경쟁 등으로 남아 있어도 목록에는 나오지 않는다.")
+        @Test
+        void skipsStaleRowOfDeletedProduct() {
+            // arrange: 삭제된 상품에 집계 행이 잘못 남은 상태를 만든다.
+            Product active = saveWithPrice(1L, "판매 중", 1_000);
+            Product deleted = saveWithPrice(1L, "삭제됨", 1_000);
+            delete(deleted);
+            jdbcTemplate.update("insert into product_like_counts (product_id, like_count) values (?, 999)", deleted.getId());
+
+            // act
+            Page<Product> page = productRepository.findAllActive(null, ProductSort.LIKES_DESC, PageRequest.of(0, 10));
+
+            // assert
+            assertThat(page.getContent()).extracting(Product::getId).containsExactly(active.getId());
+            assertThat(page.getTotalElements()).isEqualTo(1);
+        }
+
+        @DisplayName("브랜드를 지정한 좋아요순도 집계로 정렬하고, 좋아요가 없는 상품도 포함하며 다른 브랜드는 제외한다.")
+        @Test
+        void ordersByCount_whenBrandIsGiven() {
+            // arrange
+            Product none = saveWithPrice(1L, "없음", 1_000);
+            Product few = saveWithPrice(1L, "조금", 1_000);
+            Product many = saveWithPrice(1L, "많이", 1_000);
+            Product otherBrand = saveWithPrice(2L, "다른 브랜드", 1_000);
+            like(1L, few);
+            like(1L, many);
+            like(2L, many);
+            like(1L, otherBrand);
+            like(2L, otherBrand);
+            like(3L, otherBrand);
+
+            // act
+            Page<Product> page = productRepository.findAllActive(1L, ProductSort.LIKES_DESC, PageRequest.of(0, 10));
+
+            // assert
+            assertThat(page.getContent()).extracting(Product::getId)
+                .containsExactly(many.getId(), few.getId(), none.getId());
+            assertThat(page.getTotalElements()).isEqualTo(3);
+        }
+
+        @DisplayName("노출 상품 수와 집계 행 수가 같고, 행 값은 좋아요 관계 수와 같다.")
+        @Test
+        void matchesActiveProductsAndLikeRows() {
+            // arrange
+            Product first = saveWithPrice(1L, "하나", 1_000);
+            Product second = saveWithPrice(1L, "둘", 1_000);
+            Product third = saveWithPrice(1L, "셋", 1_000);
+            like(1L, first);
+            like(2L, first);
+            like(1L, second);
+            likeRepository.delete(1L, first.getId());
+            delete(third);
+
+            // act & assert
+            assertThat(jdbcTemplate.queryForObject("select count(*) from product_like_counts", Long.class))
+                .isEqualTo(jdbcTemplate.queryForObject(
+                    "select count(*) from products where deleted_at is null", Long.class));
+            assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from product_like_counts c where c.like_count <> "
+                    + "(select count(*) from likes l where l.product_id = c.product_id)", Long.class)).isZero();
         }
     }
 

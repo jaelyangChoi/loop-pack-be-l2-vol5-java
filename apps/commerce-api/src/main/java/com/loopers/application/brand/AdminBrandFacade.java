@@ -2,7 +2,6 @@ package com.loopers.application.brand;
 
 import com.loopers.domain.brand.Brand;
 import com.loopers.domain.brand.BrandService;
-import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductService;
 import com.loopers.support.paging.PageRequests;
 import lombok.RequiredArgsConstructor;
@@ -38,7 +37,7 @@ public class AdminBrandFacade {
         // 브랜드를 먼저, 상품을 id 오름차순으로 잠근다 (전역 잠금 순서, D-27). 연결 상품은 재고 0이어도 함께 삭제한다.
         // 상품은 다른 Aggregate 라 여기서 조합한다. 예외를 잡지 않으므로 중간에 실패하면 전체가 rollback 된다 (D-23).
         Brand brand = brandService.getForUpdate(brandId);
-        productService.getAllActiveByBrandForUpdate(brandId).forEach(Product::delete);
+        productService.deleteAll(productService.getAllActiveByBrandForUpdate(brandId));
         brand.delete();
     }
 

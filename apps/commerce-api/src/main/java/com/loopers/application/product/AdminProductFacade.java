@@ -47,7 +47,7 @@ public class AdminProductFacade {
 
     @Transactional
     public void delete(Long productId) {
-        productService.getForUpdate(productId).delete();
+        productService.delete(productService.getForUpdate(productId));
     }
 
     @Transactional(readOnly = true)

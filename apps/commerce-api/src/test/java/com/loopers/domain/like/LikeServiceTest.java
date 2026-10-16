@@ -1,5 +1,9 @@
 package com.loopers.domain.like;
 
+import com.loopers.domain.common.Money;
+import com.loopers.domain.product.Product;
+import com.loopers.domain.product.ProductRepository;
+import com.loopers.domain.product.Stock;
 import com.loopers.utils.DatabaseCleanUp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -23,11 +27,19 @@ class LikeServiceTest {
     private LikeRepository likeRepository;
 
     @Autowired
+    private ProductRepository productRepository;
+
+    @Autowired
     private DatabaseCleanUp databaseCleanUp;
 
     @AfterEach
     void tearDown() {
         databaseCleanUp.truncateAllTables();
+    }
+
+    // 좋아요 수 집계는 상품 행에 속하므로 수를 세는 테스트는 실제 상품이 필요하다.
+    private Long saveProduct() {
+        return productRepository.save(Product.create(1L, "상품", new Money(1_000), new Stock(1))).getId();
     }
 
     @DisplayName("좋아요를 등록할 때,")
@@ -36,33 +48,42 @@ class LikeServiceTest {
         @DisplayName("관계를 저장한다.")
         @Test
         void savesLike() {
+            // arrange
+            Long product = saveProduct();
+
             // act
-            likeService.like(1L, 10L);
+            likeService.like(1L, product);
 
             // assert
-            assertThat(likeRepository.exists(1L, 10L)).isTrue();
+            assertThat(likeRepository.exists(1L, product)).isTrue();
         }
 
         @DisplayName("같은 관계를 다시 등록해도 성공하고, 관계는 하나만 유지된다.")
         @Test
         void keepsSingleLike_whenLikedTwice() {
+            // arrange
+            Long product = saveProduct();
+
             // act
-            likeService.like(1L, 10L);
-            likeService.like(1L, 10L);
+            likeService.like(1L, product);
+            likeService.like(1L, product);
 
             // assert
-            assertThat(likeService.count(10L)).isEqualTo(1);
+            assertThat(likeService.count(product)).isEqualTo(1);
         }
 
         @DisplayName("다른 사용자의 좋아요는 각각 센다.")
         @Test
         void countsEachUser() {
+            // arrange
+            Long product = saveProduct();
+
             // act
-            likeService.like(1L, 10L);
-            likeService.like(2L, 10L);
+            likeService.like(1L, product);
+            likeService.like(2L, product);
 
             // assert
-            assertThat(likeService.count(10L)).isEqualTo(2);
+            assertThat(likeService.count(product)).isEqualTo(2);
         }
     }
 
@@ -73,27 +94,29 @@ class LikeServiceTest {
         @Test
         void removesLike() {
             // arrange
-            likeService.like(1L, 10L);
+            Long product = saveProduct();
+            likeService.like(1L, product);
 
             // act
-            likeService.unlike(1L, 10L);
+            likeService.unlike(1L, product);
 
             // assert
-            assertThat(likeRepository.exists(1L, 10L)).isFalse();
-            assertThat(likeService.count(10L)).isZero();
+            assertThat(likeRepository.exists(1L, product)).isFalse();
+            assertThat(likeService.count(product)).isZero();
         }
 
         @DisplayName("관계가 없어도 성공하고, 다른 관계는 그대로다.")
         @Test
         void succeeds_whenLikeDoesNotExist() {
             // arrange
-            likeService.like(2L, 10L);
+            Long product = saveProduct();
+            likeService.like(2L, product);
 
             // act
-            likeService.unlike(1L, 10L);
+            likeService.unlike(1L, product);
 
             // assert
-            assertThat(likeService.count(10L)).isEqualTo(1);
+            assertThat(likeService.count(product)).isEqualTo(1);
         }
     }
 
@@ -114,14 +137,16 @@ class LikeServiceTest {
         @Test
         void fillsZero_forProductsWithoutLikes() {
             // arrange
-            likeService.like(1L, 10L);
-            likeService.like(2L, 10L);
+            Long liked = saveProduct();
+            Long noLikes = saveProduct();
+            likeService.like(1L, liked);
+            likeService.like(2L, liked);
 
             // act
-            Map<Long, Long> counts = likeService.countByProductIds(List.of(10L, 12L));
+            Map<Long, Long> counts = likeService.countByProductIds(List.of(liked, noLikes));
 
             // assert
-            assertThat(counts).containsOnly(Map.entry(10L, 2L), Map.entry(12L, 0L));
+            assertThat(counts).containsOnly(Map.entry(liked, 2L), Map.entry(noLikes, 0L));
         }
 
         @DisplayName("빈 목록이면 빈 맵을 반환한다.")

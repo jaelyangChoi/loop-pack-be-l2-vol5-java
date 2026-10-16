@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -34,6 +35,9 @@ class AdminProductFacadeTest {
 
     @Autowired
     private BrandRepository brandRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Autowired
     private DatabaseCleanUp databaseCleanUp;
@@ -61,6 +65,11 @@ class AdminProductFacadeTest {
         Product product = Product.create(brandId, name, new Money(89_000), new Stock(10));
         product.delete();
         return productRepository.save(product);
+    }
+
+    private long likeCountRows(Long productId) {
+        return jdbcTemplate.queryForObject(
+            "select count(*) from product_like_counts where product_id = ?", Long.class, productId);
     }
 
     private Product stored(Long productId) {
@@ -242,6 +251,22 @@ class AdminProductFacadeTest {
 
             // assert
             assertThat(productRepository.findActive(product.getId())).isEmpty();
+        }
+
+        @DisplayName("삭제하면 좋아요 수 집계에서도 빠진다. 다른 상품의 집계는 남는다.")
+        @Test
+        void removesLikeCountRow_afterDelete() {
+            // arrange
+            Product product = saveProduct(1L, "러닝화");
+            Product other = saveProduct(1L, "다른 상품");
+            assertThat(likeCountRows(product.getId())).isEqualTo(1);
+
+            // act
+            adminProductFacade.delete(product.getId());
+
+            // assert
+            assertThat(likeCountRows(product.getId())).isZero();
+            assertThat(likeCountRows(other.getId())).isEqualTo(1);
         }
 
         @DisplayName("이미 삭제됐거나 없는 상품이면 NOT_FOUND 로 거절한다.")

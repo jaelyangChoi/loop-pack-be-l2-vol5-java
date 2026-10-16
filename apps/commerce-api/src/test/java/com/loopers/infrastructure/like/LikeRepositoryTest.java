@@ -1,7 +1,11 @@
 package com.loopers.infrastructure.like;
 
+import com.loopers.domain.common.Money;
 import com.loopers.domain.like.Like;
 import com.loopers.domain.like.LikeRepository;
+import com.loopers.domain.product.Product;
+import com.loopers.domain.product.ProductRepository;
+import com.loopers.domain.product.Stock;
 import com.loopers.utils.DatabaseCleanUp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -23,6 +27,9 @@ class LikeRepositoryTest {
     private LikeRepository likeRepository;
 
     @Autowired
+    private ProductRepository productRepository;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @Autowired
@@ -35,6 +42,11 @@ class LikeRepositoryTest {
 
     private void saveLike(Long userId, Long productId) {
         likeRepository.save(Like.create(userId, productId));
+    }
+
+    // 좋아요 수 집계는 상품 행에 속하므로 수를 세는 테스트는 실제 상품이 필요하다.
+    private Long saveProduct() {
+        return productRepository.save(Product.create(1L, "상품", new Money(1_000), new Stock(1))).getId();
     }
 
     @DisplayName("좋아요를 저장하고 확인할 때,")
@@ -105,20 +117,56 @@ class LikeRepositoryTest {
         @Test
         void countsLikesOfProduct() {
             // arrange
-            saveLike(1L, 10L);
-            saveLike(2L, 10L);
-            saveLike(1L, 11L);
+            Long product = saveProduct();
+            Long other = saveProduct();
+            saveLike(1L, product);
+            saveLike(2L, product);
+            saveLike(1L, other);
 
             // act & assert
-            assertThat(likeRepository.countByProductId(10L)).isEqualTo(2);
-            likeRepository.delete(1L, 10L);
-            assertThat(likeRepository.countByProductId(10L)).isEqualTo(1);
+            assertThat(likeRepository.countByProductId(product)).isEqualTo(2);
+            likeRepository.delete(1L, product);
+            assertThat(likeRepository.countByProductId(product)).isEqualTo(1);
         }
 
-        @DisplayName("관계가 없으면 0이다.")
+        @DisplayName("관계가 없으면 0이다. 집계 행이 없는 상품도 0이다.")
         @Test
         void returnsZero_whenNoLikes() {
-            assertThat(likeRepository.countByProductId(10L)).isZero();
+            assertThat(likeRepository.countByProductId(saveProduct())).isZero();
+            assertThat(likeRepository.countByProductId(999_999L)).isZero();
+        }
+
+        @DisplayName("같은 관계를 다시 저장해도 수가 늘지 않는다.")
+        @Test
+        void doesNotIncrease_whenSameLikeIsSavedAgain() {
+            Long product = saveProduct();
+            saveLike(1L, product);
+            saveLike(1L, product);
+
+            assertThat(likeRepository.countByProductId(product)).isEqualTo(1);
+        }
+
+        @DisplayName("없는 관계를 취소하면 수가 줄지 않는다.")
+        @Test
+        void doesNotDecrease_whenLikeDoesNotExist() {
+            Long product = saveProduct();
+            saveLike(1L, product);
+
+            assertThat(likeRepository.delete(2L, product)).isZero();
+            assertThat(likeRepository.countByProductId(product)).isEqualTo(1);
+        }
+
+        @DisplayName("집계는 좋아요 관계의 개수와 같다.")
+        @Test
+        void matchesNumberOfLikeRows() {
+            Long product = saveProduct();
+            saveLike(1L, product);
+            saveLike(2L, product);
+            saveLike(3L, product);
+            likeRepository.delete(2L, product);
+
+            Long rows = jdbcTemplate.queryForObject("select count(*) from likes where product_id = ?", Long.class, product);
+            assertThat(likeRepository.countByProductId(product)).isEqualTo(rows);
         }
     }
 
@@ -129,31 +177,36 @@ class LikeRepositoryTest {
         @Test
         void countsPerProduct_withoutProductsHavingNoLikes() {
             // arrange
-            saveLike(1L, 10L);
-            saveLike(2L, 10L);
-            saveLike(1L, 11L);
+            Long first = saveProduct();
+            Long second = saveProduct();
+            Long noLikes = saveProduct();
+            saveLike(1L, first);
+            saveLike(2L, first);
+            saveLike(1L, second);
 
             // act
-            Map<Long, Long> counts = likeRepository.countByProductIds(List.of(10L, 11L, 12L));
+            Map<Long, Long> counts = likeRepository.countByProductIds(List.of(first, second, noLikes));
 
             // assert
-            assertThat(counts).containsOnly(Map.entry(10L, 2L), Map.entry(11L, 1L));
+            assertThat(counts).containsOnly(Map.entry(first, 2L), Map.entry(second, 1L));
         }
 
         @DisplayName("요청하지 않은 상품은 집계하지 않고, 취소하면 줄어든다.")
         @Test
         void countsOnlyRequestedProducts_andDecreasesAfterCancel() {
             // arrange
-            saveLike(1L, 10L);
-            saveLike(2L, 10L);
-            saveLike(1L, 11L);
+            Long first = saveProduct();
+            Long second = saveProduct();
+            saveLike(1L, first);
+            saveLike(2L, first);
+            saveLike(1L, second);
 
             // act
-            likeRepository.delete(1L, 10L);
-            Map<Long, Long> counts = likeRepository.countByProductIds(List.of(10L));
+            likeRepository.delete(1L, first);
+            Map<Long, Long> counts = likeRepository.countByProductIds(List.of(first));
 
             // assert
-            assertThat(counts).containsOnly(Map.entry(10L, 1L));
+            assertThat(counts).containsOnly(Map.entry(first, 1L));
         }
 
         @DisplayName("빈 목록이면 빈 결과를 반환한다.")
@@ -180,6 +233,33 @@ class LikeRepositoryTest {
         void hasUserIdIndex() {
             // act & assert
             assertThat(indexColumns("idx_likes_user_id")).containsExactly("user_id");
+        }
+
+        @DisplayName("좋아요 수 집계 테이블은 (like_count DESC, product_id DESC) 순위 인덱스를 가진다.")
+        @Test
+        void hasLikeCountRankingIndex() {
+            // 브랜드 없는 좋아요순 목록이 이 인덱스 순서로 페이지의 상품 id 만 읽는다. 정렬 방향이 어긋나면 filesort 가 생긴다.
+            List<String> columns = jdbcTemplate.queryForList(
+                "select concat(column_name, ':', collation) from information_schema.statistics "
+                    + "where table_schema = database() and table_name = 'product_like_counts' "
+                    + "and index_name = 'idx_product_like_counts_ranking' order by seq_in_index",
+                String.class
+            );
+
+            assertThat(columns).containsExactly("like_count:D", "product_id:D");
+        }
+
+        @DisplayName("좋아요 수 집계 테이블의 기본키는 product_id 이다.")
+        @Test
+        void hasProductIdPrimaryKeyOnLikeCounts() {
+            List<String> columns = jdbcTemplate.queryForList(
+                "select column_name from information_schema.statistics "
+                    + "where table_schema = database() and table_name = 'product_like_counts' "
+                    + "and index_name = 'PRIMARY' order by seq_in_index",
+                String.class
+            );
+
+            assertThat(columns).containsExactly("product_id");
         }
 
         // 인덱스의 컬럼을 인덱스 안의 순서대로 돌려준다.
