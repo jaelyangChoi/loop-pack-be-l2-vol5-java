@@ -96,10 +96,25 @@
 | D-31 | A는 `(brand_id, deleted_at, price, id DESC)`로 `idx_products_brand_id`를 교체한다. 갭 잠금 이웃이 직전→다음 브랜드로 바뀐다 | 확정 |
 | D-32 | 전역 가격순 인덱스(C4)는 채택하지 않는다 | 확정 |
 | D-33 | B는 카운터 테이블(B6)로 개선하고 `likeCount`의 단일 출처로 삼는다. **D-12(카운터 없음)를 대체한다** | 확정 |
-| D-34 | 옵티마이저 힌트(`STRAIGHT_JOIN`)는 쓰지 않는다. 요청당 SELECT는 4개이며 브랜드 없는 `likes_desc`만 5개다 | 확정 |
+| D-34 | 옵티마이저 힌트(`STRAIGHT_JOIN`)는 쓰지 않는다. 요청당 SELECT는 4개이며 브랜드 없는 `likes_desc`만 5개다 | 확정(테스트로 고정) |
 | D-35 | `likes` 인덱스 정리(기본키 `(product_id, user_id)`, `idx_likes_product_id` 제거, `idx_likes_user_id` 추가)는 반영했다 | 확정 |
 
-## 7. 미측정과 다음 단계
+## 7. 구현 결과
 
-- 미측정: 깊은 페이지, HTTP 전체 지연·동시 요청, 인덱스·카운터의 쓰기 비용(위 로컬 동시성 외), 좋아요가 수백만 건일 때의 거동.
+| 요청 | 합계 p50 (전 → 후) | 비고 |
+|---|---|---|
+| A 브랜드 7 `price_asc` | 1.18~1.22 → 1.15~1.20ms | 균등 seed는 편차 안 |
+| A, 브랜드 7에 5,000개 쏠림 | 3.61~3.69 → **1.46~1.72ms** | `filesort` 제거, count 커버링 |
+| **B 브랜드 없는 `likes_desc`** | 14.6~16.3 → **1.81~1.94ms** | SELECT 5개 |
+| 브랜드 7 `likes_desc` | 0.95~1.02 → 0.73~0.80ms | 좋아요 수가 PK 조회로 |
+
+- 응답 체크섬 8개가 개선 전과 모두 같다. 전체 `check`(Checkstyle·ArchUnit·796건)가 통과한다.
+- 구현: `ProductLikeCount` 엔티티와 `ProductLikeCountJpaRepository`. 집계 유지는 도메인 계약을 바꾸지 않고 인프라 어댑터가 맡는다(`LikeRepositoryImpl`이 등록·취소 때 ±1, `ProductRepositoryImpl.save`가 노출 상태에 맞춰 행을 만들고 지움). 삭제 경로 2곳은 `ProductService.delete/deleteAll`을 거친다. 증감은 `UPDATE`만 쓰고 upsert하지 않아, 삭제와 좋아요가 경쟁해도 삭제된 상품의 행이 되살아나지 않는다.
+- 검증: 집계 행 수 = 노출 상품 수, 행 값 = 좋아요 관계 수, 동시 등록·취소·중복 등록·중복 취소 후 집계 = 관계 수(20회 반복), 요청당 SQL 수(4개, 브랜드 없는 `likes_desc`만 5개), 삭제 상품이 위에 있어도 페이지가 크기를 채움, 삭제 경로 2곳의 행 정리.
+- 운영 반영: `sql/index-products.sql`, `sql/product-like-counts.sql`(테이블·인덱스·backfill·정합성 확인 쿼리). 앱 배포 전에 backfill과 확인 쿼리를 먼저 적용한다.
+- 알려진 한계: 브랜드를 지정한 `likes_desc`는 브랜드 크기에 비례한다(5,000개 쏠림에서 합계 약 4.2~4.9ms). 상품이 집계 테이블에 행 없이 만들어지면(저장소를 거치지 않는 직접 INSERT) 브랜드 없는 `likes_desc`에서 빠지므로 backfill이 필요하다.
+
+## 8. 미측정과 다음 단계
+
+- 미측정: 깊은 페이지, HTTP 전체 지연·동시 요청, 읽기와 쓰기가 섞인 부하, 좋아요가 수백만 건일 때의 거동, 쏠린 브랜드의 `likes_desc` 개선 전 값.
 - 다음 단계: 캐시(키·TTL·무효화·장애 계약)는 이 개선 결과를 입력으로 별도 문서에서 설계한다.
