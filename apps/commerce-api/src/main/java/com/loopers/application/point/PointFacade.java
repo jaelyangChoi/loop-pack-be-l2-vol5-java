@@ -21,7 +21,8 @@ public class PointFacade {
 
     @Transactional
     public PointInfo charge(Long userId, long amount) {
-        User user = userService.get(userId);
+        // 결제와 같은 사용자 행을 바꾸므로, 처음 읽을 때부터 잠가서 낡은 잔액으로 더하지 않는다 (D-24, D-26).
+        User user = userService.getForUpdate(userId);
         user.chargePoint(new Money(amount));
         return PointInfo.from(user);
     }
