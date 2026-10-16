@@ -166,26 +166,20 @@ class LikeRepositoryTest {
     @DisplayName("좋아요 테이블 스키마는,")
     @Nested
     class Schema {
-        @DisplayName("상품별 좋아요 수 집계를 위한 product_id 보조 인덱스를 가진다.")
-        @Test
-        void hasProductIdIndex() {
-            // act
-            Integer count = jdbcTemplate.queryForObject(
-                "select count(*) from information_schema.statistics "
-                    + "where table_schema = database() and table_name = 'likes' and index_name = 'idx_likes_product_id'",
-                Integer.class
-            );
-
-            // assert
-            assertThat(count).isPositive();
-        }
-
         @DisplayName("기본키 컬럼 순서는 (product_id, user_id)이다.")
         @Test
         void hasPrimaryKeyOrderedByProductIdThenUserId() {
             // 상품별 좋아요 수 집계(product_id 조건)가 기본키의 왼쪽 접두로 인덱스를 타는 것이 이 순서에 달려 있다.
+            // 그래서 product_id 보조 인덱스(idx_likes_product_id)는 두지 않는다. 이 단언이 그 인덱스가 하던 보장을 대신한다.
             // act & assert
             assertThat(indexColumns("PRIMARY")).containsExactly("product_id", "user_id");
+        }
+
+        @DisplayName("내 좋아요 목록을 위한 user_id 보조 인덱스를 가진다.")
+        @Test
+        void hasUserIdIndex() {
+            // act & assert
+            assertThat(indexColumns("idx_likes_user_id")).containsExactly("user_id");
         }
 
         // 인덱스의 컬럼을 인덱스 안의 순서대로 돌려준다.
