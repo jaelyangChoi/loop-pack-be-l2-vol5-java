@@ -4,6 +4,7 @@ import com.loopers.domain.common.Money;
 import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.Stock;
+import com.loopers.support.fixture.ExposedProducts;
 import com.loopers.utils.DatabaseCleanUp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -20,6 +21,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 class LikeServiceTest {
+
+    @Autowired
+    private ExposedProducts exposedProducts;
 
     @Autowired
     private LikeService likeService;
@@ -41,11 +45,8 @@ class LikeServiceTest {
         databaseCleanUp.truncateAllTables();
     }
 
-    // 상품 생성 유스케이스처럼 좋아요 수 집계 행도 함께 만든다. 행이 없으면 증감이 반영되지 않는다.
     private Long saveProduct() {
-        Long productId = productRepository.save(Product.create(1L, "상품", new Money(1_000), new Stock(1))).getId();
-        likeService.createCount(productId);
-        return productId;
+        return exposedProducts.save(Product.create(1L, "상품", new Money(1_000), new Stock(1))).getId();
     }
 
     @DisplayName("좋아요를 등록할 때,")

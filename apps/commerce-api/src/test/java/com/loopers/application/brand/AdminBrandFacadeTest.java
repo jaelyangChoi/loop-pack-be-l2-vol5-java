@@ -3,12 +3,12 @@ package com.loopers.application.brand;
 import com.loopers.domain.brand.Brand;
 import com.loopers.domain.brand.BrandRepository;
 import com.loopers.domain.common.Money;
-import com.loopers.domain.like.LikeService;
 import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.Stock;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
+import com.loopers.support.fixture.ExposedProducts;
 import com.loopers.utils.DatabaseCleanUp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -29,6 +29,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class AdminBrandFacadeTest {
 
     @Autowired
+    private ExposedProducts exposedProducts;
+
+    @Autowired
     private AdminBrandFacade adminBrandFacade;
 
     @Autowired
@@ -36,9 +39,6 @@ class AdminBrandFacadeTest {
 
     @Autowired
     private ProductRepository productRepository;
-
-    @Autowired
-    private LikeService likeService;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -61,17 +61,14 @@ class AdminBrandFacadeTest {
         return brandRepository.save(brand);
     }
 
-    // 상품 생성 유스케이스처럼 노출 상품은 좋아요 수 집계 행도 함께 만든다. 삭제 상품은 행이 없다.
+    // 삭제 상품은 집계 행이 없어야 하므로 저장소로 직접 저장한다.
     private Product saveProduct(Long brandId, int stock, boolean deleted) {
         Product product = Product.create(brandId, "러닝화", new Money(89_000), new Stock(stock));
         if (deleted) {
             product.delete();
+            return productRepository.save(product);
         }
-        Product saved = productRepository.save(product);
-        if (!deleted) {
-            likeService.createCount(saved.getId());
-        }
-        return saved;
+        return exposedProducts.save(product);
     }
 
     private long likeCountRows(Long productId) {

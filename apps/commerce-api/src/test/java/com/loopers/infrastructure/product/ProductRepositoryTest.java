@@ -6,6 +6,7 @@ import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductSort;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.Stock;
+import com.loopers.support.fixture.ExposedProducts;
 import com.loopers.utils.DatabaseCleanUp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -29,6 +30,9 @@ import java.util.List;
 
 @SpringBootTest
 class ProductRepositoryTest {
+
+    @Autowired
+    private ExposedProducts exposedProducts;
 
     @Autowired
     private ProductRepository productRepository;
@@ -271,11 +275,8 @@ class ProductRepositoryTest {
     @DisplayName("정렬 기준과 브랜드 조건으로 상품 목록을 조회할 때,")
     @Nested
     class FindAllActiveBySort {
-        // 상품 생성 유스케이스처럼 좋아요 수 집계 행도 함께 만든다.
         private Product saveWithPrice(Long brandId, String name, long price) {
-            Product product = productRepository.save(Product.create(brandId, name, new Money(price), new Stock(1)));
-            likeService.createCount(product.getId());
-            return product;
+            return exposedProducts.save(Product.create(brandId, name, new Money(price), new Stock(1)));
         }
 
         private void like(Long userId, Product product) {
@@ -424,9 +425,7 @@ class ProductRepositoryTest {
     class LikeCountRows {
         // 상품 생성·삭제 유스케이스처럼 좋아요 수 집계 행도 함께 만들고 지운다(행의 생성·삭제 검증은 Admin Facade 테스트).
         private Product saveWithPrice(Long brandId, String name, long price) {
-            Product product = productRepository.save(Product.create(brandId, name, new Money(price), new Stock(1)));
-            likeService.createCount(product.getId());
-            return product;
+            return exposedProducts.save(Product.create(brandId, name, new Money(price), new Stock(1)));
         }
 
         private void like(Long userId, Product product) {

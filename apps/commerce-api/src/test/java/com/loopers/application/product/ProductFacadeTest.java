@@ -4,7 +4,6 @@ import com.loopers.application.like.LikeFacade;
 import com.loopers.domain.brand.Brand;
 import com.loopers.domain.brand.BrandRepository;
 import com.loopers.domain.common.Money;
-import com.loopers.domain.like.LikeService;
 import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.Stock;
@@ -12,6 +11,7 @@ import com.loopers.domain.user.User;
 import com.loopers.domain.user.UserRepository;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
+import com.loopers.support.fixture.ExposedProducts;
 import com.loopers.utils.DatabaseCleanUp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -32,6 +32,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class ProductFacadeTest {
 
     @Autowired
+    private ExposedProducts exposedProducts;
+
+    @Autowired
     private ProductFacade productFacade;
 
     @Autowired
@@ -45,9 +48,6 @@ class ProductFacadeTest {
 
     @Autowired
     private ProductRepository productRepository;
-
-    @Autowired
-    private LikeService likeService;
 
     @Autowired
     private UserRepository userRepository;
@@ -68,11 +68,8 @@ class ProductFacadeTest {
         return brandRepository.save(Brand.create(name));
     }
 
-    // 상품 생성 유스케이스처럼 좋아요 수 집계 행도 함께 만든다.
     private Product saveProduct(Brand brand, String name, long price) {
-        Product product = productRepository.save(Product.create(brand.getId(), name, new Money(price), new Stock(10)));
-        likeService.createCount(product.getId());
-        return product;
+        return exposedProducts.save(Product.create(brand.getId(), name, new Money(price), new Stock(10)));
     }
 
     private Product saveDeletedProduct(Brand brand, String name) {

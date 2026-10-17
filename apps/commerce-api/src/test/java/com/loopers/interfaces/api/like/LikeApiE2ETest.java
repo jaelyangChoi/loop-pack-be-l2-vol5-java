@@ -10,6 +10,7 @@ import com.loopers.domain.product.Stock;
 import com.loopers.domain.user.User;
 import com.loopers.domain.user.UserRepository;
 import com.loopers.interfaces.api.ApiResponse;
+import com.loopers.support.fixture.ExposedProducts;
 import com.loopers.utils.DatabaseCleanUp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -38,6 +39,9 @@ class LikeApiE2ETest {
     private static final String USER_ID_HEADER = "X-USER-ID";
 
     @Autowired
+    private ExposedProducts exposedProducts;
+
+    @Autowired
     private TestRestTemplate testRestTemplate;
 
     @Autowired
@@ -64,11 +68,8 @@ class LikeApiE2ETest {
         return userRepository.save(User.create());
     }
 
-    // 상품 생성 유스케이스처럼 좋아요 수 집계 행도 함께 만든다.
     private Product saveProduct(String name) {
-        Product product = productRepository.save(Product.create(1L, name, new Money(89_000), new Stock(10)));
-        likeService.createCount(product.getId());
-        return product;
+        return exposedProducts.save(Product.create(1L, name, new Money(89_000), new Stock(10)));
     }
 
     private Product saveDeletedProduct(String name) {

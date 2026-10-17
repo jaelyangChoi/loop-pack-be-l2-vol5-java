@@ -7,6 +7,7 @@ import com.loopers.domain.like.LikeService;
 import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.Stock;
+import com.loopers.support.fixture.ExposedProducts;
 import com.loopers.utils.DatabaseCleanUp;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.SessionFactory;
@@ -30,6 +31,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest(properties = "spring.jpa.properties.hibernate.generate_statistics=true")
 class ProductListQueryCountTest {
+
+    @Autowired
+    private ExposedProducts exposedProducts;
 
     @Autowired
     private ProductFacade productFacade;
@@ -59,17 +63,13 @@ class ProductListQueryCountTest {
         Brand brand = brandRepository.save(Brand.create("루퍼스"));
         Brand other = brandRepository.save(Brand.create("다른 브랜드"));
         for (int i = 0; i < productCount; i++) {
-            Product product = productRepository.save(
+            Product product = exposedProducts.save(
                 Product.create(brand.getId(), "상품" + i, new Money(1_000L + i), new Stock(10)));
-            // 상품 생성 유스케이스처럼 좋아요 수 집계 행도 함께 만든다.
-            likeService.createCount(product.getId());
             for (long userId = 1; userId <= i % 4; userId++) {
                 likeService.like(userId, product.getId());
             }
         }
-        Product otherProduct = productRepository.save(
-            Product.create(other.getId(), "다른 브랜드 상품", new Money(1_000), new Stock(10)));
-        likeService.createCount(otherProduct.getId());
+        exposedProducts.save(Product.create(other.getId(), "다른 브랜드 상품", new Money(1_000), new Stock(10)));
         return brand.getId();
     }
 

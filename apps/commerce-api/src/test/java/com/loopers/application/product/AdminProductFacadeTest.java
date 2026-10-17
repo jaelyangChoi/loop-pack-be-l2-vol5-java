@@ -10,6 +10,7 @@ import com.loopers.domain.product.ProductSort;
 import com.loopers.domain.product.Stock;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
+import com.loopers.support.fixture.ExposedProducts;
 import com.loopers.utils.DatabaseCleanUp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -28,6 +29,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @SpringBootTest
 class AdminProductFacadeTest {
+
+    @Autowired
+    private ExposedProducts exposedProducts;
 
     @Autowired
     private AdminProductFacade adminProductFacade;
@@ -62,11 +66,8 @@ class AdminProductFacadeTest {
         return brandRepository.save(brand);
     }
 
-    // 상품 생성 유스케이스처럼 좋아요 수 집계 행도 함께 만든다.
     private Product saveProduct(Long brandId, String name) {
-        Product product = productRepository.save(Product.create(brandId, name, new Money(89_000), new Stock(10)));
-        likeService.createCount(product.getId());
-        return product;
+        return exposedProducts.save(Product.create(brandId, name, new Money(89_000), new Stock(10)));
     }
 
     private Product saveDeletedProduct(Long brandId, String name) {
