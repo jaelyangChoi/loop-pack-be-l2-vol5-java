@@ -44,7 +44,7 @@ class LikeServiceTest {
     // 상품 생성 유스케이스처럼 좋아요 수 집계 행도 함께 만든다. 행이 없으면 증감이 반영되지 않는다.
     private Long saveProduct() {
         Long productId = productRepository.save(Product.create(1L, "상품", new Money(1_000), new Stock(1))).getId();
-        likeService.startCounting(productId);
+        likeService.createCount(productId);
         return productId;
     }
 

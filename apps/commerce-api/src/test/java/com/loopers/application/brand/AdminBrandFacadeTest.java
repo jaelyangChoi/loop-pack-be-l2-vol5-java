@@ -69,7 +69,7 @@ class AdminBrandFacadeTest {
         }
         Product saved = productRepository.save(product);
         if (!deleted) {
-            likeService.startCounting(saved.getId());
+            likeService.createCount(saved.getId());
         }
         return saved;
     }

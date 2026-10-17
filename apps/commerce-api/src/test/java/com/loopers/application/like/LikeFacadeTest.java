@@ -58,7 +58,7 @@ class LikeFacadeTest {
     // 상품 생성 유스케이스처럼 좋아요 수 집계 행도 함께 만든다.
     private Product saveProduct(String name) {
         Product product = productRepository.save(Product.create(1L, name, new Money(89_000), new Stock(10)));
-        likeService.startCounting(product.getId());
+        likeService.createCount(product.getId());
         return product;
     }
 

@@ -274,7 +274,7 @@ class ProductRepositoryTest {
         // 상품 생성 유스케이스처럼 좋아요 수 집계 행도 함께 만든다.
         private Product saveWithPrice(Long brandId, String name, long price) {
             Product product = productRepository.save(Product.create(brandId, name, new Money(price), new Stock(1)));
-            likeService.startCounting(product.getId());
+            likeService.createCount(product.getId());
             return product;
         }
 
@@ -425,7 +425,7 @@ class ProductRepositoryTest {
         // 상품 생성·삭제 유스케이스처럼 좋아요 수 집계 행도 함께 만들고 지운다(행의 생성·삭제 검증은 Admin Facade 테스트).
         private Product saveWithPrice(Long brandId, String name, long price) {
             Product product = productRepository.save(Product.create(brandId, name, new Money(price), new Stock(1)));
-            likeService.startCounting(product.getId());
+            likeService.createCount(product.getId());
             return product;
         }
 
@@ -436,7 +436,7 @@ class ProductRepositoryTest {
         private void delete(Product product) {
             product.delete();
             productRepository.save(product);
-            likeService.stopCounting(List.of(product.getId()));
+            likeService.removeCounts(List.of(product.getId()));
         }
 
         @DisplayName("삭제된 상품의 행이 지워지면, 그 상품이 위에 있었어도 페이지는 크기를 채운다.")

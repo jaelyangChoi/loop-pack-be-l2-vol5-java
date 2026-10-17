@@ -45,7 +45,7 @@ public class AdminBrandFacade {
         List<Product> products = productService.getAllActiveByBrandForUpdate(brandId);
         products.forEach(Product::delete);
         // 삭제한 상품의 좋아요 수 집계 행을 지워 브랜드 없는 좋아요순 목록에서 뺀다 (D-33).
-        likeService.stopCounting(products.stream().map(Product::getId).toList());
+        likeService.removeCounts(products.stream().map(Product::getId).toList());
         brand.delete();
     }
 

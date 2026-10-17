@@ -32,7 +32,7 @@ public class AdminProductFacade {
         brandService.getForShare(brandId);
         Product product = productService.create(brandId, name, new Money(price), new Stock(stock));
         // 좋아요 수 집계 행이 있어야 브랜드 없는 좋아요순 목록에 나온다 (D-33).
-        likeService.startCounting(product.getId());
+        likeService.createCount(product.getId());
         return ProductInfo.from(product);
     }
 
@@ -54,7 +54,7 @@ public class AdminProductFacade {
     @Transactional
     public void delete(Long productId) {
         productService.getForUpdate(productId).delete();
-        likeService.stopCounting(List.of(productId));
+        likeService.removeCounts(List.of(productId));
     }
 
     @Transactional(readOnly = true)
