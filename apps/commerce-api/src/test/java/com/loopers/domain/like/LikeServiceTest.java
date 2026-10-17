@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
 import java.util.Map;
@@ -28,6 +29,9 @@ class LikeServiceTest {
 
     @Autowired
     private ProductRepository productRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Autowired
     private DatabaseCleanUp databaseCleanUp;
@@ -117,6 +121,23 @@ class LikeServiceTest {
 
             // assert
             assertThat(likeService.count(product)).isEqualTo(1);
+        }
+
+        @DisplayName("등록과 취소를 거친 뒤 좋아요 수는 좋아요 관계의 개수와 같다.")
+        @Test
+        void countMatchesNumberOfLikeRows() {
+            // arrange
+            Long product = saveProduct();
+            likeService.like(1L, product);
+            likeService.like(2L, product);
+            likeService.like(3L, product);
+
+            // act
+            likeService.unlike(2L, product);
+
+            // assert
+            Long rows = jdbcTemplate.queryForObject("select count(*) from likes where product_id = ?", Long.class, product);
+            assertThat(likeService.count(product)).isEqualTo(2).isEqualTo(rows);
         }
     }
 

@@ -12,18 +12,23 @@ import java.util.Map;
 public class LikeService {
 
     private final LikeRepository likeRepository;
+    private final ProductLikeCountRepository productLikeCountRepository;
 
-    /** 좋아요를 등록한다. 이미 있으면 그대로 두어 관계는 하나만 유지된다. */
+    /** 좋아요를 등록한다. 이미 있으면 그대로 두어 관계는 하나만 유지되고 좋아요 수도 늘지 않는다. */
     public void like(Long userId, Long productId) {
         if (likeRepository.exists(userId, productId)) {
             return;
         }
         likeRepository.save(Like.create(userId, productId));
+        // 동시에 같은 관계를 등록하면 기본키 충돌로 한쪽 TX 가 rollback 되어 이 증가도 함께 취소된다.
+        productLikeCountRepository.increase(productId);
     }
 
-    /** 좋아요를 취소한다. 관계가 없어도 성공한다. */
+    /** 좋아요를 취소한다. 관계가 없어도 성공하며, 실제로 지웠을 때만 좋아요 수를 내린다. */
     public void unlike(Long userId, Long productId) {
-        likeRepository.delete(userId, productId);
+        if (likeRepository.delete(userId, productId) > 0) {
+            productLikeCountRepository.decrease(productId);
+        }
     }
 
     public long count(Long productId) {

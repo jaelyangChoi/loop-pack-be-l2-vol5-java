@@ -1,8 +1,7 @@
 package com.loopers.infrastructure.product;
 
 import com.loopers.domain.common.Money;
-import com.loopers.domain.like.Like;
-import com.loopers.domain.like.LikeRepository;
+import com.loopers.domain.like.LikeService;
 import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductSort;
 import com.loopers.domain.product.ProductRepository;
@@ -34,8 +33,9 @@ class ProductRepositoryTest {
     @Autowired
     private ProductRepository productRepository;
 
+    // 좋아요 수 집계도 함께 바뀌어야 해서 관계는 LikeService 로 만든다.
     @Autowired
-    private LikeRepository likeRepository;
+    private LikeService likeService;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -196,7 +196,7 @@ class ProductRepositoryTest {
     @Nested
     class FindAllActiveLikedBy {
         private void like(Long userId, Product product) {
-            likeRepository.save(Like.create(userId, product.getId()));
+            likeService.like(userId, product.getId());
         }
 
         @DisplayName("내가 좋아요한 상품만, 최근에 좋아요한 순으로 반환한다.")
@@ -276,7 +276,7 @@ class ProductRepositoryTest {
         }
 
         private void like(Long userId, Product product) {
-            likeRepository.save(Like.create(userId, product.getId()));
+            likeService.like(userId, product.getId());
         }
 
         private PageRequest firstPage() {
@@ -429,7 +429,7 @@ class ProductRepositoryTest {
         }
 
         private void like(Long userId, Product product) {
-            likeRepository.save(Like.create(userId, product.getId()));
+            likeService.like(userId, product.getId());
         }
 
         private void delete(Product product) {
@@ -529,7 +529,7 @@ class ProductRepositoryTest {
             like(1L, first);
             like(2L, first);
             like(1L, second);
-            likeRepository.delete(1L, first.getId());
+            likeService.unlike(1L, first.getId());
             delete(third);
 
             // act & assert

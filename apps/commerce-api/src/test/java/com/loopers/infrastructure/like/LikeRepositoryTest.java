@@ -3,6 +3,7 @@ package com.loopers.infrastructure.like;
 import com.loopers.domain.common.Money;
 import com.loopers.domain.like.Like;
 import com.loopers.domain.like.LikeRepository;
+import com.loopers.domain.like.ProductLikeCountRepository;
 import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.Stock;
@@ -27,6 +28,9 @@ class LikeRepositoryTest {
     private LikeRepository likeRepository;
 
     @Autowired
+    private ProductLikeCountRepository productLikeCountRepository;
+
+    @Autowired
     private ProductRepository productRepository;
 
     @Autowired
@@ -47,6 +51,13 @@ class LikeRepositoryTest {
     // 좋아요 수 집계는 상품 행에 속하므로 수를 세는 테스트는 실제 상품이 필요하다.
     private Long saveProduct() {
         return productRepository.save(Product.create(1L, "상품", new Money(1_000), new Stock(1))).getId();
+    }
+
+    // 관계 저장은 집계를 바꾸지 않으므로(증감은 LikeService 의 책임) 읽기 테스트는 집계를 직접 올려 둔다.
+    private void increase(Long productId, int times) {
+        for (int i = 0; i < times; i++) {
+            productLikeCountRepository.increase(productId);
+        }
     }
 
     @DisplayName("좋아요를 저장하고 확인할 때,")
@@ -113,20 +124,17 @@ class LikeRepositoryTest {
     @DisplayName("상품의 좋아요 수를 셀 때,")
     @Nested
     class CountByProductId {
-        @DisplayName("여러 사용자의 관계를 합산하고, 취소하면 줄어든다.")
+        @DisplayName("상품의 집계 값을 돌려준다. 다른 상품의 값은 섞이지 않는다.")
         @Test
-        void countsLikesOfProduct() {
+        void returnsAggregatedCountOfProduct() {
             // arrange
             Long product = saveProduct();
             Long other = saveProduct();
-            saveLike(1L, product);
-            saveLike(2L, product);
-            saveLike(1L, other);
+            increase(product, 2);
+            increase(other, 1);
 
             // act & assert
             assertThat(likeRepository.countByProductId(product)).isEqualTo(2);
-            likeRepository.delete(1L, product);
-            assertThat(likeRepository.countByProductId(product)).isEqualTo(1);
         }
 
         @DisplayName("관계가 없으면 0이다. 집계 행이 없는 상품도 0이다.")
@@ -134,39 +142,6 @@ class LikeRepositoryTest {
         void returnsZero_whenNoLikes() {
             assertThat(likeRepository.countByProductId(saveProduct())).isZero();
             assertThat(likeRepository.countByProductId(999_999L)).isZero();
-        }
-
-        @DisplayName("같은 관계를 다시 저장해도 수가 늘지 않는다.")
-        @Test
-        void doesNotIncrease_whenSameLikeIsSavedAgain() {
-            Long product = saveProduct();
-            saveLike(1L, product);
-            saveLike(1L, product);
-
-            assertThat(likeRepository.countByProductId(product)).isEqualTo(1);
-        }
-
-        @DisplayName("없는 관계를 취소하면 수가 줄지 않는다.")
-        @Test
-        void doesNotDecrease_whenLikeDoesNotExist() {
-            Long product = saveProduct();
-            saveLike(1L, product);
-
-            assertThat(likeRepository.delete(2L, product)).isZero();
-            assertThat(likeRepository.countByProductId(product)).isEqualTo(1);
-        }
-
-        @DisplayName("집계는 좋아요 관계의 개수와 같다.")
-        @Test
-        void matchesNumberOfLikeRows() {
-            Long product = saveProduct();
-            saveLike(1L, product);
-            saveLike(2L, product);
-            saveLike(3L, product);
-            likeRepository.delete(2L, product);
-
-            Long rows = jdbcTemplate.queryForObject("select count(*) from likes where product_id = ?", Long.class, product);
-            assertThat(likeRepository.countByProductId(product)).isEqualTo(rows);
         }
     }
 
@@ -180,9 +155,8 @@ class LikeRepositoryTest {
             Long first = saveProduct();
             Long second = saveProduct();
             Long noLikes = saveProduct();
-            saveLike(1L, first);
-            saveLike(2L, first);
-            saveLike(1L, second);
+            increase(first, 2);
+            increase(second, 1);
 
             // act
             Map<Long, Long> counts = likeRepository.countByProductIds(List.of(first, second, noLikes));
@@ -191,18 +165,16 @@ class LikeRepositoryTest {
             assertThat(counts).containsOnly(Map.entry(first, 2L), Map.entry(second, 1L));
         }
 
-        @DisplayName("요청하지 않은 상품은 집계하지 않고, 취소하면 줄어든다.")
+        @DisplayName("요청하지 않은 상품은 집계하지 않는다.")
         @Test
-        void countsOnlyRequestedProducts_andDecreasesAfterCancel() {
+        void countsOnlyRequestedProducts() {
             // arrange
             Long first = saveProduct();
             Long second = saveProduct();
-            saveLike(1L, first);
-            saveLike(2L, first);
-            saveLike(1L, second);
+            increase(first, 1);
+            increase(second, 1);
 
             // act
-            likeRepository.delete(1L, first);
             Map<Long, Long> counts = likeRepository.countByProductIds(List.of(first));
 
             // assert

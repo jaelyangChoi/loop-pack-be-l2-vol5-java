@@ -11,8 +11,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 좋아요 관계를 저장하고, 같은 트랜잭션에서 상품별 좋아요 수 집계({@code product_like_counts})를 함께 맞춘다.
- * 집계는 좋아요 수의 단일 출처라 관계가 실제로 생기거나 지워졌을 때만 ±1 한다.
+ * 좋아요 관계를 저장한다. 좋아요 수는 관계가 아니라 상품별 좋아요 수 집계({@code product_like_counts})에서 읽는다.
+ * 집계의 증감은 {@code LikeService} 가 관계를 실제로 만들거나 지웠을 때 한다.
  */
 @RequiredArgsConstructor
 @Component
@@ -22,14 +22,7 @@ public class LikeRepositoryImpl implements LikeRepository {
 
     @Override
     public Like save(Like like) {
-        Long productId = like.getId().productId();
-        // 이미 있는 관계를 다시 저장해도 수가 늘지 않게 한다. 동시에 같은 관계를 만들면 기본키 충돌로 한쪽 TX 가 rollback 된다.
-        if (likeJpaRepository.existsById(like.getId())) {
-            return like;
-        }
-        Like saved = likeJpaRepository.save(like);
-        productLikeCountJpaRepository.increase(productId);
-        return saved;
+        return likeJpaRepository.save(like);
     }
 
     @Override
@@ -39,11 +32,7 @@ public class LikeRepositoryImpl implements LikeRepository {
 
     @Override
     public int delete(Long userId, Long productId) {
-        int deleted = likeJpaRepository.deleteByUserIdAndProductId(userId, productId);
-        if (deleted > 0) {
-            productLikeCountJpaRepository.decrease(productId);
-        }
-        return deleted;
+        return likeJpaRepository.deleteByUserIdAndProductId(userId, productId);
     }
 
     @Override
