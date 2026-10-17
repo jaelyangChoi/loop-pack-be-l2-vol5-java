@@ -42,12 +42,12 @@ public class LikeService {
     }
 
     public long count(Long productId) {
-        return likeRepository.countByProductId(productId);
+        return productLikeCountRepository.findCount(productId);
     }
 
     /** 요청한 모든 상품의 좋아요 수를 돌려준다. 좋아요가 없는 상품은 0으로 채운다. */
     public Map<Long, Long> countByProductIds(Collection<Long> productIds) {
-        Map<Long, Long> counts = likeRepository.countByProductIds(productIds);
+        Map<Long, Long> counts = productLikeCountRepository.findCounts(productIds);
         Map<Long, Long> result = new LinkedHashMap<>();
         for (Long productId : productIds) {
             result.put(productId, counts.getOrDefault(productId, 0L));

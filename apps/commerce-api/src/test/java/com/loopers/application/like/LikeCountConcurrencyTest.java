@@ -66,7 +66,7 @@ class LikeCountConcurrencyTest {
     }
 
     private long counter(Long productId) {
-        return likeRepository.countByProductId(productId);
+        return likeService.count(productId);
     }
 
     private Runnable like(long userId, Long productId) {

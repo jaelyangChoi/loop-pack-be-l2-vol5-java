@@ -101,7 +101,7 @@ class LikeFacadeTest {
             likeFacade.like(user.getId(), product.getId());
 
             // assert
-            assertThat(likeRepository.countByProductId(product.getId())).isEqualTo(1);
+            assertThat(likeService.count(product.getId())).isEqualTo(1);
         }
 
         @DisplayName("없거나 삭제된 상품이면 NOT_FOUND 로 거절하고, 저장하지 않는다.")

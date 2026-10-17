@@ -137,7 +137,7 @@ class LikeApiE2ETest {
             assertSuccess(call(HttpMethod.POST, likesUrl(product.getId()), userId));
             assertSuccess(call(HttpMethod.POST, likesUrl(product.getId()), userId));
 
-            assertThat(likeRepository.countByProductId(product.getId())).isEqualTo(1);
+            assertThat(likeService.count(product.getId())).isEqualTo(1);
         }
 
         @DisplayName("없거나 삭제된 상품이면 404 NOT_FOUND 이고, 저장하지 않는다.")
