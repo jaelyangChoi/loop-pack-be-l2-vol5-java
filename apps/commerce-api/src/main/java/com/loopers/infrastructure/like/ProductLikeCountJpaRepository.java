@@ -38,6 +38,7 @@ public interface ProductLikeCountJpaRepository extends JpaRepository<ProductLike
     List<Object[]> findLikeCounts(@Param("productIds") Collection<Long> productIds);
 
     // 노출 상품만 행이 있으므로 삭제 상품을 거르지 않고 인덱스 (like_count DESC, product_id DESC) 순서로 페이지만 읽는다.
+    // 쿼리에는 없지만 Spring Data 가 Pageable 의 offset·size 를 SQL 의 limit 으로 붙인다(반환 타입이 List 여도 같다).
     @Query("select c.productId from ProductLikeCount c order by c.likeCount desc, c.productId desc")
     List<Long> findProductIdsOrderByLikeCountDesc(Pageable pageable);
 

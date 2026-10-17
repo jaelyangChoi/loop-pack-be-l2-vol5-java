@@ -60,7 +60,9 @@ public class ProductRepositoryImpl implements ProductRepository {
     }
 
     // 브랜드 없는 likes_desc: ① 집계 테이블에서 페이지의 상품 id 를 읽고 ② 그 id 로 상품을 조회한다. 집계는 노출 상품만
-    // 행을 가지므로 ①이 페이지 크기만 읽고, ②에서 삭제 여부를 한 번 더 확인한다(경쟁으로 빠진 id 는 건너뛴다).
+    // 행을 가지므로 ①은 삭제 상품을 거르지 않고 인덱스 앞부분 (offset + size)행만 읽는다.
+    // ②의 삭제 확인과 건너뛰기는 방어다. 상품 삭제와 행 삭제가 같은 TX 라 앱 경로로는 삭제 상품의 행이 남지 않지만,
+    // DB 를 직접 고쳐 행이 남아도 삭제 상품이 노출되지 않게 한다(그때는 그 페이지가 짧아진다).
     private Page<Product> findAllActiveOrderByLikesDesc(Pageable pageable) {
         List<Long> ids = productLikeCountJpaRepository.findProductIdsOrderByLikeCountDesc(pageable);
         long total = productJpaRepository.countActive();
