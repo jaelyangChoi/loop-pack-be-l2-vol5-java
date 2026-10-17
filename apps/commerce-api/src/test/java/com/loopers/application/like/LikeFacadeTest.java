@@ -3,6 +3,7 @@ package com.loopers.application.like;
 import com.loopers.application.product.ProductInfo;
 import com.loopers.domain.common.Money;
 import com.loopers.domain.like.LikeRepository;
+import com.loopers.domain.like.LikeService;
 import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.Stock;
@@ -34,6 +35,9 @@ class LikeFacadeTest {
     private LikeRepository likeRepository;
 
     @Autowired
+    private LikeService likeService;
+
+    @Autowired
     private UserRepository userRepository;
 
     @Autowired
@@ -51,8 +55,11 @@ class LikeFacadeTest {
         return userRepository.save(User.create());
     }
 
+    // 상품 생성 유스케이스처럼 좋아요 수 집계 행도 함께 만든다.
     private Product saveProduct(String name) {
-        return productRepository.save(Product.create(1L, name, new Money(89_000), new Stock(10)));
+        Product product = productRepository.save(Product.create(1L, name, new Money(89_000), new Stock(10)));
+        likeService.startCounting(product.getId());
+        return product;
     }
 
     private Product saveDeletedProduct(String name) {

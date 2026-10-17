@@ -66,8 +66,11 @@ class ProductApiE2ETest {
         return brandRepository.save(Brand.create(name));
     }
 
+    // 상품 생성 유스케이스처럼 좋아요 수 집계 행도 함께 만든다.
     private Product saveProduct(Brand brand, String name, long price) {
-        return productRepository.save(Product.create(brand.getId(), name, new Money(price), new Stock(10)));
+        Product product = productRepository.save(Product.create(brand.getId(), name, new Money(price), new Stock(10)));
+        likeService.startCounting(product.getId());
+        return product;
     }
 
     private Product saveDeletedProduct(Brand brand, String name) {

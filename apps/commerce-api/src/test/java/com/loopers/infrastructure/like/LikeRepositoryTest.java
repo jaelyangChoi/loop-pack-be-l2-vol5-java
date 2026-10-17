@@ -48,9 +48,11 @@ class LikeRepositoryTest {
         likeRepository.save(Like.create(userId, productId));
     }
 
-    // 좋아요 수 집계는 상품 행에 속하므로 수를 세는 테스트는 실제 상품이 필요하다.
+    // 상품 생성 유스케이스처럼 좋아요 수 집계 행도 함께 만든다.
     private Long saveProduct() {
-        return productRepository.save(Product.create(1L, "상품", new Money(1_000), new Stock(1))).getId();
+        Long productId = productRepository.save(Product.create(1L, "상품", new Money(1_000), new Stock(1))).getId();
+        productLikeCountRepository.create(productId);
+        return productId;
     }
 
     // 관계 저장은 집계를 바꾸지 않으므로(증감은 LikeService 의 책임) 읽기 테스트는 집계를 직접 올려 둔다.

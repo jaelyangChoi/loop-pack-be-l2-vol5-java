@@ -2,6 +2,7 @@ package com.loopers.application.like;
 
 import com.loopers.domain.common.Money;
 import com.loopers.domain.like.LikeRepository;
+import com.loopers.domain.like.LikeService;
 import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.Stock;
@@ -40,6 +41,9 @@ class LikeCountConcurrencyTest {
     private LikeRepository likeRepository;
 
     @Autowired
+    private LikeService likeService;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @Autowired
@@ -50,8 +54,11 @@ class LikeCountConcurrencyTest {
         databaseCleanUp.truncateAllTables();
     }
 
+    // 상품 생성 유스케이스처럼 좋아요 수 집계 행도 함께 만든다.
     private Product saveProduct() {
-        return productRepository.save(Product.create(1L, "러닝화", new Money(89_000), new Stock(10)));
+        Product product = productRepository.save(Product.create(1L, "러닝화", new Money(89_000), new Stock(10)));
+        likeService.startCounting(product.getId());
+        return product;
     }
 
     private long likeRows(Long productId) {

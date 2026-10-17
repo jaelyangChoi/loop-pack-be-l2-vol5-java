@@ -41,9 +41,11 @@ class LikeServiceTest {
         databaseCleanUp.truncateAllTables();
     }
 
-    // 좋아요 수 집계는 상품 행에 속하므로 수를 세는 테스트는 실제 상품이 필요하다.
+    // 상품 생성 유스케이스처럼 좋아요 수 집계 행도 함께 만든다. 행이 없으면 증감이 반영되지 않는다.
     private Long saveProduct() {
-        return productRepository.save(Product.create(1L, "상품", new Money(1_000), new Stock(1))).getId();
+        Long productId = productRepository.save(Product.create(1L, "상품", new Money(1_000), new Stock(1))).getId();
+        likeService.startCounting(productId);
+        return productId;
     }
 
     @DisplayName("좋아요를 등록할 때,")

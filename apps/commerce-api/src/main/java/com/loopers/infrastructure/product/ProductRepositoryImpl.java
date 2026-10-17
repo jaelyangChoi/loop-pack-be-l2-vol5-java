@@ -24,19 +24,9 @@ public class ProductRepositoryImpl implements ProductRepository {
     private final ProductJpaRepository productJpaRepository;
     private final ProductLikeCountJpaRepository productLikeCountJpaRepository;
 
-    /**
-     * 상품을 저장하고 좋아요 수 집계의 행을 노출 상태에 맞춘다. 노출 중이면 행을 만들고(없을 때 0, 있으면 좋아요에서 다시 센 값),
-     * 삭제됐으면 행을 지워 브랜드 없는 좋아요순 목록에서 뺀다. 삭제 처리는 이 저장을 거쳐야 한다.
-     */
     @Override
     public Product save(Product product) {
-        Product saved = productJpaRepository.save(product);
-        if (saved.getDeletedAt() == null) {
-            productLikeCountJpaRepository.upsertFromLikes(saved.getId());
-        } else {
-            productLikeCountJpaRepository.deleteByProductId(saved.getId());
-        }
-        return saved;
+        return productJpaRepository.save(product);
     }
 
     @Override

@@ -46,17 +46,6 @@ public class ProductService {
             .collect(Collectors.toMap(Product::getId, Function.identity()));
     }
 
-    /** 상품을 삭제 처리한다. 저장을 거쳐 좋아요 수 집계에서도 빠진다(브랜드 없는 좋아요순 목록에서 제외). */
-    public void delete(Product product) {
-        product.delete();
-        productRepository.save(product);
-    }
-
-    /** 여러 상품을 삭제 처리한다. */
-    public void deleteAll(Collection<Product> products) {
-        products.forEach(this::delete);
-    }
-
     public Product create(Long brandId, String name, Money price, Stock stock) {
         return productRepository.save(Product.create(brandId, name, price, stock));
     }

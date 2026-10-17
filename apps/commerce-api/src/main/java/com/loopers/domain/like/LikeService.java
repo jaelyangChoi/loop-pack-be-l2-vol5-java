@@ -31,6 +31,16 @@ public class LikeService {
         }
     }
 
+    /** 새 상품의 좋아요 수를 0으로 시작한다. 상품을 만드는 유스케이스가 같은 트랜잭션에서 호출해야 좋아요순 목록에 포함된다. */
+    public void startCounting(Long productId) {
+        productLikeCountRepository.create(productId);
+    }
+
+    /** 삭제된 상품들의 좋아요 수를 지운다. 상품을 삭제하는 유스케이스가 같은 트랜잭션에서 호출해야 좋아요순 목록에서 빠진다. */
+    public void stopCounting(Collection<Long> productIds) {
+        productLikeCountRepository.deleteAll(productIds);
+    }
+
     public long count(Long productId) {
         return likeRepository.countByProductId(productId);
     }

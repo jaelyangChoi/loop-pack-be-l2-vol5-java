@@ -3,6 +3,7 @@ package com.loopers.application.brand;
 import com.loopers.domain.brand.Brand;
 import com.loopers.domain.brand.BrandRepository;
 import com.loopers.domain.common.Money;
+import com.loopers.domain.like.LikeService;
 import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.Stock;
@@ -37,6 +38,9 @@ class AdminBrandFacadeTest {
     private ProductRepository productRepository;
 
     @Autowired
+    private LikeService likeService;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @Autowired
@@ -57,12 +61,17 @@ class AdminBrandFacadeTest {
         return brandRepository.save(brand);
     }
 
+    // 상품 생성 유스케이스처럼 노출 상품은 좋아요 수 집계 행도 함께 만든다. 삭제 상품은 행이 없다.
     private Product saveProduct(Long brandId, int stock, boolean deleted) {
         Product product = Product.create(brandId, "러닝화", new Money(89_000), new Stock(stock));
         if (deleted) {
             product.delete();
         }
-        return productRepository.save(product);
+        Product saved = productRepository.save(product);
+        if (!deleted) {
+            likeService.startCounting(saved.getId());
+        }
+        return saved;
     }
 
     private long likeCountRows(Long productId) {

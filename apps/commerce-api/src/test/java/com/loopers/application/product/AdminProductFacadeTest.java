@@ -3,8 +3,10 @@ package com.loopers.application.product;
 import com.loopers.domain.brand.Brand;
 import com.loopers.domain.brand.BrandRepository;
 import com.loopers.domain.common.Money;
+import com.loopers.domain.like.LikeService;
 import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductRepository;
+import com.loopers.domain.product.ProductSort;
 import com.loopers.domain.product.Stock;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
@@ -37,6 +39,9 @@ class AdminProductFacadeTest {
     private BrandRepository brandRepository;
 
     @Autowired
+    private LikeService likeService;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @Autowired
@@ -57,8 +62,11 @@ class AdminProductFacadeTest {
         return brandRepository.save(brand);
     }
 
+    // 상품 생성 유스케이스처럼 좋아요 수 집계 행도 함께 만든다.
     private Product saveProduct(Long brandId, String name) {
-        return productRepository.save(Product.create(brandId, name, new Money(89_000), new Stock(10)));
+        Product product = productRepository.save(Product.create(brandId, name, new Money(89_000), new Stock(10)));
+        likeService.startCounting(product.getId());
+        return product;
     }
 
     private Product saveDeletedProduct(Long brandId, String name) {
@@ -105,6 +113,22 @@ class AdminProductFacadeTest {
             assertThat(info.updatedAt()).isNotNull();
             assertThat(stored(info.id()).getName()).isEqualTo("러닝화");
             assertThat(stored(info.id()).getStock()).isEqualTo(new Stock(10));
+        }
+
+        @DisplayName("좋아요 수 집계 행을 0으로 함께 만들어, 브랜드 없는 좋아요순 목록에 나온다.")
+        @Test
+        void createsLikeCountRowWithZero() {
+            // arrange
+            Brand brand = saveBrand("루퍼스");
+
+            // act
+            ProductInfo info = adminProductFacade.create(brand.getId(), "러닝화", 89_000, 10);
+
+            // assert
+            assertThat(likeCountRows(info.id())).isEqualTo(1);
+            assertThat(likeService.count(info.id())).isZero();
+            assertThat(productRepository.findAllActive(null, ProductSort.LIKES_DESC, PageRequest.of(0, 10)).getContent())
+                .extracting(Product::getId).containsExactly(info.id());
         }
 
         @DisplayName("없거나 삭제된 브랜드이면 NOT_FOUND 로 거절하고, 저장하지 않는다.")
@@ -267,6 +291,31 @@ class AdminProductFacadeTest {
             // assert
             assertThat(likeCountRows(product.getId())).isZero();
             assertThat(likeCountRows(other.getId())).isEqualTo(1);
+        }
+
+        @DisplayName("등록·좋아요·취소·삭제를 거친 뒤 집계 행 수는 노출 상품 수와 같고, 행 값은 좋아요 관계 수와 같다.")
+        @Test
+        void likeCountRowsMatchActiveProductsAndLikes() {
+            // arrange
+            Brand brand = saveBrand("루퍼스");
+            Long first = adminProductFacade.create(brand.getId(), "하나", 1_000, 1).id();
+            Long second = adminProductFacade.create(brand.getId(), "둘", 1_000, 1).id();
+            Long third = adminProductFacade.create(brand.getId(), "셋", 1_000, 1).id();
+            likeService.like(1L, first);
+            likeService.like(2L, first);
+            likeService.like(1L, second);
+            likeService.unlike(1L, first);
+
+            // act
+            adminProductFacade.delete(third);
+
+            // assert
+            assertThat(jdbcTemplate.queryForObject("select count(*) from product_like_counts", Long.class))
+                .isEqualTo(jdbcTemplate.queryForObject(
+                    "select count(*) from products where deleted_at is null", Long.class));
+            assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from product_like_counts c where c.like_count <> "
+                    + "(select count(*) from likes l where l.product_id = c.product_id)", Long.class)).isZero();
         }
 
         @DisplayName("이미 삭제됐거나 없는 상품이면 NOT_FOUND 로 거절한다.")

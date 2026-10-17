@@ -14,8 +14,8 @@ import java.util.Optional;
 
 /**
  * 상품별 좋아요 수 집계. 변경 쿼리는 트랜잭션이 필요하며 Facade 의 트랜잭션에 참여한다.
- * 증감은 {@code UPDATE} 만 쓴다(upsert 하지 않는다). 삭제된 상품은 행이 없으므로, 삭제와 좋아요가 경쟁해도 삭제된 상품의
- * 행이 되살아나지 않는다.
+ * 행은 상품 생성 때 0으로 넣고, 증감은 {@code UPDATE} 만 쓴다(upsert 하지 않는다). 삭제된 상품은 행이 없으므로,
+ * 삭제와 좋아요가 경쟁해도 삭제된 상품의 행이 되살아나지 않는다.
  */
 public interface ProductLikeCountJpaRepository extends JpaRepository<ProductLikeCount, Long> {
 
@@ -41,19 +41,14 @@ public interface ProductLikeCountJpaRepository extends JpaRepository<ProductLike
     @Query("select c.productId from ProductLikeCount c order by c.likeCount desc, c.productId desc")
     List<Long> findProductIdsOrderByLikeCountDesc(Pageable pageable);
 
-    // 상품을 노출 상태로 저장할 때 행을 만든다. 좋아요 관계에서 다시 세어 처음 만들 때(0)와 복원 때 모두 맞는다.
+    // 새 상품은 좋아요가 없으므로 0으로 만든다. 엔티티에 생성자를 두지 않으려고 쿼리로 넣는다.
     @Transactional
     @Modifying
-    @Query(
-        value = "insert into product_like_counts (product_id, like_count) "
-            + "select :productId, count(*) from likes where product_id = :productId "
-            + "on duplicate key update like_count = values(like_count)",
-        nativeQuery = true
-    )
-    void upsertFromLikes(@Param("productId") Long productId);
+    @Query(value = "insert into product_like_counts (product_id, like_count) values (:productId, 0)", nativeQuery = true)
+    void insertZero(@Param("productId") Long productId);
 
     @Transactional
     @Modifying
-    @Query("delete from ProductLikeCount c where c.productId = :productId")
-    int deleteByProductId(@Param("productId") Long productId);
+    @Query("delete from ProductLikeCount c where c.productId in :productIds")
+    int deleteAllByProductIdIn(@Param("productIds") Collection<Long> productIds);
 }

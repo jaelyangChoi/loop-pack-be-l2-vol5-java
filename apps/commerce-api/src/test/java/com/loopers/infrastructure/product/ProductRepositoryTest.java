@@ -271,8 +271,11 @@ class ProductRepositoryTest {
     @DisplayName("정렬 기준과 브랜드 조건으로 상품 목록을 조회할 때,")
     @Nested
     class FindAllActiveBySort {
+        // 상품 생성 유스케이스처럼 좋아요 수 집계 행도 함께 만든다.
         private Product saveWithPrice(Long brandId, String name, long price) {
-            return productRepository.save(Product.create(brandId, name, new Money(price), new Stock(1)));
+            Product product = productRepository.save(Product.create(brandId, name, new Money(price), new Stock(1)));
+            likeService.startCounting(product.getId());
+            return product;
         }
 
         private void like(Long userId, Product product) {
@@ -419,13 +422,11 @@ class ProductRepositoryTest {
     @DisplayName("좋아요 수 집계(product_like_counts)는,")
     @Nested
     class LikeCountRows {
-        private long rows(Long productId) {
-            return jdbcTemplate.queryForObject(
-                "select count(*) from product_like_counts where product_id = ?", Long.class, productId);
-        }
-
+        // 상품 생성·삭제 유스케이스처럼 좋아요 수 집계 행도 함께 만들고 지운다(행의 생성·삭제 검증은 Admin Facade 테스트).
         private Product saveWithPrice(Long brandId, String name, long price) {
-            return productRepository.save(Product.create(brandId, name, new Money(price), new Stock(1)));
+            Product product = productRepository.save(Product.create(brandId, name, new Money(price), new Stock(1)));
+            likeService.startCounting(product.getId());
+            return product;
         }
 
         private void like(Long userId, Product product) {
@@ -435,23 +436,10 @@ class ProductRepositoryTest {
         private void delete(Product product) {
             product.delete();
             productRepository.save(product);
+            likeService.stopCounting(List.of(product.getId()));
         }
 
-        @DisplayName("상품을 저장하면 좋아요 0개로 만들어지고, 브랜드 없는 좋아요순 목록에 포함된다.")
-        @Test
-        void createsRowWithZero_whenProductIsSaved() {
-            // arrange & act
-            Product product = saveWithPrice(1L, "새 상품", 1_000);
-
-            // assert
-            assertThat(rows(product.getId())).isEqualTo(1);
-            assertThat(jdbcTemplate.queryForObject(
-                "select like_count from product_like_counts where product_id = ?", Long.class, product.getId())).isZero();
-            assertThat(productRepository.findAllActive(null, ProductSort.LIKES_DESC, PageRequest.of(0, 10)).getContent())
-                .extracting(Product::getId).containsExactly(product.getId());
-        }
-
-        @DisplayName("삭제 처리해 저장하면 행이 지워지고, 삭제된 상품이 위에 있어도 페이지는 크기를 채운다.")
+        @DisplayName("삭제된 상품의 행이 지워지면, 그 상품이 위에 있었어도 페이지는 크기를 채운다.")
         @Test
         void removesRow_andFillsPage_afterDelete() {
             // arrange: 좋아요 5·4·3·2·1개. 가장 많은 상품을 삭제한다.
@@ -471,7 +459,6 @@ class ProductRepositoryTest {
             Page<Product> page = productRepository.findAllActive(null, ProductSort.LIKES_DESC, PageRequest.of(0, 3));
 
             // assert
-            assertThat(rows(mostLiked.getId())).isZero();
             assertThat(page.getContent()).extracting(Product::getId)
                 .containsExactly(products.get(1).getId(), products.get(2).getId(), products.get(3).getId());
             assertThat(page.getTotalElements()).isEqualTo(4);
@@ -517,28 +504,6 @@ class ProductRepositoryTest {
             assertThat(page.getContent()).extracting(Product::getId)
                 .containsExactly(many.getId(), few.getId(), none.getId());
             assertThat(page.getTotalElements()).isEqualTo(3);
-        }
-
-        @DisplayName("노출 상품 수와 집계 행 수가 같고, 행 값은 좋아요 관계 수와 같다.")
-        @Test
-        void matchesActiveProductsAndLikeRows() {
-            // arrange
-            Product first = saveWithPrice(1L, "하나", 1_000);
-            Product second = saveWithPrice(1L, "둘", 1_000);
-            Product third = saveWithPrice(1L, "셋", 1_000);
-            like(1L, first);
-            like(2L, first);
-            like(1L, second);
-            likeService.unlike(1L, first.getId());
-            delete(third);
-
-            // act & assert
-            assertThat(jdbcTemplate.queryForObject("select count(*) from product_like_counts", Long.class))
-                .isEqualTo(jdbcTemplate.queryForObject(
-                    "select count(*) from products where deleted_at is null", Long.class));
-            assertThat(jdbcTemplate.queryForObject(
-                "select count(*) from product_like_counts c where c.like_count <> "
-                    + "(select count(*) from likes l where l.product_id = c.product_id)", Long.class)).isZero();
         }
     }
 

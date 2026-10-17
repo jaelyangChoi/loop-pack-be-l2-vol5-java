@@ -61,11 +61,15 @@ class ProductListQueryCountTest {
         for (int i = 0; i < productCount; i++) {
             Product product = productRepository.save(
                 Product.create(brand.getId(), "상품" + i, new Money(1_000L + i), new Stock(10)));
+            // 상품 생성 유스케이스처럼 좋아요 수 집계 행도 함께 만든다.
+            likeService.startCounting(product.getId());
             for (long userId = 1; userId <= i % 4; userId++) {
                 likeService.like(userId, product.getId());
             }
         }
-        productRepository.save(Product.create(other.getId(), "다른 브랜드 상품", new Money(1_000), new Stock(10)));
+        Product otherProduct = productRepository.save(
+            Product.create(other.getId(), "다른 브랜드 상품", new Money(1_000), new Stock(10)));
+        likeService.startCounting(otherProduct.getId());
         return brand.getId();
     }
 
