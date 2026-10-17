@@ -145,10 +145,10 @@ class ProductLikeCountRepositoryTest {
     @DisplayName("여러 상품의 좋아요 수를 한 번에 읽을 때,")
     @Nested
     class FindCounts {
-        @DisplayName("상품별 값을 돌려주고, 좋아요가 없는 상품은 결과에 없다.")
+        @DisplayName("행이 있으면 0도 담고, 행이 없는 상품은 결과에 없다.")
         @Test
-        void returnsCountsPerProduct_withoutProductsHavingNoLikes() {
-            // arrange
+        void returnsCountsOfExistingRows_includingZero() {
+            // arrange: 12L 은 행이 있고 0이며, 13L 은 행이 없다.
             productLikeCountRepository.create(10L);
             productLikeCountRepository.create(11L);
             productLikeCountRepository.create(12L);
@@ -156,10 +156,10 @@ class ProductLikeCountRepositoryTest {
             increase(11L, 1);
 
             // act
-            Map<Long, Long> counts = productLikeCountRepository.findCounts(List.of(10L, 11L, 12L));
+            Map<Long, Long> counts = productLikeCountRepository.findCounts(List.of(10L, 11L, 12L, 13L));
 
             // assert
-            assertThat(counts).containsOnly(Map.entry(10L, 2L), Map.entry(11L, 1L));
+            assertThat(counts).containsOnly(Map.entry(10L, 2L), Map.entry(11L, 1L), Map.entry(12L, 0L));
         }
 
         @DisplayName("요청하지 않은 상품은 읽지 않는다.")

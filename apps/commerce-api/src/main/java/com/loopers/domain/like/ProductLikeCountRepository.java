@@ -28,7 +28,7 @@ public interface ProductLikeCountRepository {
     /** 상품의 좋아요 수. 행이 없으면 0이다. */
     long findCount(Long productId);
 
-    /** 여러 상품의 좋아요 수를 한 번에 읽는다. 좋아요가 없는(행이 없거나 0인) 상품은 결과에 없다. */
+    /** 여러 상품의 좋아요 수를 한 번에 읽는다. 행이 없는 상품은 결과에 없고, 행이 있으면 0도 담긴다. */
     Map<Long, Long> findCounts(Collection<Long> productIds);
 
     /** 좋아요 수 내림차순(같으면 상품 id 내림차순)으로 페이지에 해당하는 상품 id 를 읽는다. 행이 있는 상품(노출 상품)만 담긴다. */
