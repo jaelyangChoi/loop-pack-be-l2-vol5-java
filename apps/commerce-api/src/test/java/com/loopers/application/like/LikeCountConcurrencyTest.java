@@ -1,19 +1,23 @@
 package com.loopers.application.like;
 
+import com.loopers.application.product.AdminProductFacade;
 import com.loopers.domain.common.Money;
 import com.loopers.domain.like.LikeRepository;
 import com.loopers.domain.like.LikeService;
 import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductRepository;
+import com.loopers.domain.product.ProductSort;
 import com.loopers.domain.product.Stock;
 import com.loopers.support.concurrent.ConcurrentRequests;
 import com.loopers.support.concurrent.ConcurrentRequests.Results;
+import com.loopers.support.error.ErrorType;
 import com.loopers.utils.DatabaseCleanUp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.RepeatedTest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.ArrayList;
@@ -33,6 +37,9 @@ class LikeCountConcurrencyTest {
 
     @Autowired
     private LikeFacade likeFacade;
+
+    @Autowired
+    private AdminProductFacade adminProductFacade;
 
     @Autowired
     private ProductRepository productRepository;
@@ -139,6 +146,31 @@ class LikeCountConcurrencyTest {
         assertThat(results.technicalErrors()).isZero();
         assertThat(likeRows(product.getId())).isEqualTo(10);
         assertThat(counter(product.getId())).isEqualTo(10);
+    }
+
+    @DisplayName("상품 삭제와 좋아요가 겹쳐도 삭제된 상품의 집계 행은 되살아나지 않고, 교착 없이 끝난다.")
+    @RepeatedTest(REPETITIONS)
+    void doesNotRevivePrunedRow_whenDeleteAndLikesOverlap() {
+        // arrange
+        Product product = saveProduct();
+        Product other = saveProduct();
+        List<Runnable> requests = new ArrayList<>();
+        requests.add(() -> adminProductFacade.delete(product.getId()));
+        for (long userId = 1; userId <= 20; userId++) {
+            requests.add(like(userId, product.getId()));
+        }
+
+        // act: 삭제보다 늦게 상품을 조회한 좋아요는 NOT_FOUND 로 거절된다. 먼저 조회한 좋아요는 관계를 남길 수 있다 (D-36).
+        Results results = ConcurrentRequests.run(requests);
+
+        // assert: 증가는 UPDATE 만 쓰므로 행이 지워진 뒤의 증가는 0행 갱신으로 끝난다.
+        assertThat(results.technicalErrors()).isZero();
+        assertThat(results.successes() + results.rejectedWith(ErrorType.NOT_FOUND)).isEqualTo(21);
+        assertThat(productRepository.findActive(product.getId())).isEmpty();
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from product_like_counts where product_id = ?", Long.class, product.getId())).isZero();
+        assertThat(productRepository.findAllActive(null, ProductSort.LIKES_DESC, PageRequest.of(0, 10)).getContent())
+            .extracting(Product::getId).containsExactly(other.getId());
     }
 
     @DisplayName("같은 좋아요를 동시에 여러 번 취소해도 집계는 한 번만 줄고 0 아래로 내려가지 않는다.")
