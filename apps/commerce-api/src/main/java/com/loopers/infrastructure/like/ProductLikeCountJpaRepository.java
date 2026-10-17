@@ -33,9 +33,12 @@ public interface ProductLikeCountJpaRepository extends JpaRepository<ProductLike
     @Query("select c.likeCount from ProductLikeCount c where c.productId = :productId")
     Optional<Long> findLikeCount(@Param("productId") Long productId);
 
-    // 결과 행은 [상품 id, 좋아요 수]이다. 행이 없는 상품은 결과에 없다(행이 있으면 0도 담긴다).
-    @Query("select c.productId, c.likeCount from ProductLikeCount c where c.productId in :productIds")
-    List<Object[]> findLikeCounts(@Param("productIds") Collection<Long> productIds);
+    // 행이 없는 상품은 결과에 없다(행이 있으면 0도 담긴다).
+    @Query(
+        "select new com.loopers.infrastructure.like.ProductLikeCountRow(c.productId, c.likeCount) "
+            + "from ProductLikeCount c where c.productId in :productIds"
+    )
+    List<ProductLikeCountRow> findLikeCounts(@Param("productIds") Collection<Long> productIds);
 
     // 노출 상품만 행이 있으므로 삭제 상품을 거르지 않고 인덱스 (like_count DESC, product_id DESC) 순서로 페이지만 읽는다.
     // 쿼리에는 없지만 Spring Data 가 Pageable 의 offset·size 를 SQL 의 limit 으로 붙인다(반환 타입이 List 여도 같다).

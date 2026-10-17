@@ -51,8 +51,8 @@ public class ProductLikeCountRepositoryImpl implements ProductLikeCountRepositor
             return Map.of();
         }
         Map<Long, Long> counts = new HashMap<>();
-        for (Object[] row : productLikeCountJpaRepository.findLikeCounts(productIds)) {
-            counts.put((Long) row[0], (Long) row[1]);
+        for (ProductLikeCountRow row : productLikeCountJpaRepository.findLikeCounts(productIds)) {
+            counts.put(row.productId(), row.likeCount());
         }
         return counts;
     }
