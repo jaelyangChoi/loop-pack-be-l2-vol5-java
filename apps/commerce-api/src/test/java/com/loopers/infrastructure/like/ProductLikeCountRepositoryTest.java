@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
@@ -181,6 +182,30 @@ class ProductLikeCountRepositoryTest {
         @Test
         void returnsEmpty_whenIdsAreEmpty() {
             assertThat(productLikeCountRepository.findCounts(List.of())).isEmpty();
+        }
+    }
+
+    @DisplayName("좋아요순으로 페이지의 상품 id 를 읽을 때,")
+    @Nested
+    class FindRankedProductIds {
+        @DisplayName("좋아요 수 내림차순이고 같으면 상품 id 내림차순이며, 페이지 크기만큼 읽는다.")
+        @Test
+        void returnsIdsOrderedByCountThenIdDesc_perPage() {
+            // arrange: 10L·12L 은 2개로 같고, 11L 은 3개, 13L 은 0개다.
+            for (long id = 10; id <= 13; id++) {
+                productLikeCountRepository.create(id);
+            }
+            increase(10L, 2);
+            increase(11L, 3);
+            increase(12L, 2);
+
+            // act
+            List<Long> first = productLikeCountRepository.findRankedProductIds(PageRequest.of(0, 3));
+            List<Long> second = productLikeCountRepository.findRankedProductIds(PageRequest.of(1, 3));
+
+            // assert
+            assertThat(first).containsExactly(11L, 12L, 10L);
+            assertThat(second).containsExactly(13L);
         }
     }
 

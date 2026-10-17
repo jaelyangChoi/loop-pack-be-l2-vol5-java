@@ -2,10 +2,12 @@ package com.loopers.infrastructure.like;
 
 import com.loopers.domain.like.ProductLikeCountRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RequiredArgsConstructor
@@ -53,5 +55,10 @@ public class ProductLikeCountRepositoryImpl implements ProductLikeCountRepositor
             counts.put((Long) row[0], (Long) row[1]);
         }
         return counts;
+    }
+
+    @Override
+    public List<Long> findRankedProductIds(Pageable pageable) {
+        return productLikeCountJpaRepository.findProductIdsOrderByLikeCountDesc(pageable);
     }
 }

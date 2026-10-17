@@ -1,6 +1,9 @@
 package com.loopers.domain.like;
 
+import org.springframework.data.domain.Pageable;
+
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -27,4 +30,7 @@ public interface ProductLikeCountRepository {
 
     /** 여러 상품의 좋아요 수를 한 번에 읽는다. 좋아요가 없는(행이 없거나 0인) 상품은 결과에 없다. */
     Map<Long, Long> findCounts(Collection<Long> productIds);
+
+    /** 좋아요 수 내림차순(같으면 상품 id 내림차순)으로 페이지에 해당하는 상품 id 를 읽는다. 행이 있는 상품(노출 상품)만 담긴다. */
+    List<Long> findRankedProductIds(Pageable pageable);
 }
