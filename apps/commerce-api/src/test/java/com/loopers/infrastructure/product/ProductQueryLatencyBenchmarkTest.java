@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   ./gradlew :apps:commerce-api:test --tests '*ProductQueryLatencyBenchmarkTest' -i
  * </pre>
  *
- * <p>SQL 문장은 앱이 실제로 보내는 문장(문서 3장)에서 파라미터(브랜드 7, limit 20)만 값으로 바꾼 것이다.
+ * <p>SQL 문장은 앱이 실제로 보내는 문장에서 파라미터(브랜드 7, limit 20)만 값으로 바꾼 것이다.
  * 쿼리를 바꾸면 이 문장도 앱과 같게 갱신한다.
  */
 @EnabledIfEnvironmentVariable(named = "PERF_JDBC_URL", matches = ".+")

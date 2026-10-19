@@ -37,7 +37,7 @@
 
 - **A는 브랜드 하나가 100행이라 개선 여지가 작다.** 요청 시간은 쿼리 비용보다 SELECT 4회의 왕복에 가깝다. 그래도 과제 필수 대상이므로 인덱스를 설계하고, 상품이 몰린 브랜드(5,000개)로도 비교한다.
 - **B가 실제 병목**이다. 비용 대부분이 후보 전체의 좋아요를 집계하고 정렬하는 데 있다.
-- **결과 비교**: 응답을 정규화(`jq -S`)해 MD5를 비교하는 체크섬 8개(baseline 6장). 하나라도 다르면 개선으로 세지 않는다.
+- **결과 비교**: 응답을 정규화(`jq -S`)해 MD5를 비교하는 체크섬 8개(baseline 4절). 하나라도 다르면 개선으로 세지 않는다.
 
 ## 4. 개선 설계
 
@@ -74,7 +74,7 @@
 
 - **단일 출처**: 모든 목록·상세의 `likeCount`와 모든 `likes_desc`가 이 테이블을 읽는다. 정렬 키와 표시 값이 같고, 좋아요 수 조회는 `group by`에서 PK 조회로 바뀐다. 브랜드 필터 `likes_desc`는 `products`와 카운터를 `left join`(`coalesce`)한다. 브랜드 범위가 좁아 옵티마이저 순서가 안정적이다.
 - **쓰기 책임(D-12 변경)**: 좋아요 등록·취소 TX가 카운터 행만 원자적으로 ±1 한다(실제로 행이 생기거나 지워졌을 때만, `like_count >= 0`). `products`는 건드리지 않는다. 측정: 순차 TX p50 0.85~1.06ms(없을 때 0.75~0.88), 같은 상품 동시 좋아요 1,307~1,445/s(없을 때 3,121~3,959/s).
-- **행의 생명주기**: 상품 저장(생성) 때 행을 만들고, 삭제 처리 때 지운다. 상품 삭제·브랜드 일괄 삭제 경로가 `ProductService`의 삭제 메서드를 거치게 한다. 좋아요 경로는 삭제와 경쟁하지 않는다(좋아요 TX는 상품 행을 잠그지 않는다).
+- **행의 생명주기**: 상품 생성 때 행을 만들고, 삭제 처리 때 지운다. 생성·삭제를 조합하는 Facade가 `LikeService.createCount`/`removeCounts`를 함께 호출한다. 좋아요 경로는 삭제와 경쟁하지 않는다(좋아요 TX는 상품 행을 잠그지 않는다).
 - **위험**: 행이 빠지면 그 상품이 브랜드 없는 `likes_desc`에서 빠진다(정합성 테스트로 고정). 기존 데이터는 backfill SQL로 맞춘다. 브랜드 필터가 없는 count(약 1.15ms)는 그대로라 이 요청의 하한이다.
 
 ### 4-C. 유지·조정하는 것
@@ -109,11 +109,11 @@
 | **B 브랜드 없는 `likes_desc`** | 14.6~16.3 → **1.81~1.94ms** | SELECT 5개 |
 | 브랜드 7 `likes_desc` | 0.95~1.02 → 0.73~0.80ms | 좋아요 수가 PK 조회로 |
 
-- 응답 체크섬 8개가 개선 전과 모두 같다. 전체 `check`(Checkstyle·ArchUnit·796건)가 통과한다.
-- 구현: `ProductLikeCount` 엔티티와 `ProductLikeCountJpaRepository`. 좋아요 등록·취소 때의 ±1은 `LikeService`가 `ProductLikeCountRepository`로 하고(관계를 실제로 만들거나 지웠을 때만), 행은 상품을 만드는 Facade(`AdminProductFacade.create`)가 `LikeService.createCount`으로 0으로 만들고, 상품을 지우는 Facade 2곳(상품·브랜드 삭제)이 `LikeService.removeCounts`으로 지운다. 상품 생성이 이 Facade를 우회하지 않도록 `ProductRepository.save`는 `ProductService`만 호출한다(ArchUnit). 증감은 `UPDATE`만 쓰고 upsert하지 않아, 삭제와 좋아요가 경쟁해도 삭제된 상품의 행이 되살아나지 않는다.
-- 검증: 집계 행 수 = 노출 상품 수, 행 값 = 좋아요 관계 수, 동시 등록·취소·중복 등록·중복 취소 후 집계 = 관계 수(20회 반복), 요청당 SQL 수(4개, 브랜드 없는 `likes_desc`만 5개), 삭제 상품이 위에 있어도 페이지가 크기를 채움, 삭제 경로 2곳의 행 정리.
+- 응답 체크섬 8개가 개선 전과 모두 같다. 전체 `check`(Checkstyle·ArchUnit·806건, skip 4건은 지연 벤치마크)가 통과한다.
+- 구현: `ProductLikeCount` 엔티티와 `ProductLikeCountJpaRepository`. 좋아요 등록·취소 때의 ±1은 `LikeService`가 `ProductLikeCountRepository`로 하고(관계를 실제로 만들거나 지웠을 때만), 행은 상품을 만드는 Facade(`AdminProductFacade.create`)가 `LikeService.createCount`로 0으로 만들고, 상품을 지우는 Facade 2곳(상품·브랜드 삭제)이 `LikeService.removeCounts`로 지운다. 상품 생성이 이 Facade를 우회하지 않도록 `ProductRepository.save`는 `ProductService`만 호출한다(ArchUnit). 증감은 `UPDATE`만 쓰고 upsert하지 않아, 삭제와 좋아요가 경쟁해도 삭제된 상품의 행이 되살아나지 않는다.
+- 검증: 집계 행 수 = 노출 상품 수, 행 값 = 좋아요 관계 수, 동시 등록·취소·중복 등록·중복 취소 후 집계 = 관계 수(시나리오마다 5회 반복), 요청당 SQL 수(4개, 브랜드 없는 `likes_desc`만 5개), 삭제 상품이 위에 있어도 페이지가 크기를 채움, 삭제 경로 2곳의 행 정리.
 - 운영 반영: `sql/index-products.sql`, `sql/product-like-counts.sql`(테이블·인덱스·backfill·정합성 확인 쿼리). 앱 배포 전에 backfill과 확인 쿼리를 먼저 적용한다.
-- 알려진 한계: 브랜드를 지정한 `likes_desc`는 브랜드 크기에 비례한다(5,000개 쏠림에서 합계 약 4.2~4.9ms). 상품이 집계 테이블에 행 없이 만들어지면(저장소를 거치지 않는 직접 INSERT) 브랜드 없는 `likes_desc`에서 빠지므로 backfill이 필요하다. ArchUnit은 저장소 직접 호출만 막고, 새 Facade가 `ProductService.create` 뒤에 `createCount`을 빠뜨리는 것은 막지 못한다(테스트로 잡는다).
+- 알려진 한계: 브랜드를 지정한 `likes_desc`는 브랜드 크기에 비례한다(5,000개 쏠림에서 합계 약 4.2~4.9ms). 상품이 집계 테이블에 행 없이 만들어지면(저장소를 거치지 않는 직접 INSERT) 브랜드 없는 `likes_desc`에서 빠지므로 backfill이 필요하다. ArchUnit은 저장소 직접 호출만 막고, 새 Facade가 `ProductService.create` 뒤에 `createCount`를 빠뜨리는 것은 막지 못한다(테스트로 잡는다).
 
 ## 8. 미측정과 다음 단계
 
