@@ -68,9 +68,9 @@ feature: `brand`, `product`, `like`, `order`, `user`. 포인트 API는 `interfac
 | 계층 | 맡는 일 | 현재 코드의 예 (user·point) | 직접 의존하지 않을 것 |
 |---|---|---|---|
 | **interfaces** | 요청 파싱·입력 변환, 응답 변환, 에러의 HTTP 매핑 | `PointController`, `PointApiSpec`, `PointDto`, `ApiControllerAdvice` | infrastructure |
-| **application** | 유스케이스 순서 조율, 트랜잭션 경계(`@Transactional`), 도메인 → `Info` 변환, 조회 결과 조합 | `PointFacade`, `PointInfo` | interfaces, infrastructure |
+| **application** | 유스케이스 순서 조율, 트랜잭션 경계(`@Transactional`), 도메인 → `Info` 변환, 조회 결과 조합, 유스케이스가 쓰는 외부 기술의 포트 인터페이스 | `PointFacade`, `PointInfo`, `ProductListCache`(W4) | interfaces, infrastructure |
 | **domain** | 상태·업무 규칙(생성자·행동에서 `CoreException`), Repository 인터페이스 | `User`, `UserService`, `UserRepository` | interfaces, application, infrastructure |
-| **infrastructure** | domain Repository의 JPA 구현 (위임 어댑터) | `UserRepositoryImpl`, `UserJpaRepository` | 업무 규칙 중복 |
+| **infrastructure** | domain Repository의 JPA 구현 (위임 어댑터), application 포트의 구현 (캐시 등) | `UserRepositoryImpl`, `UserJpaRepository`, `ProductListRedisCache`(W4) | 업무 규칙 중복 |
 
 ### 2-3. 의존 방향과 ArchUnit 규칙
 
@@ -78,7 +78,9 @@ feature: `brand`, `product`, `like`, `order`, `user`. 포인트 API는 `interfac
 
 ```
 interfaces ──→ application ──→ domain ←── infrastructure
-     └───────────────────────────→ ┘
+     └───────────────────────────→ ┘         │
+                     ↑ (포트 구현)            │
+                     └────────────────────────┘
 ```
 
 | from \ to | interfaces | application | domain | infrastructure |
@@ -86,7 +88,7 @@ interfaces ──→ application ──→ domain ←── infrastructure
 | **interfaces** | - | ✅ | ✅ | ❌ |
 | **application** | ❌ | - | ✅ | ❌ |
 | **domain** | ❌ | ❌ | - | ❌ |
-| **infrastructure** | 검사 안 함 | 검사 안 함 | ✅ | - |
+| **infrastructure** | 검사 안 함 | ✅ 포트 구현 (검사 안 함) | ✅ | - |
 
 ❌ 칸은 `ArchitectureTest`(`apps/commerce-api/src/test/java/com/loopers/architecture/ArchitectureTest.java`)가 검사한다.
 
@@ -97,7 +99,8 @@ interfaces ──→ application ──→ domain ←── infrastructure
 | interfaces → infrastructure | `interfacesDoesNotDependOnInfrastructure` |
 
 - **interfaces → domain은 허용**한다 (설계 결정 D-1). 다만 응답 모델은 domain Entity가 아닌 `Info`/`Dto`로 변환해 노출하는 것을 관례로 한다.
-- **infrastructure → application · interfaces는 ArchUnit 규칙이 없다.** 관례상 하지 않으며, 필요해지면 규칙을 추가한다 (규칙 변경은 확인 후).
+- **포트는 그것을 쓰는 계층이 소유한다 (DIP).** domain Service가 쓰는 저장소는 domain에(`Repository`), 유스케이스(Facade)만 쓰는 외부 기술(캐시 등)은 application에 인터페이스를 두고 infrastructure가 구현한다. 그래서 **infrastructure → application은 포트 구현에 한해 허용**한다 (W4 `product-cache-design.md` D-43). 포트의 입출력은 application의 타입(조회 조건·조회 결과 record)으로만 정의하고, 키·직렬화·TTL 같은 기술 세부는 구현에 숨긴다.
+- **infrastructure → interfaces는 ArchUnit 규칙이 없다.** 관례상 하지 않으며, 필요해지면 규칙을 추가한다 (규칙 변경은 확인 후).
 - ArchUnit 패턴이 `..domain..`처럼 패키지명 포함 방식이므로, 계층 이름(`domain`, `application`, `interfaces`, `infrastructure`)을 다른 의미의 패키지명에 쓰지 않는다.
 
 ### 2-4. DIP: 저장 기술과 업무 규칙의 분리
