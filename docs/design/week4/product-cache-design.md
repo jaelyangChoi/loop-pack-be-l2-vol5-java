@@ -84,6 +84,7 @@ application.product
   ProductListCache           포트: find(ProductListQuery) / save(ProductListQuery, ProductListSnapshot) / evictAll()
   ProductListQuery           조회 조건 record (brandId|null, sort, page, size)
   ProductListSnapshot        payload record (상품 id·name·price·brand{id,name}, page, size, totalElements). likeCount 없음
+  ProductListItemInfo        고객 목록 항목 (payload 항목 + likeCount). DB 조회·hit 가 같은 타입을 돌려준다
   ProductCatalogChanged      관리자 쓰기가 발행하는 이벤트
   ProductListCacheEvictor    @TransactionalEventListener(AFTER_COMMIT) → evictAll()
 infrastructure.product
@@ -92,7 +93,7 @@ infrastructure.product
 
 - 포트의 입출력은 application 타입뿐이다. 키 문자열·Redis 타입·TTL은 구현의 세부라 포트에 드러나지 않는다.
 - 어댑터는 Redis 접근·역직렬화 실패를 잡아 로그·메트릭을 남기고 "없음"(miss)으로 돌려준다. Facade는 Redis 예외 타입을 모른다. DB 예외는 이 어댑터를 지나지 않는다.
-- payload는 likeCount가 없어 `ProductDetailInfo`를 재사용하지 않고 전용 record를 둔다. hit 때 Facade가 카운터와 합쳐 `ProductDetailInfo`를 만든다.
+- 고객 목록은 상세와 같은 `ProductDetailInfo`를 쓰지 않고 목록 전용 `ProductListItemInfo`(id·name·price·brand{id,name}·likeCount)를 돌려준다. `ProductDetailInfo`에는 재고·생성/수정 시각이 있는데 payload에는 없어(재고는 주문마다 바뀌어 캐시할 수 없다), 같은 타입을 쓰면 hit 때만 빈 값이 들어가기 때문이다. DB 조회(miss·`likes_desc`)와 hit 모두 이 타입을 만들며, 고객 응답 JSON은 바뀌지 않는다. 고객 목록에 필드를 더하려면 payload와 형식 버전도 함께 바꿔야 한다.
 - 이 배치로 `infrastructure → application` 의존이 처음 생긴다. week2 `commerce-design.md` 2-3에 "포트 구현에 한해 허용"으로 반영했다. ArchUnit의 기존 금지 규칙은 그대로다.
 
 ### 5-3. 남는 실패 창과 정책
@@ -167,3 +168,18 @@ infrastructure.product
 - 값이 비면 Lettuce·Spring Data Redis가 null 검사로 기동을 실패시킨다.
 - **공용 모듈 영향**: `commerce-api`·`commerce-batch`·`commerce-streamer`가 모두 `redis.yml`을 가져다 쓰므로 같은 값이 적용된다. 현재 batch·streamer는 Redis를 쓰는 코드가 없어 동작 변화는 없다. 이후 300ms를 넘는 명령(큰 키 조회, 블로킹 명령 등)이 필요하면 앱별 값을 따로 둔다.
 - 확인: `commerce-api`(`CommerceApiContextTest`, `ProductApiE2ETest` 25건), `commerce-batch`(3건)의 컨텍스트 기동 통과. 제한된 대기는 T6 Redis 중단 테스트에서 측정한다.
+
+### 10-2. 포트·Redis 구현과 조회 연결
+
+- 포트 `ProductListCache`와 구현 `ProductListRedisCache`(키 `product:list:v1:…`, TTL 설정 `product.list-cache.ttl` 60초, `SCAN` 500개 단위 + `UNLINK`). Redis 접근·JSON 변환 오류는 miss/무시로 처리하고 `product.list.cache.errors{operation}` 카운터와 경고 로그를 남긴다.
+- `ProductFacade.getList`: `latest`·`price_asc`만 캐시를 본다. hit 때 `LikeService.countsOfExposed`(행 있는 상품만 반환)로 좋아요 수를 합치고, 빠진 id가 있으면 DB로 다시 읽어 저장한다.
+- 테스트 정리: 목록을 조회하는 기존 테스트(`ProductFacadeTest`, `ProductListQueryCountTest`, `ProductApiE2ETest`)의 `@AfterEach`에 Redis 비우기를 더했다. 테이블을 비우면 id가 1부터 다시 쓰여 이전 테스트의 캐시가 새 데이터로 hit 될 수 있기 때문이다. 기대값은 바꾸지 않았다.
+- 공용 테스트 픽스처 수정: `RedisTestContainersConfig`가 컨테이너 주소를 생성자에서 넣어, `RedisConfig`가 먼저 만들어지면 test 프로필의 `localhost:6379`로 접속했다. MySQL 픽스처처럼 static 블록으로 옮겼다.
+
+| 확인 (`ProductCacheQueryCountTest`, 실제 MySQL·Redis) | 결과 |
+|---|---|
+| miss SQL / hit SQL (`latest`·`price_asc` × 브랜드 유무) | 4 / 1 |
+| miss·hit·비운 뒤 DB 재조회 결과 일치 (id·이름·가격·브랜드·좋아요 수, 페이지 정보) | 일치 |
+| `likes_desc` 반복 조회 | 매번 SQL 4 (캐시 안 함) |
+| 좋아요 등록·취소 후 hit | 좋아요 수 즉시 반영, SQL 1 |
+| 캐시를 비우지 않은 채 상품 삭제 후 조회 | 삭제 상품 제외, 페이지 10개 유지, SQL 5(확인 1 + 재조회 4), 다음 조회는 다시 hit |
