@@ -9,6 +9,7 @@ import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.Stock;
 import com.loopers.support.fixture.ExposedProducts;
 import com.loopers.utils.DatabaseCleanUp;
+import com.loopers.utils.RedisCleanUp;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
@@ -53,9 +54,14 @@ class ProductListQueryCountTest {
     @Autowired
     private DatabaseCleanUp databaseCleanUp;
 
+    @Autowired
+    private RedisCleanUp redisCleanUp;
+
     @AfterEach
     void tearDown() {
         databaseCleanUp.truncateAllTables();
+        // 테이블을 비우면 id 가 다시 1부터 쓰이므로, 이전 테스트의 목록 캐시가 새 데이터로 hit 되지 않게 함께 비운다.
+        redisCleanUp.truncateAll();
     }
 
     // 브랜드 2개, 첫 브랜드에 productCount 개 상품(좋아요 일부)을 만든다. 반환값은 첫 브랜드 id.

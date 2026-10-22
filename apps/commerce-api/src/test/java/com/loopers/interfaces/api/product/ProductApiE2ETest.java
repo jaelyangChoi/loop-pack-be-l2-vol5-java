@@ -12,6 +12,7 @@ import com.loopers.domain.user.UserRepository;
 import com.loopers.interfaces.api.ApiResponse;
 import com.loopers.support.fixture.ExposedProducts;
 import com.loopers.utils.DatabaseCleanUp;
+import com.loopers.utils.RedisCleanUp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -61,9 +62,14 @@ class ProductApiE2ETest {
     @Autowired
     private DatabaseCleanUp databaseCleanUp;
 
+    @Autowired
+    private RedisCleanUp redisCleanUp;
+
     @AfterEach
     void tearDown() {
         databaseCleanUp.truncateAllTables();
+        // 테이블을 비우면 id 가 다시 1부터 쓰이므로, 이전 테스트의 목록 캐시가 새 데이터로 hit 되지 않게 함께 비운다.
+        redisCleanUp.truncateAll();
     }
 
     private Brand saveBrand(String name) {

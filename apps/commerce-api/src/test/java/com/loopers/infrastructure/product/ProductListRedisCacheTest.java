@@ -1,6 +1,7 @@
 package com.loopers.infrastructure.product;
 
 import com.loopers.application.product.ProductListCache;
+import com.loopers.application.product.ProductListItemInfo;
 import com.loopers.application.product.ProductListQuery;
 import com.loopers.application.product.ProductListSnapshot;
 import com.loopers.config.redis.RedisConfig;
@@ -50,8 +51,8 @@ class ProductListRedisCacheTest {
     private static ProductListSnapshot snapshot() {
         return new ProductListSnapshot(
             List.of(
-                new ProductListSnapshot.Item(3L, "티셔츠", 3_000, new ProductListSnapshot.Brand(7L, "루퍼스")),
-                new ProductListSnapshot.Item(2L, "양말", 2_000, new ProductListSnapshot.Brand(8L, "오프"))
+                new ProductListSnapshot.Item(3L, "티셔츠", 3_000, new ProductListItemInfo.BrandSummary(7L, "루퍼스")),
+                new ProductListSnapshot.Item(2L, "양말", 2_000, new ProductListItemInfo.BrandSummary(8L, "오프"))
             ),
             0, 20, 2
         );

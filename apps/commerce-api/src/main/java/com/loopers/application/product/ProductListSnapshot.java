@@ -1,9 +1,11 @@
 package com.loopers.application.product;
 
+import org.springframework.data.domain.Page;
+
 import java.util.List;
 
 /**
- * 상품 목록 캐시에 담는 값. 고객 목록 응답에서 좋아요 수를 뺀 나머지다.
+ * 상품 목록 캐시에 담는 값. 고객 목록 항목({@link ProductListItemInfo})에서 좋아요 수를 뺀 나머지와 페이지 정보다.
  *
  * <p>좋아요 수는 가장 잦은 쓰기라 담지 않는다(D-38). 캐시를 쓸 때마다 카운터 테이블에서 읽어 합친다.
  */
@@ -14,9 +16,13 @@ public record ProductListSnapshot(List<Item> items, int page, int size, long tot
         items = List.copyOf(items);
     }
 
-    public record Item(Long id, String name, long price, Brand brand) {
+    public record Item(Long id, String name, long price, ProductListItemInfo.BrandSummary brand) {
     }
 
-    public record Brand(Long id, String name) {
+    public static ProductListSnapshot from(Page<ProductListItemInfo> page) {
+        List<Item> items = page.getContent().stream()
+            .map(info -> new Item(info.id(), info.name(), info.price(), info.brand()))
+            .toList();
+        return new ProductListSnapshot(items, page.getNumber(), page.getSize(), page.getTotalElements());
     }
 }

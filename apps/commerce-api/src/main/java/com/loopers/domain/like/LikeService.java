@@ -45,6 +45,14 @@ public class LikeService {
         return productLikeCountRepository.findCount(productId);
     }
 
+    /**
+     * 노출 중인 상품의 좋아요 수만 돌려준다. 삭제된 상품은 집계 행이 없어 결과에서 빠지므로, 상품이 아직 노출 중인지
+     * DB 에서 확인하는 데 쓸 수 있다(상품 삭제와 행 삭제는 같은 트랜잭션이다).
+     */
+    public Map<Long, Long> countsOfExposed(Collection<Long> productIds) {
+        return productLikeCountRepository.findCounts(productIds);
+    }
+
     /** 요청한 모든 상품의 좋아요 수를 돌려준다. 좋아요가 없는 상품은 0으로 채운다. */
     public Map<Long, Long> countByProductIds(Collection<Long> productIds) {
         Map<Long, Long> counts = productLikeCountRepository.findCounts(productIds);
