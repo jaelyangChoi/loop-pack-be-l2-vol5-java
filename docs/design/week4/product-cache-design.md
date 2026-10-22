@@ -227,3 +227,18 @@ infrastructure.product
   - `ProductCacheQueryCountTest.TransactionScope`가 호출 순서와 트랜잭션 여부를 고정한다: 캐시 조회(밖) → 좋아요 수(안) → 캐시 저장(밖) / 캐시 조회(밖) → 좋아요 수(밖). SQL 수(miss 4, hit 1)는 그대로다.
 - **payload에서 `page`·`size` 제거**: 키에 이미 있고 hit 때도 요청의 페이지 정보로 결과를 만들어, 저장만 되고 읽히지 않았다. 배포 전이라 형식 버전 `v1`은 유지한다.
 - **변환 위치 통일**: 캐시 값 → 결과 변환을 `ProductListSnapshot.Item.withLikeCount`로 옮겨, 결과 → 캐시 값 변환(`ProductListSnapshot.from`)과 같은 곳에 둔다.
+
+### 10-6. 측정과 최종 검사
+
+측정 절차와 전체 표는 [`product-list-baseline.md`](product-list-baseline.md) 5장에 있다(같은 seed, `ProductFacade` 호출 단위, 순차 준비 20·측정 100회 × 3라운드).
+
+| 항목 | 결과 |
+|---|---|
+| A 브랜드 7 `price_asc` p50 | DB-only 2.0~4.3ms, miss 2.3~4.1ms, **hit 0.65~1.1ms** (SQL 4 → 1) |
+| C 전체 `latest` p50 | DB-only 약 2.8ms, miss 약 3.5ms, **hit 0.5~0.64ms** |
+| 영역 비우기 p50 | 키 100개 0.4ms, 1,000개 1.6ms, 10,000개 11ms (관리자 응답에 더해짐) |
+| Redis 중단 중 A p50 | 621ms (조회·저장 timeout 300ms × 2 + DB) |
+
+- 판단: 지연만 보면 DB 튜닝(SQL 합계 약 1.15ms)으로 충분했다. 캐시는 hit에서 SQL을 4 → 1로 줄여 DB 부하를 낮추지만, 무효화·장애 처리와 표시 낡음이라는 운영 책임을 더한다(baseline 5장).
+- 최종 검사: `./gradlew :apps:commerce-api:check` 848건, 실패 0, skip 7(환경변수가 있어야 도는 지연 벤치마크 `ProductQueryLatencyBenchmarkTest` 4건·`ProductCacheLatencyBenchmarkTest` 3건). `--tests '*ProductCache*Test' --tests '*ProductQuery*Test'`는 33건 중 26건 실행·통과, 7건은 위 벤치마크 skip.
+
