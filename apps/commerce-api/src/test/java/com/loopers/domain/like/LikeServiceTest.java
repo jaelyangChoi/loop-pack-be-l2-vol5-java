@@ -157,9 +157,9 @@ class LikeServiceTest {
     @DisplayName("여러 상품의 좋아요 수를 한 번에 셀 때,")
     @Nested
     class CountByProductIds {
-        @DisplayName("요청한 모든 상품의 수를 반환하고, 좋아요가 없는 상품은 0으로 채운다.")
+        @DisplayName("노출 상품의 수를 반환하고, 좋아요가 없는 상품은 0 집계 행이 있어 0으로 담긴다.")
         @Test
-        void fillsZero_forProductsWithoutLikes() {
+        void returnsZero_forProductsWithoutLikes() {
             // arrange
             Long liked = saveProduct();
             Long noLikes = saveProduct();
@@ -171,6 +171,21 @@ class LikeServiceTest {
 
             // assert
             assertThat(counts).containsOnly(Map.entry(liked, 2L), Map.entry(noLikes, 0L));
+        }
+
+        @DisplayName("집계 행이 지워진 상품(삭제됨)은 0으로 채우지 않고 결과에서 뺀다.")
+        @Test
+        void excludesProductsWithoutCountRow() {
+            // arrange
+            Long exposed = saveProduct();
+            Long deleted = saveProduct();
+            likeService.removeCounts(List.of(deleted));
+
+            // act
+            Map<Long, Long> counts = likeService.countByProductIds(List.of(exposed, deleted));
+
+            // assert
+            assertThat(counts).containsOnly(Map.entry(exposed, 0L));
         }
 
         @DisplayName("빈 목록이면 빈 맵을 반환한다.")

@@ -327,4 +327,24 @@ class ProductFacadeTest {
                 .isEqualTo(ErrorType.INTERNAL_ERROR);
         }
     }
+
+    @DisplayName("데이터가 깨져 노출 상품의 좋아요 집계 행이 없을 때,")
+    @Nested
+    class MissingLikeCount {
+
+        @DisplayName("목록 조회는 0으로 채우지 않고 INTERNAL_ERROR 로 거절하며, 메시지에 상품 id 를 담는다.")
+        @Test
+        void throwsInternalError_onList() {
+            // arrange: 생성 유스케이스를 거치지 않아 집계 행이 없는 노출 상품
+            Brand brand = saveBrand("루퍼스");
+            Product product = productRepository.save(Product.create(brand.getId(), "러닝화", new Money(89_000), new Stock(10)));
+
+            // act
+            CoreException exception = assertThrows(CoreException.class, () -> productFacade.getList(null, "latest", 0, 20));
+
+            // assert
+            assertThat(exception.getErrorType()).isEqualTo(ErrorType.INTERNAL_ERROR);
+            assertThat(exception.getCustomMessage()).contains(String.valueOf(product.getId()));
+        }
+    }
 }

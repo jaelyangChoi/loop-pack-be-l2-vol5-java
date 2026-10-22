@@ -80,13 +80,13 @@ public class ProductFacade {
             products.stream().map(Product::getId).toList());
 
         return products.map(product ->
-            ProductListItemInfo.of(product, brandOf(product, brands), likeCounts.get(product.getId())));
+            ProductListItemInfo.of(product, brandOf(product, brands), likeCountOf(product, likeCounts)));
     }
 
     // 캐시 hit 경로. 좋아요 수 조회가 삭제 확인을 겸한다(D-38): 집계 행이 없는 상품(삭제됨)이 하나라도 있으면
     // 캐시 값을 쓰지 않고 DB 로 다시 읽는다. 무효화가 실패해도 삭제된 상품이 나가지 않고 페이지가 짧아지지도 않는다.
     private Optional<Page<ProductListItemInfo>> withLikeCounts(ProductListSnapshot snapshot, PageRequest pageRequest) {
-        Map<Long, Long> likeCounts = likeService.countsOfExposed(
+        Map<Long, Long> likeCounts = likeService.countByProductIds(
             snapshot.items().stream().map(ProductListSnapshot.Item::id).toList());
         if (likeCounts.size() != snapshot.items().size()) {
             return Optional.empty();
@@ -111,5 +111,21 @@ public class ProductFacade {
             );
         }
         return brand;
+    }
+
+    /**
+     * DB 에서 읽은 노출 상품의 좋아요 수를 찾는다. 노출 상품은 생성과 같은 트랜잭션에서 집계 행을 가지고, 상품 조회와
+     * 집계 조회는 같은 읽기 트랜잭션이라 동시 삭제로 어긋나지 않는다. 그래서 행이 없으면 데이터가 깨진 것으로 보고 드러낸다.
+     * 집계 테이블 이행 중(product-like-counts.sql 3~4단계)에 옛 앱이 만든 상품에서만 생길 수 있다.
+     */
+    private long likeCountOf(Product product, Map<Long, Long> likeCounts) {
+        Long likeCount = likeCounts.get(product.getId());
+        if (likeCount == null) {
+            throw new CoreException(
+                ErrorType.INTERNAL_ERROR,
+                "상품 " + product.getId() + " 의 좋아요 집계를 찾을 수 없습니다."
+            );
+        }
+        return likeCount;
     }
 }

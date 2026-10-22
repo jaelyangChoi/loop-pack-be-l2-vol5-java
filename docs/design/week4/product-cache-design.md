@@ -172,7 +172,9 @@ infrastructure.product
 ### 10-2. 포트·Redis 구현과 조회 연결
 
 - 포트 `ProductListCache`와 구현 `ProductListRedisCache`(키 `product:list:v1:…`, TTL 설정 `product.list-cache.ttl` 60초, `SCAN` 500개 단위 + `UNLINK`). Redis 접근·JSON 변환 오류는 miss/무시로 처리하고 `product.list.cache.errors{operation}` 카운터와 경고 로그를 남긴다.
-- `ProductFacade.getList`: `latest`·`price_asc`만 캐시를 본다. hit 때 `LikeService.countsOfExposed`(행 있는 상품만 반환)로 좋아요 수를 합치고, 빠진 id가 있으면 DB로 다시 읽어 저장한다.
+- `ProductFacade.getList`: `latest`·`price_asc`만 캐시를 본다. miss·hit 모두 `LikeService.countByProductIds`로 좋아요 수를 읽는다. 이 메서드는 집계 행이 있는 상품만 담는다(행이 없으면 0으로 채우던 동작을 뺐다. 노출 상품은 생성 때 0 행을 가지므로 정상 상태에서는 쓰이지 않았다).
+  - hit: 빠진 id가 있으면(삭제됨) 캐시 값을 버리고 DB로 다시 읽어 저장한다.
+  - miss: DB에서 읽은 노출 상품의 행이 없으면 데이터 깨짐으로 보고 `INTERNAL_ERROR`를 던진다(`brandOf`와 같은 방식). 상품 조회와 집계 조회가 같은 읽기 트랜잭션이라 동시 삭제로는 생기지 않고, 집계 테이블 이행 중(`product-like-counts.sql` 3~4단계) 옛 앱이 만든 상품에서만 생길 수 있다.
 - 테스트 정리: 목록을 조회하는 기존 테스트(`ProductFacadeTest`, `ProductListQueryCountTest`, `ProductApiE2ETest`)의 `@AfterEach`에 Redis 비우기를 더했다. 테이블을 비우면 id가 1부터 다시 쓰여 이전 테스트의 캐시가 새 데이터로 hit 될 수 있기 때문이다. 기대값은 바꾸지 않았다.
 - 공용 테스트 픽스처 수정: `RedisTestContainersConfig`가 컨테이너 주소를 생성자에서 넣어, `RedisConfig`가 먼저 만들어지면 test 프로필의 `localhost:6379`로 접속했다. MySQL 픽스처처럼 static 블록으로 옮겼다.
 

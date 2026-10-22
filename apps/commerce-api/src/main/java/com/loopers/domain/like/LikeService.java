@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.Collection;
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RequiredArgsConstructor
@@ -46,20 +45,11 @@ public class LikeService {
     }
 
     /**
-     * 노출 중인 상품의 좋아요 수만 돌려준다. 삭제된 상품은 집계 행이 없어 결과에서 빠지므로, 상품이 아직 노출 중인지
-     * DB 에서 확인하는 데 쓸 수 있다(상품 삭제와 행 삭제는 같은 트랜잭션이다).
+     * 여러 상품의 좋아요 수를 한 번에 읽는다. 집계 행은 노출 중인 상품만 가지므로(생성 때 0으로 만들고 삭제와 같은
+     * 트랜잭션에서 지운다) 좋아요가 없는 노출 상품은 0으로 담기고, 삭제된 상품은 결과에 없다. 빠진 상품으로 노출 여부를
+     * DB 에서 확인할 수 있다.
      */
-    public Map<Long, Long> countsOfExposed(Collection<Long> productIds) {
-        return productLikeCountRepository.findCounts(productIds);
-    }
-
-    /** 요청한 모든 상품의 좋아요 수를 돌려준다. 좋아요가 없는 상품은 0으로 채운다. */
     public Map<Long, Long> countByProductIds(Collection<Long> productIds) {
-        Map<Long, Long> counts = productLikeCountRepository.findCounts(productIds);
-        Map<Long, Long> result = new LinkedHashMap<>();
-        for (Long productId : productIds) {
-            result.put(productId, counts.getOrDefault(productId, 0L));
-        }
-        return result;
+        return productLikeCountRepository.findCounts(productIds);
     }
 }
