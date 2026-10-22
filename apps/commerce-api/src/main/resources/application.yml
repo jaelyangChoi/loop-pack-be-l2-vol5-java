@@ -24,6 +24,10 @@ spring:
       - logging.yml
       - monitoring.yml
 
+product:
+  list-cache:
+    ttl: 60s # 무효화가 실패했을 때 낡은 목록이 남는 상한 (D-40)
+
 springdoc:
   use-fqn: true
   swagger-ui:
