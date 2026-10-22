@@ -8,6 +8,7 @@ import com.loopers.domain.product.ProductService;
 import com.loopers.domain.product.Stock;
 import com.loopers.support.paging.PageRequests;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +25,7 @@ public class AdminProductFacade {
     private final BrandService brandService;
     private final ProductService productService;
     private final LikeService likeService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public ProductInfo create(Long brandId, String name, long price, int stock) {
@@ -33,6 +35,7 @@ public class AdminProductFacade {
         Product product = productService.create(brandId, name, new Money(price), new Stock(stock));
         // 좋아요 수 집계 행이 있어야 브랜드 없는 좋아요순 목록에 나온다 (D-33).
         likeService.createCount(product.getId());
+        eventPublisher.publishEvent(new ProductCatalogChanged());
         return ProductInfo.from(product);
     }
 
@@ -41,9 +44,11 @@ public class AdminProductFacade {
         // 변경 감지가 모든 컬럼을 쓰므로, 처음 읽을 때부터 잠가서 확정이 차감한 재고나 삭제 표시를 낡은 값으로 덮지 않는다 (D-24).
         Product product = productService.getForUpdate(productId);
         product.update(name, new Money(price));
+        eventPublisher.publishEvent(new ProductCatalogChanged());
         return ProductInfo.from(product);
     }
 
+    // 재고는 고객 목록에 없어 목록 캐시를 비우지 않는다.
     @Transactional
     public ProductInfo changeStock(Long productId, int stock) {
         Product product = productService.getForUpdate(productId);
@@ -55,6 +60,7 @@ public class AdminProductFacade {
     public void delete(Long productId) {
         productService.getForUpdate(productId).delete();
         likeService.removeCounts(List.of(productId));
+        eventPublisher.publishEvent(new ProductCatalogChanged());
     }
 
     @Transactional(readOnly = true)

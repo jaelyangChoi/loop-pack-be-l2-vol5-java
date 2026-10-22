@@ -1,5 +1,6 @@
 package com.loopers.application.brand;
 
+import com.loopers.application.product.ProductCatalogChanged;
 import com.loopers.domain.brand.Brand;
 import com.loopers.domain.brand.BrandService;
 import com.loopers.domain.like.LikeService;
@@ -7,6 +8,7 @@ import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductService;
 import com.loopers.support.paging.PageRequests;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,7 +25,9 @@ public class AdminBrandFacade {
     private final BrandService brandService;
     private final ProductService productService;
     private final LikeService likeService;
+    private final ApplicationEventPublisher eventPublisher;
 
+    // 상품이 없는 새 브랜드는 고객 목록을 바꾸지 않아 목록 캐시를 비우지 않는다.
     @Transactional
     public BrandInfo create(String name) {
         return BrandInfo.from(brandService.create(name));
@@ -34,6 +38,8 @@ public class AdminBrandFacade {
         // 변경 감지가 모든 컬럼을 쓰므로, 처음 읽을 때부터 잠가서 동시에 삭제된 브랜드를 되살리지 않는다 (D-24).
         Brand brand = brandService.getForUpdate(brandId);
         brand.update(name);
+        // 고객 목록 항목에 브랜드명이 담겨 있어 목록 캐시를 비운다.
+        eventPublisher.publishEvent(new ProductCatalogChanged());
         return BrandInfo.from(brand);
     }
 
@@ -47,6 +53,7 @@ public class AdminBrandFacade {
         // 삭제한 상품의 좋아요 수 집계 행을 지워 브랜드 없는 좋아요순 목록에서 뺀다 (D-33).
         likeService.removeCounts(products.stream().map(Product::getId).toList());
         brand.delete();
+        eventPublisher.publishEvent(new ProductCatalogChanged());
     }
 
     @Transactional(readOnly = true)
