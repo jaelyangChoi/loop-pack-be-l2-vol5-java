@@ -181,7 +181,7 @@ Order ── 품목 금액 합계 / 포인트 결제액·결제 결과
 | **OrderLine**, **OrderLines** | 값 (저장하지 않는 요청 값) | 고객이 요청한 품목 한 줄(`productId`, 수량)과 그 목록 | 상품을 조회하기 전에 판단할 수 있는 값 규칙(수량 1 이상, 품목 하나 이상, 중복 금지)을 도메인에 모은다 (D-20) |
 | **OrderProduct** | 값 (저장하지 않음) | 상품의 이름·가격 | `Order`가 상품 Entity를 알지 않고 스냅샷 원본만 받게 한다 (D-20) |
 | **OrderStatus** | enum | `DRAFT`, `CONFIRMED` | 값 목록이므로 별도 클래스가 필요 없다 |
-| **PaymentResult** | **VO** (Order에 내장, DRAFT 동안 비어 있음) | 결제액 `Money`, 결제 후 잔액 `Money` (컬럼 `paid_amount`, `balance_after`, 확정 전에는 모두 null이라 값 자체가 null로 읽힌다. 결제 후 잔액 0원은 null이 아니다) | 확정 시점에 함께 생기고 함께 읽히는 값 (D-10, D-21) |
+| **PaymentResult** | **VO** (Order에 내장, DRAFT 동안 비어 있음) | 결제액 `Money` (컬럼 `paid_amount`, 확정 전에는 null이라 값 자체가 null로 읽힌다. 결제액 0원은 null이 아니다). 결제 수단의 상태(포인트 잔액)는 담지 않는다 (D-44) | 확정 시점에 생기는 값 (D-10, D-21) |
 
 **VO로 만들지 않는 것**: 상품·브랜드 이름(문자열 검증은 Entity에서, 범위는 D-12), 수량(`int`, 양수 검증은 `OrderItem`·`Stock`), 식별자. 의미가 혼동되지 않고 검증 반복이 두 곳 이하이기 때문이다. 반복이 늘면 `Quantity` VO를 재검토한다.
 
@@ -260,13 +260,13 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
               ├ ProductService: 상품 일괄 조회 (삭제·없음 확인)
               ├ Product/Stock : decreaseStock(qty) × 품목 수
               ├ User/PointBalance : payPoint(total)
-              └ Order         : confirm(PaymentResult(결제액, 결제 후 잔액))
+              └ Order         : confirm(PaymentResult(결제액))
             ← 정상 반환 시 commit, 예외 시 rollback
 ```
 
 - 오류 우선순위는 단계 번호 순서이다. 3단계를 먼저 두는 이유는 이미 확정된 주문이 재고 부족 오류로 보이지 않게 하기 위해서이다. 7단계의 `confirm`이 상태를 다시 검증하는 것은 불변식 보호용이라 역할이 다르다.
 - 트랜잭션 경계는 Facade이다. 5·6단계에서 예외가 나면 앞 단계의 변경이 모두 취소된다 (D-10).
-- `PaymentResult`는 결제액과 결제 후 잔액이다. 예: 결제액 7,000원, 결제 후 잔액 3,000원. 결제액은 확정 시점의 현재 가격이 아니라 **주문 합계(주문 당시 단가 스냅샷)**이다 (D-21).
+- `PaymentResult`는 결제액이다. 예: 결제액 7,000원(남은 잔액 3,000원은 포인트 조회로 본다, D-44). 결제액은 확정 시점의 현재 가격이 아니라 **주문 합계(주문 당시 단가 스냅샷)**이다 (D-21).
 - 4~5단계는 Facade 안에서 "상품이 모두 살아 있는지 확인 → 품목마다 재고 차감"으로 묶여 있다 . 삭제된 상품은 주문 당시 상품명으로 알린다 (D-21).
 
 ### 4-2. 관리자 상품 수정 → 고객 상품 상세 조회
@@ -343,7 +343,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 | 포인트 충전 | `POST /api/v1/points/charge` | body `amount` (양의 정수) | 충전 후 잔액 | 누락·잘못된 타입·소수(`1.5`, `1000.0`)·0 이하·표현 범위 초과 → `INVALID_INPUT` (기존 잔액 유지), 충전 후 잔액이 표현 범위 초과 → `INVALID_INPUT` (기존 잔액 유지) |
 | 잔액 조회 | `GET /api/v1/points` | 요청자 | 저장된 잔액 | 헤더 누락 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND` |
 | 주문 생성 | `POST /api/v1/orders` | body `items`: `[{productId, quantity}]` (요청자 식별 필요) | DRAFT 주문 `{id, status, items: [{productId, productName, quantity, unitPrice, amount}], totalAmount, orderedAt}` (확정 전이라 `payment`는 없음), 상품명·단가는 주문 당시 값, 재고·포인트 차감 없음 (D-20) | `items`·`productId`·`quantity` 누락, 형식 오류(소수·문자열·범위 초과 포함) → `INVALID_INPUT`. 품목 없음·수량 0 이하·같은 상품 중복 → `INVALID_INPUT` (상품 조회 전에 판단, 없는 상품이 섞여 있어도 이 오류가 먼저). 없거나 삭제된 상품 → `NOT_FOUND` (메시지에 상품 id 목록). 재고가 0이거나 요청 수량보다 적은 상품 → `OUT_OF_STOCK` (상품이 모두 존재할 때, 메시지에 상품명 목록, 재고는 차감하지 않음). 합계가 표현 범위 초과 → `INVALID_INPUT`. 헤더 누락 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND` |
-| 주문 확정 | `POST /api/v1/orders/{orderId}/confirm` | path `orderId` (요청자 식별 필요) | CONFIRMED 주문 `{id, status, items, totalAmount, payment: {paidAmount, balanceAfter}, orderedAt}`, 재고·포인트 차감, 결제액은 주문 합계 (D-21) | 없는·타인 주문 → `NOT_FOUND`, 이미 확정 → `ORDER_ALREADY_CONFIRMED`, 상품 삭제됨 → `PRODUCT_UNAVAILABLE` (메시지에 주문 당시 상품명), 재고 부족 → `OUT_OF_STOCK`, 잔액 부족 → `INSUFFICIENT_POINT`, `orderId` 형식 오류 → `INVALID_INPUT`, 헤더 누락 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND`. 오류 우선순위는 4-1 표의 순서이고 실패하면 재고·잔액·주문 상태는 그대로 |
+| 주문 확정 | `POST /api/v1/orders/{orderId}/confirm` | path `orderId` (요청자 식별 필요) | CONFIRMED 주문 `{id, status, items, totalAmount, payment: {paidAmount}, orderedAt}`, 재고·포인트 차감, 결제액은 주문 합계 (D-21). 포인트 잔액은 담지 않는다 (D-44) | 없는·타인 주문 → `NOT_FOUND`, 이미 확정 → `ORDER_ALREADY_CONFIRMED`, 상품 삭제됨 → `PRODUCT_UNAVAILABLE` (메시지에 주문 당시 상품명), 재고 부족 → `OUT_OF_STOCK`, 잔액 부족 → `INSUFFICIENT_POINT`, `orderId` 형식 오류 → `INVALID_INPUT`, 헤더 누락 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND`. 오류 우선순위는 4-1 표의 순서이고 실패하면 재고·잔액·주문 상태는 그대로 |
 | 내 주문 목록 | `GET /api/v1/orders` | 요청자 (식별 필요), query `page`(0 이상, 기본 0)·`size`(1~100, 기본 20) | 내 주문만 최신순(id 내림차순 고정). 항목은 `id`, `status`, `totalAmount`, `itemCount`, `payment`(확정된 주문만), `orderedAt`이며 품목은 담지 않고 `content`·`page`·`size`·`totalElements`·`totalPages`로 응답 (D-22) | 잘못된 `page`·`size` → `INVALID_INPUT`, 헤더 누락 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND` |
 | 내 주문 상세 | `GET /api/v1/orders/{orderId}` | path `orderId` (요청자 식별 필요) | `{id, status, items: [{productId, productName, quantity, unitPrice, amount}], totalAmount, payment, orderedAt}`. 생성·확정 응답과 같은 모양, 품목은 주문 당시 값 (D-22) | 없거나 타인 주문 → `NOT_FOUND` (존재 여부를 숨김, D-11), `orderId` 형식 오류·헤더 누락 → `INVALID_INPUT`, 없는 사용자 → `NOT_FOUND` |
 
@@ -626,7 +626,7 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 
 - **상황**: 주문 확정에서 결제액의 기준, 응답에 담을 결제 결과, 삭제된 상품과 재고 부족의 안내, 롤백 검증 방식을 정해야 했다.
 - **결정 (결제액)**: 결제액은 확정 시점의 현재 가격이 아니라 **주문 합계**(`order.totalAmount`, 주문 당시 단가 스냅샷)이다. 그 사이 관리자가 가격을 바꿔도 결제액은 주문 당시 합계다.
-- **결정 (응답)**: 주문 응답에 `payment: {paidAmount, balanceAfter}` 객체를 둔다. 확정 전(DRAFT) 주문은 결제 결과가 없어 응답에서 `payment` 키가 빠진다(null 필드는 생략하는 JSON 설정, D-22). 생성·확정·조회가 같은 응답 모양을 쓴다.
+- **결정 (응답)**: 주문 응답에 `payment: {paidAmount, balanceAfter}` 객체를 둔다. **→ D-44로 대체: `payment: {paidAmount}`, 포인트 잔액은 담지 않는다.** 확정 전(DRAFT) 주문은 결제 결과가 없어 응답에서 `payment` 키가 빠진다(null 필드는 생략하는 JSON 설정, D-22). 생성·확정·조회가 같은 응답 모양을 쓴다.
 - **결정 (실패 안내)**: 삭제됐거나 없는 상품은 모두 모아 **주문 당시 상품명**으로 `PRODUCT_UNAVAILABLE` 메시지에 담는다(품목에 이름을 저장해 두었으므로 삭제된 상품도 이름으로 알린다, D-20). 확정의 재고 부족은 품목 순서대로 차감하다 처음 부족한 품목에서 멈추며 `ErrorType` 기본 문구를 쓴다.
 - **결정 (순서와 저장)**: 오류 우선순위는 4-1 표의 단계 순서이다. 이미 확정된 주문이 다른 오류로 보이지 않게 확정 가능 여부를 앞에서 확인하고, `Order.confirm` 안의 재검증은 불변식 보호용으로 둔다. 별도 `save` 없이 변경 감지로 주문·재고·잔액을 한 트랜잭션에서 저장한다. 포인트를 차감할 `User` 엔티티가 필요해 사용자를 조회하며 `PointFacade`와 같은 이중 조회가 생긴다 (D-19).
 - **근거**: 결제액을 주문 합계로 두면 고객이 주문 화면에서 본 금액과 실제 결제 금액이 같다. 결제 결과를 응답에 같은 모양으로 두면 생성·확정·조회가 하나의 응답 타입을 쓴다. 롤백을 실제 DB에서 재조회로 확인해야 변경 감지 기반 저장의 부분 반영을 놓치지 않는다 (D-10).
@@ -647,3 +647,12 @@ Controller → OrderFacade.confirm(userId, orderId)   ← @Transactional 시작
 - **비용**: 목록에서 품목을 보려면 상세를 추가로 호출해야 한다. 정렬은 최신순 하나이고 상태·기간 필터가 없다. 관리자의 전체 조회는 주문이 많아지면 총 개수 쿼리 비용이 커진다. 존재하지 않는 `userId`(오타 등)가 오류가 아니라 빈 목록으로 보인다. batch fetch 설정은 모듈 공용이라 다른 지연 컬렉션에도 적용된다.
 - **재검토 조건**: 상태·기간 필터나 다른 정렬이 필요해질 때, 주문 수가 많아 총 개수 쿼리가 느려질 때, 목록 화면에서 품목을 바로 보여야 할 때.
 - **기각한 대안**: 목록에 품목까지 포함(응답이 크고 컬렉션 fetch join은 페이징 불가), 관리자 `userId` 필수(전체 현황을 볼 수 없음), 존재하지 않는 `userId`를 `NOT_FOUND`로 거절(사용자 조회가 늘고 D-18의 `brandId` 방식과 어긋남), 주문 시각을 관리자 응답에만 담기(고객이 주문 내역을 구분하지 못함), 상태 필터 도입(과제 범위 밖).
+
+### D-44. 주문의 결제 결과에는 결제액만 두고, 결제 수단의 상태(포인트 잔액)는 담지 않는다 (W4 변경, D-21 응답 대체)
+
+- **상황**: 결제 수단을 포인트에서 PG 결제로 바꿀 예정이다. 지금은 확정할 때 사용자 포인트 잔액을 주문의 `PaymentResult.balanceAfter`(`orders.balance_after`)에 복사해 저장하고 주문 응답에도 담아, 주문이 특정 결제 수단(포인트)의 상태에 묶여 있다.
+- **결정**: `PaymentResult`는 결제액(`paidAmount`)만 갖는다. 주문 응답은 `payment: {paidAmount}`이며 고객·관리자, 생성·확정·상세·목록이 모두 같다. `payment` 객체는 유지해 결제 수단·거래 id 같은 값을 나중에 넣을 자리로 둔다. 포인트 잔액은 포인트 조회 API(`GET /api/v1/points`)로만 본다. 컬럼 `orders.balance_after`는 매핑에서 뺀다.
+- **근거**: 주문이 기록할 것은 "얼마를 결제했는가"이고, 결제 수단의 상태는 그 수단의 책임이다. PG 결제에는 "결제 후 잔액"이라는 개념이 없어, 남겨 두면 결제 수단을 바꿀 때 주문의 모델·응답·컬럼을 함께 바꿔야 한다.
+- **비용**: 확정 응답만으로는 남은 잔액을 알 수 없어 클라이언트가 포인트 조회를 한 번 더 호출해야 한다(D-21이 기각한 "조회로만 확인"을 잔액에 한해 받아들인다).
+- **유지하는 것**: 확정은 여전히 포인트로 결제하며 잔액 부족 거절(`INSUFFICIENT_POINT`), 잠금 순서(D-27), 실패 시 전체 rollback(D-10)은 그대로다. 테스트는 잔액 차감을 주문 행이 아니라 `users`의 잔액으로 검증한다.
+- **기각한 대안**: 응답에서만 빼고 컬럼은 유지(주문 모델이 여전히 포인트에 묶여 PG 전환 때 다시 손봐야 함), `payment` 객체를 없애고 `paidAmount`를 주문에 평탄화(결제 정보가 늘 때 응답 모양이 다시 바뀜).
