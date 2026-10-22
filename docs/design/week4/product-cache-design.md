@@ -155,4 +155,15 @@ infrastructure.product
 
 ## 10. 구현 결과
 
-구현 후 채운다.
+### 10-1. Redis timeout (D-42)
+
+| 항목 | 이전(Lettuce 기본값) | 변경 |
+|---|---|---|
+| 연결 timeout (`datasource.redis.connect-timeout`) | 10초 | 200ms |
+| 명령 timeout (`datasource.redis.command-timeout`) | 60초 | 300ms |
+
+- 위치: `modules/redis`의 `redis.yml`(모든 프로필 공통), `RedisProperties`, `RedisConfig`.
+- `clientOptions`를 직접 지정하면 Spring Data Redis 기본값인 `TimeoutOptions.enabled()`가 사라지므로 함께 넣었다. 이 옵션이 있어야 연결이 끊긴 동안 쌓인 명령도 명령 timeout 뒤에 실패한다. 그래서 `disconnectedBehavior`는 기본값(`DEFAULT`, 자동 재연결 중 명령 수락)을 유지한다.
+- 값이 비면 Lettuce·Spring Data Redis가 null 검사로 기동을 실패시킨다.
+- **공용 모듈 영향**: `commerce-api`·`commerce-batch`·`commerce-streamer`가 모두 `redis.yml`을 가져다 쓰므로 같은 값이 적용된다. 현재 batch·streamer는 Redis를 쓰는 코드가 없어 동작 변화는 없다. 이후 300ms를 넘는 명령(큰 키 조회, 블로킹 명령 등)이 필요하면 앱별 값을 따로 둔다.
+- 확인: `commerce-api`(`CommerceApiContextTest`, `ProductApiE2ETest` 25건), `commerce-batch`(3건)의 컨텍스트 기동 통과. 제한된 대기는 T6 Redis 중단 테스트에서 측정한다.

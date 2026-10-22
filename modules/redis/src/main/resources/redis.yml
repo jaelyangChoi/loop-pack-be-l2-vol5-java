@@ -7,6 +7,9 @@ spring:
 datasource:
   redis:
     database: 0
+    # Redis가 느리거나 멈췄을 때 호출자가 기다리는 상한(Lettuce 기본값: 연결 10초, 명령 60초)
+    connect-timeout: 200ms
+    command-timeout: 300ms
     master:
       host: ${REDIS_MASTER_HOST}
       port: ${REDIS_MASTER_PORT}
