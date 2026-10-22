@@ -185,3 +185,17 @@ infrastructure.product
 | `likes_desc` 반복 조회 | 매번 SQL 4 (캐시 안 함) |
 | 좋아요 등록·취소 후 hit | 좋아요 수 즉시 반영, SQL 1 |
 | 캐시를 비우지 않은 채 상품 삭제 후 조회 | 삭제 상품 제외, 페이지 10개 유지, SQL 5(확인 1 + 재조회 4), 다음 조회는 다시 hit |
+
+### 10-3. commit 뒤 무효화
+
+- `AdminProductFacade.create/update/delete`, `AdminBrandFacade.update/delete`가 트랜잭션 안에서 `ProductCatalogChanged`를 발행한다. 5-1 표에서 "하지 않는다"인 쓰기(`changeStock`, 좋아요, 주문, `AdminBrandFacade.create`)는 발행하지 않고, 그 이유를 메서드 주석에 남겼다.
+- `ProductListCacheEvictor`가 `@TransactionalEventListener(AFTER_COMMIT)`에서 `evictAll()`을 호출한다. 캐시 구현이 Redis 오류를 이미 삼키지만, 예상 밖의 `RuntimeException`도 잡아 로그만 남긴다. commit 된 관리자 요청을 실패로 바꾸지 않기 위해서다. 실패 시 응답이 성공으로 유지되는지는 T6에서 확인한다.
+
+| 확인 (`ProductCacheInvalidationTest`, 실제 MySQL·Redis, 브랜드 필터 유무 × 정렬 4개 키를 채운 뒤) | 결과 |
+|---|---|
+| 가격 수정 | 4개 키 삭제, 새 가격·가격순 위치 반영, 과거 주문 금액(단가·합계) 유지 |
+| 이름 수정, 상품 등록 | 4개 키 삭제, 새 이름·새 상품·전체 개수 반영 |
+| 상품 삭제 | 4개 키 삭제, 목록·전체 개수에서 제외, 다른 브랜드 상품·과거 주문 유지 |
+| 브랜드명 수정, 브랜드 삭제 | 4개 키 삭제, 새 브랜드명 반영 / 연결 상품 전체 제외, 다른 브랜드 유지 |
+| 바깥 트랜잭션 rollback | 키 유지, 이전 가격·순서 그대로, DB 변경 없음 |
+| 재고 변경·좋아요·주문 생성·브랜드 등록 | 키 유지. 좋아요 수는 캐시 밖이라 그대로 반영 |
