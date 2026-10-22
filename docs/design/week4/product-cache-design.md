@@ -17,7 +17,7 @@
 
 | 캐시 후보 | 응답 필드 | 영향을 주는 변경 | 무효화 |
 |---|---|---|---|
-| 목록 페이지 | 상품 `id·name·price`, 브랜드 `id·name`, `page·size·totalElements` | 상품 생성·수정·삭제, 브랜드 수정·삭제 | 목록 영역 전체 삭제 |
+| 목록 페이지 | 상품 `id·name·price`, 브랜드 `id·name`, `totalElements` (`page·size`는 키에 있음) | 상품 생성·수정·삭제, 브랜드 수정·삭제 | 목록 영역 전체 삭제 |
 | (캐시 밖) `likeCount` | 상품별 좋아요 수 | 좋아요 등록·취소, 상품 삭제 | 캐시에 넣지 않고 hit마다 `product_like_counts`에서 읽는다 |
 
 - **`likeCount`를 payload에서 뺀 이유**: 좋아요는 가장 잦은 쓰기다. 넣으면 좋아요마다 영역을 비워야 해 hit율이 무너진다. 읽는 쪽은 PK `IN` 조회 한 번이라 싸다.
@@ -83,7 +83,7 @@ product:list:v1:brand={brandId|all}:sort={latest|price_asc}:page={n}:size={n}
 application.product
   ProductListCache           포트: find(ProductListQuery) / save(ProductListQuery, ProductListSnapshot) / evictAll()
   ProductListQuery           조회 조건 record (brandId|null, sort, page, size)
-  ProductListSnapshot        payload record (상품 id·name·price·brand{id,name}, page, size, totalElements). likeCount 없음
+  ProductListSnapshot        payload record (상품 id·name·price·brand{id,name}, totalElements). page·size는 키에 있어 담지 않음. likeCount 없음
   ProductListItemInfo        고객 목록 항목 (payload 항목 + likeCount). DB 조회·hit 가 같은 타입을 돌려준다
   ProductCatalogChanged      관리자 쓰기가 발행하는 이벤트
   ProductListCacheEvictor    @TransactionalEventListener(AFTER_COMMIT) → evictAll()
@@ -218,3 +218,12 @@ infrastructure.product
 | 중단 중 시간 초과된 저장 | 취소되지 않고 복구 직후 실행되어 캐시가 생김(6장에 반영). 값은 저장 시점의 DB 결과 |
 
 - 처음에는 "중단 중 수정 → 중단 중 조회 → 복구"로 옛 키 부활을 확인하려 했다. 그런데 중단 중 조회의 시간 초과된 저장이 복구 직후 새 값으로 덮어 옛 값이 보이지 않았다. 그래서 두 장면을 나눴다.
+
+### 10-5. 리팩토링 (T7 전 검토)
+
+- **트랜잭션 범위를 DB 조회로 좁힘**: `getList` 전체가 `@Transactional(readOnly = true)`였다. readOnly 트랜잭션은 시작할 때 DB 커넥션을 잡으므로(Spring `HibernateJpaDialect.beginTransaction`), 캐시 왕복 동안에도 커넥션을 쥐었다. Redis 중단 때는 요청마다 약 0.6초(조회·저장 timeout) 동안 쥐어, 메인 풀 40개 기준 목록 요청이 초당 약 66건을 넘으면 풀이 말라 다른 API까지 커넥션을 얻지 못한다. 6장 장애 계약(Redis 장애를 DB 장애로 번지지 않게)과 어긋나 바꿨다.
+  - miss의 DB 조회(SQL 4개)만 `TransactionTemplate`(readOnly)으로 감싼다. 같은 클래스 안 호출이라 `@Transactional` 프록시가 동작하지 않기 때문이다. 네 조회가 같은 스냅샷을 읽는다는 `likeCountOf`의 전제는 유지된다.
+  - 캐시 조회·저장과 hit의 좋아요 수 조회(SQL 1개)는 트랜잭션 밖에서 실행한다.
+  - `ProductCacheQueryCountTest.TransactionScope`가 호출 순서와 트랜잭션 여부를 고정한다: 캐시 조회(밖) → 좋아요 수(안) → 캐시 저장(밖) / 캐시 조회(밖) → 좋아요 수(밖). SQL 수(miss 4, hit 1)는 그대로다.
+- **payload에서 `page`·`size` 제거**: 키에 이미 있고 hit 때도 요청의 페이지 정보로 결과를 만들어, 저장만 되고 읽히지 않았다. 배포 전이라 형식 버전 `v1`은 유지한다.
+- **변환 위치 통일**: 캐시 값 → 결과 변환을 `ProductListSnapshot.Item.withLikeCount`로 옮겨, 결과 → 캐시 값 변환(`ProductListSnapshot.from`)과 같은 곳에 둔다.
