@@ -23,11 +23,16 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 
 /**
  * 상품 목록 캐시(cache-aside)의 miss·hit 결과와 SQL 수를 실제 MySQL·Redis 로 확인한다(week4 product-cache-design.md 4장).
@@ -39,7 +44,8 @@ class ProductCacheQueryCountTest {
     @Autowired
     private ProductFacade productFacade;
 
-    @Autowired
+    // 동작은 그대로 두고, 호출 시점에 트랜잭션이 열려 있는지만 기록하려고 감싼다(TransactionScope).
+    @MockitoSpyBean
     private ProductListCache productListCache;
 
     @Autowired
@@ -51,7 +57,7 @@ class ProductCacheQueryCountTest {
     @Autowired
     private ProductRepository productRepository;
 
-    @Autowired
+    @MockitoSpyBean
     private LikeService likeService;
 
     @Autowired
@@ -250,5 +256,43 @@ class ProductCacheQueryCountTest {
         assertThat(statistics.getPrepareStatementCount()).isEqualTo(4);
         assertThat(priceAsc.getContent()).extracting(ProductListItemInfo::price).isSorted();
         assertThat(productListCache.find(new ProductListQuery(brandId, ProductSort.PRICE_ASC, 0, 10))).isPresent();
+    }
+
+    @DisplayName("트랜잭션 범위")
+    @Nested
+    class TransactionScope {
+
+        @DisplayName("DB 트랜잭션은 miss 의 DB 조회에만 열고, 캐시 조회·저장과 hit 의 좋아요 수 조회는 트랜잭션 밖에서 한다.")
+        @Test
+        void opensTransactionOnlyForDatabaseLoad() {
+            // arrange
+            Long brandId = prepare(3);
+            List<String> calls = new CopyOnWriteArrayList<>();
+            doAnswer(invocation -> {
+                calls.add("cache.find in-tx=" + TransactionSynchronizationManager.isActualTransactionActive());
+                return invocation.callRealMethod();
+            }).when(productListCache).find(any());
+            doAnswer(invocation -> {
+                calls.add("cache.save in-tx=" + TransactionSynchronizationManager.isActualTransactionActive());
+                return invocation.callRealMethod();
+            }).when(productListCache).save(any(), any());
+            doAnswer(invocation -> {
+                calls.add("likeCounts in-tx=" + TransactionSynchronizationManager.isActualTransactionActive());
+                return invocation.callRealMethod();
+            }).when(likeService).countByProductIds(any());
+
+            // act
+            productFacade.getList(brandId, "latest", 0, 10); // miss
+            productFacade.getList(brandId, "latest", 0, 10); // hit
+
+            // assert
+            assertThat(calls).containsExactly(
+                "cache.find in-tx=false",
+                "likeCounts in-tx=true",
+                "cache.save in-tx=false",
+                "cache.find in-tx=false",
+                "likeCounts in-tx=false"
+            );
+        }
     }
 }

@@ -54,7 +54,7 @@ class ProductListRedisCacheTest {
                 new ProductListSnapshot.Item(3L, "티셔츠", 3_000, new ProductListItemInfo.BrandSummary(7L, "루퍼스")),
                 new ProductListSnapshot.Item(2L, "양말", 2_000, new ProductListItemInfo.BrandSummary(8L, "오프"))
             ),
-            0, 20, 2
+            2
         );
     }
 
@@ -113,7 +113,7 @@ class ProductListRedisCacheTest {
         @DisplayName("빈 목록도 저장하고 그대로 돌려준다.")
         @Test
         void returnsEmptyList_whenSnapshotHasNoItems() {
-            ProductListSnapshot empty = new ProductListSnapshot(List.of(), 0, 20, 0);
+            ProductListSnapshot empty = new ProductListSnapshot(List.of(), 0);
             productListCache.save(BRAND_PRICE, empty);
 
             assertThat(productListCache.find(BRAND_PRICE)).contains(empty);
@@ -138,7 +138,7 @@ class ProductListRedisCacheTest {
         @Test
         void returnsEmpty_whenItemsAreMissing() {
             double before = errorCount("find");
-            redisTemplate.opsForValue().set(ProductListRedisCache.keyOf(ALL_LATEST), "{\"page\":0,\"size\":20,\"totalElements\":0}");
+            redisTemplate.opsForValue().set(ProductListRedisCache.keyOf(ALL_LATEST), "{\"totalElements\":0}");
 
             assertThat(productListCache.find(ALL_LATEST)).isEmpty();
             assertThat(errorCount("find")).isEqualTo(before + 1);
