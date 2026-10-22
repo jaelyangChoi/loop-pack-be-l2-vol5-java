@@ -115,12 +115,12 @@ class OrderRepositoryTest {
     @DisplayName("결제 결과를 저장하고 다시 읽을 때,")
     @Nested
     class PaymentResultMapping {
-        @DisplayName("확정한 주문은 CONFIRMED 와 결제액·결제 후 잔액이 DB 에서 그대로 읽힌다.")
+        @DisplayName("확정한 주문은 CONFIRMED 와 결제액이 DB 에서 그대로 읽힌다.")
         @Test
         void returnsPaymentResult_whenOrderIsConfirmed() {
             // arrange
             Order order = newOrder(7L);
-            order.confirm(new PaymentResult(new Money(7_000), new Money(3_000)));
+            order.confirm(new PaymentResult(new Money(7_000)));
             Long orderId = orderRepository.save(order).getId();
 
             // act & assert
@@ -128,23 +128,23 @@ class OrderRepositoryTest {
                 Order found = orderJpaRepository.findById(orderId).orElseThrow();
                 assertThat(found.getStatus()).isEqualTo(OrderStatus.CONFIRMED);
                 assertThat(found.getPaymentResult())
-                    .isEqualTo(new PaymentResult(new Money(7_000), new Money(3_000)));
+                    .isEqualTo(new PaymentResult(new Money(7_000)));
             });
         }
 
-        @DisplayName("결제 후 잔액이 0원이어도 결제 결과가 있는 것으로 읽힌다 (0원과 없음을 구분한다).")
+        @DisplayName("결제액이 0원이어도 결제 결과가 있는 것으로 읽힌다 (0원과 없음을 구분한다).")
         @Test
-        void returnsPaymentResult_whenBalanceAfterIsZero() {
-            // arrange
+        void returnsPaymentResult_whenPaidAmountIsZero() {
+            // arrange: 결제 결과의 컬럼이 하나뿐이라, 0원이 컬럼 null(결제 결과 없음)과 섞이지 않는지 매핑만 확인한다.
             Order order = newOrder(7L);
-            order.confirm(new PaymentResult(new Money(7_000), new Money(0)));
+            order.confirm(new PaymentResult(new Money(0)));
             Long orderId = orderRepository.save(order).getId();
 
             // act & assert
             transactionTemplate.executeWithoutResult(status -> {
                 Order found = orderJpaRepository.findById(orderId).orElseThrow();
                 assertThat(found.getPaymentResult()).isNotNull();
-                assertThat(found.getPaymentResult().balanceAfter()).isEqualTo(new Money(0));
+                assertThat(found.getPaymentResult().paidAmount()).isEqualTo(new Money(0));
             });
         }
 

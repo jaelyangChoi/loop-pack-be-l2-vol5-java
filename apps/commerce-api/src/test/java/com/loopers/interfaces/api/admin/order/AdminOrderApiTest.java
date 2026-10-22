@@ -168,7 +168,7 @@ class AdminOrderApiTest {
                 .andExpect(jsonPath("$.data.items[0].unitPrice").value(3_000))
                 .andExpect(jsonPath("$.data.items[0].amount").value(6_000))
                 .andExpect(jsonPath("$.data.payment.paidAmount").value(6_000))
-                .andExpect(jsonPath("$.data.payment.balanceAfter").value(4_000))
+                .andExpect(jsonPath("$.data.payment.balanceAfter").doesNotExist())
                 .andExpect(jsonPath("$.data.orderedAt").isNotEmpty());
         }
 

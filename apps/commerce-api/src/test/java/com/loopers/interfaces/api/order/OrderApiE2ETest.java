@@ -304,7 +304,7 @@ class OrderApiE2ETest {
             assertThat(order.id()).isEqualTo(orderId);
             assertThat(order.status()).isEqualTo("CONFIRMED");
             assertThat(order.totalAmount()).isEqualTo(7_000L);
-            assertThat(order.payment()).isEqualTo(new OrderDto.PaymentResponse(7_000L, 3_000L));
+            assertThat(order.payment()).isEqualTo(new OrderDto.PaymentResponse(7_000L));
             assertThat(order.items()).hasSize(2);
             assertThat(stockOf(shirt)).isEqualTo(9);
             assertThat(stockOf(socks)).isEqualTo(8);
@@ -317,11 +317,11 @@ class OrderApiE2ETest {
             // 내 주문 상세·목록에서도 CONFIRMED 와 결제액이 조회된다.
             OrderDto.OrderResponse detail = getDetail(userId, orderId).getBody().data();
             assertThat(detail.status()).isEqualTo("CONFIRMED");
-            assertThat(detail.payment()).isEqualTo(new OrderDto.PaymentResponse(7_000L, 3_000L));
+            assertThat(detail.payment()).isEqualTo(new OrderDto.PaymentResponse(7_000L));
             OrderDto.OrderSummaryResponse listed = getList(userId, "").getBody().data().content().get(0);
             assertThat(listed.id()).isEqualTo(orderId);
             assertThat(listed.status()).isEqualTo("CONFIRMED");
-            assertThat(listed.payment()).isEqualTo(new OrderDto.PaymentResponse(7_000L, 3_000L));
+            assertThat(listed.payment()).isEqualTo(new OrderDto.PaymentResponse(7_000L));
         }
 
         @DisplayName("잔액이 부족하면 409 INSUFFICIENT_POINT 이고, 주문·재고·잔액이 그대로다 (409 업무 오류 4종의 대표, 나머지는 OrderFacadeTest).")

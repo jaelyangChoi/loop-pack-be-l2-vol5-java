@@ -75,7 +75,7 @@ public class OrderFacade {
         deductStock(order);
         User user = userService.getForUpdate(userId);
         user.payPoint(order.getTotalAmount());
-        order.confirm(new PaymentResult(order.getTotalAmount(), user.getPointBalance().balance()));
+        order.confirm(new PaymentResult(order.getTotalAmount()));
         return OrderInfo.from(order);
     }
 

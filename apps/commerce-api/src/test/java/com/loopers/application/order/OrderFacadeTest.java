@@ -357,7 +357,7 @@ class OrderFacadeTest {
             stocks.forEach((product, stock) -> assertThat(stockOf(product)).as(product.getName()).isEqualTo(stock));
         }
 
-        @DisplayName("재고를 차감하고 포인트를 결제해 CONFIRMED 가 되며, 결제액과 결제 후 잔액이 저장된다.")
+        @DisplayName("재고를 차감하고 포인트를 결제해 CONFIRMED 가 되며, 결제액이 저장되고 포인트 잔액은 주문에 저장하지 않는다.")
         @Test
         void confirmsOrder_deductsStockAndPoint() {
             // arrange: 4-1 시나리오. 잔액 10,000 → 3,000×1 + 2,000×2 = 7,000 결제 → 잔액 3,000
@@ -372,17 +372,16 @@ class OrderFacadeTest {
             // assert
             assertThat(info.status()).isEqualTo(OrderStatus.CONFIRMED);
             assertThat(info.totalAmount()).isEqualTo(7_000L);
-            assertThat(info.payment()).isEqualTo(new PaymentInfo(7_000L, 3_000L));
+            assertThat(info.payment()).isEqualTo(new PaymentInfo(7_000L));
             assertThat(info.items()).hasSize(2);
             assertThat(stockOf(shirt)).isEqualTo(9);
             assertThat(stockOf(socks)).isEqualTo(8);
             assertThat(balanceOf(user)).isEqualTo(3_000L);
             Map<String, Object> saved = jdbcTemplate.queryForMap(
-                "select status, paid_amount, balance_after from orders where id = ?", orderId
+                "select status, paid_amount from orders where id = ?", orderId
             );
             assertThat(saved.get("status")).isEqualTo("CONFIRMED");
             assertThat(((Number) saved.get("paid_amount")).longValue()).isEqualTo(7_000L);
-            assertThat(((Number) saved.get("balance_after")).longValue()).isEqualTo(3_000L);
         }
 
         @DisplayName("재고가 수량과 정확히 같고 잔액이 합계와 정확히 같아도 확정되며, 재고와 잔액은 0이 된다.")
@@ -397,7 +396,7 @@ class OrderFacadeTest {
             OrderInfo info = orderFacade.confirm(user.getId(), orderId);
 
             // assert
-            assertThat(info.payment()).isEqualTo(new PaymentInfo(6_000L, 0L));
+            assertThat(info.payment()).isEqualTo(new PaymentInfo(6_000L));
             assertThat(stockOf(shirt)).isZero();
             assertThat(balanceOf(user)).isZero();
         }
@@ -415,7 +414,7 @@ class OrderFacadeTest {
             OrderInfo info = orderFacade.confirm(user.getId(), orderId);
 
             // assert
-            assertThat(info.payment()).isEqualTo(new PaymentInfo(6_000L, 4_000L));
+            assertThat(info.payment()).isEqualTo(new PaymentInfo(6_000L));
             assertThat(balanceOf(user)).isEqualTo(4_000L);
         }
 
@@ -598,7 +597,7 @@ class OrderFacadeTest {
             assertThat(confirmed.status()).isEqualTo(OrderStatus.CONFIRMED);
             assertThat(confirmed.totalAmount()).isEqualTo(7_000L);
             assertThat(confirmed.itemCount()).isEqualTo(2);
-            assertThat(confirmed.payment()).isEqualTo(new PaymentInfo(7_000L, 3_000L));
+            assertThat(confirmed.payment()).isEqualTo(new PaymentInfo(7_000L));
             assertThat(confirmed.orderedAt()).isNotNull();
             OrderSummaryInfo draft = page.getContent().get(1);
             assertThat(draft.status()).isEqualTo(OrderStatus.DRAFT);
@@ -657,7 +656,7 @@ class OrderFacadeTest {
             // assert
             assertThat(info.status()).isEqualTo(OrderStatus.CONFIRMED);
             assertThat(info.items()).containsExactly(new OrderItemInfo(shirt.getId(), "티셔츠", 2, 3_000L, 6_000L));
-            assertThat(info.payment()).isEqualTo(new PaymentInfo(6_000L, 4_000L));
+            assertThat(info.payment()).isEqualTo(new PaymentInfo(6_000L));
             assertThat(info.orderedAt()).isNotNull();
             assertThat(otherUsers.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
             assertThat(missing.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
