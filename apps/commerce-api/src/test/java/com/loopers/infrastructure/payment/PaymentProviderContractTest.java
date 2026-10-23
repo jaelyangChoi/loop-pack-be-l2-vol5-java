@@ -2,12 +2,11 @@ package com.loopers.infrastructure.payment;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.loopers.application.payment.PaymentGateway.CreateResult;
-import com.loopers.application.payment.PaymentGateway.OrderLookup;
+import com.loopers.application.payment.PaymentGateway.PgPaymentRequestResult;
+import com.loopers.application.payment.PaymentGateway.PgPaymentStatusCheckResult;
 import com.loopers.application.payment.PaymentGateway.PaymentRequest;
 import com.loopers.application.payment.PaymentGateway.PgStatus;
 import com.loopers.application.payment.PaymentGateway.PgTransaction;
-import com.loopers.application.payment.PaymentGateway.TransactionLookup;
 import com.loopers.support.pg.FakePgServer;
 import com.loopers.support.pg.FakePgServer.FakeTransaction;
 import com.loopers.support.pg.FakePgServer.RecordedRequest;
@@ -100,13 +99,12 @@ class PaymentProviderContractTest {
         @Test
         void returnsAccepted_whenPending() {
             // act
-            CreateResult result = gateway.requestPayment(request());
+            PgPaymentRequestResult result = gateway.requestPayment(request());
 
             // assert
-            assertThat(result).isInstanceOfSatisfying(CreateResult.Accepted.class, accepted ->
-                assertThat(accepted.transaction())
-                    .isEqualTo(new PgTransaction("TEST-TX-0001", ORDER_ID, 7_000, PgStatus.PENDING))
-            );
+            assertThat(result.outcome()).isEqualTo(PgPaymentRequestResult.Outcome.ACCEPTED);
+            assertThat(result.transaction())
+                .isEqualTo(new PgTransaction("TEST-TX-0001", ORDER_ID, 7_000, PgStatus.PENDING));
             assertThat(pg.transactionCount()).isEqualTo(1);
             assertThat(pg.createCalls()).isEqualTo(1);
         }
@@ -118,10 +116,10 @@ class PaymentProviderContractTest {
             pg.onCreate(FakePgServer.rejectBeforeCreate());
 
             // act
-            CreateResult result = gateway.requestPayment(request());
+            PgPaymentRequestResult result = gateway.requestPayment(request());
 
             // assert
-            assertThat(result).isInstanceOf(CreateResult.RejectedNoEffect.class);
+            assertThat(result.outcome()).isEqualTo(PgPaymentRequestResult.Outcome.REJECTED_WITHOUT_TRANSACTION);
             assertThat(pg.transactionCount()).isZero();
             assertThat(pg.createCalls()).isEqualTo(1);
         }
@@ -156,10 +154,10 @@ class PaymentProviderContractTest {
             pg.onCreate(FakePgServer.respond(status, body));
 
             // act
-            CreateResult result = gateway.requestPayment(request());
+            PgPaymentRequestResult result = gateway.requestPayment(request());
 
             // assert
-            assertThat(result).isInstanceOf(CreateResult.Unknown.class);
+            assertThat(result.outcome()).isEqualTo(PgPaymentRequestResult.Outcome.UNKNOWN);
             assertThat(pg.createCalls()).isEqualTo(1);
             assertThat(pg.transactionCount()).isZero();
         }
@@ -191,10 +189,10 @@ class PaymentProviderContractTest {
             pg.onCreate(FakePgServer.respond(202, body));
 
             // act
-            CreateResult result = gateway.requestPayment(request());
+            PgPaymentRequestResult result = gateway.requestPayment(request());
 
             // assert
-            assertThat(result).isInstanceOf(CreateResult.Unknown.class);
+            assertThat(result.outcome()).isEqualTo(PgPaymentRequestResult.Outcome.UNKNOWN);
             assertThat(pg.createCalls()).isEqualTo(1);
         }
 
@@ -205,10 +203,10 @@ class PaymentProviderContractTest {
             pg.onCreate(FakePgServer.acceptThenDropResponse());
 
             // act
-            CreateResult result = gateway.requestPayment(request());
+            PgPaymentRequestResult result = gateway.requestPayment(request());
 
             // assert
-            assertThat(result).isInstanceOf(CreateResult.Unknown.class);
+            assertThat(result.outcome()).isEqualTo(PgPaymentRequestResult.Outcome.UNKNOWN);
             assertThat(pg.transactionCount()).isEqualTo(1);
             assertThat(pg.createCalls()).isEqualTo(1);
         }
@@ -221,10 +219,10 @@ class PaymentProviderContractTest {
             pg.onCreate(FakePgServer.acceptAfterDelay(Duration.ofMillis(1_500)));
 
             // act
-            CreateResult result = gateway.requestPayment(request());
+            PgPaymentRequestResult result = gateway.requestPayment(request());
 
             // assert
-            assertThat(result).isInstanceOf(CreateResult.Unknown.class);
+            assertThat(result.outcome()).isEqualTo(PgPaymentRequestResult.Outcome.UNKNOWN);
             assertThat(pg.transactionCount()).isEqualTo(1);
             assertThat(pg.createCalls()).isEqualTo(1);
         }
@@ -237,12 +235,11 @@ class PaymentProviderContractTest {
             gateway.requestPayment(request());
 
             // act
-            OrderLookup lookup = gateway.findTransactions(ORDER_ID);
+            PgPaymentStatusCheckResult lookup = gateway.checkPaymentStatusByOrder(ORDER_ID);
 
             // assert
-            assertThat(lookup).isInstanceOfSatisfying(OrderLookup.Found.class, found ->
-                assertThat(found.transactions()).hasSize(1)
-            );
+            assertThat(lookup.outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.ANSWERED);
+            assertThat(lookup.transactions()).hasSize(1);
             assertThat(pg.createCalls()).isEqualTo(1);
         }
     }
@@ -257,17 +254,16 @@ class PaymentProviderContractTest {
             FakeTransaction seeded = pg.addTransaction(ORDER_ID, 7_000, "SUCCESS");
 
             // act
-            TransactionLookup lookup = gateway.findTransaction(seeded.key());
+            PgPaymentStatusCheckResult lookup = gateway.checkPaymentStatusByTransactionKey(seeded.key());
 
             // assert
             RecordedRequest sent = pg.lastRequest();
             assertThat(sent.method()).isEqualTo("GET");
             assertThat(sent.rawPath()).isEqualTo("/api/v1/payments/" + seeded.key());
             assertThat(sent.headers()).containsEntry("x-user-id", "135135");
-            assertThat(lookup).isInstanceOfSatisfying(TransactionLookup.Found.class, found ->
-                assertThat(found.transaction())
-                    .isEqualTo(new PgTransaction(seeded.key(), ORDER_ID, 7_000, PgStatus.SUCCESS))
-            );
+            assertThat(lookup.outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.ANSWERED);
+            assertThat(lookup.transactions())
+                .containsExactly(new PgTransaction(seeded.key(), ORDER_ID, 7_000, PgStatus.SUCCESS));
             assertThat(pg.lookupByKeyCalls()).isEqualTo(1);
         }
 
@@ -280,19 +276,19 @@ class PaymentProviderContractTest {
             FakeTransaction failed = pg.addTransaction("LP-ORD-0000000003", 300, "FAILED");
 
             // act & assert
-            assertThat(statusOf(gateway.findTransaction(pending.key()))).isEqualTo(PgStatus.PENDING);
-            assertThat(statusOf(gateway.findTransaction(success.key()))).isEqualTo(PgStatus.SUCCESS);
-            assertThat(statusOf(gateway.findTransaction(failed.key()))).isEqualTo(PgStatus.FAILED);
+            assertThat(statusOf(gateway.checkPaymentStatusByTransactionKey(pending.key()))).isEqualTo(PgStatus.PENDING);
+            assertThat(statusOf(gateway.checkPaymentStatusByTransactionKey(success.key()))).isEqualTo(PgStatus.SUCCESS);
+            assertThat(statusOf(gateway.checkPaymentStatusByTransactionKey(failed.key()))).isEqualTo(PgStatus.FAILED);
         }
 
-        private PgStatus statusOf(TransactionLookup lookup) {
-            return ((TransactionLookup.Found) lookup).transaction().status();
+        private PgStatus statusOf(PgPaymentStatusCheckResult lookup) {
+            return lookup.transactions().get(0).status();
         }
 
         @DisplayName("PG 가 모르는 거래 키(404)는 조회 불가가 아니라 거래 없음이다.")
         @Test
         void returnsNotFound_whenUnknownKey() {
-            assertThat(gateway.findTransaction("TEST-TX-9999")).isInstanceOf(TransactionLookup.NotFound.class);
+            assertThat(gateway.checkPaymentStatusByTransactionKey("TEST-TX-9999").outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.KEY_NOT_FOUND);
         }
 
         static Stream<Arguments> unreadableLookups() {
@@ -318,10 +314,10 @@ class PaymentProviderContractTest {
             pg.respondToLookupsWith(status, body);
 
             // act
-            TransactionLookup lookup = gateway.findTransaction("TEST-TX-0001");
+            PgPaymentStatusCheckResult lookup = gateway.checkPaymentStatusByTransactionKey("TEST-TX-0001");
 
             // assert
-            assertThat(lookup).isInstanceOf(TransactionLookup.Unavailable.class);
+            assertThat(lookup.outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.COULD_NOT_CHECK);
         }
 
         @DisplayName("읽기 timeout 안에 응답이 없으면 조회 불가다.")
@@ -332,10 +328,10 @@ class PaymentProviderContractTest {
             pg.delayLookups(Duration.ofMillis(1_500));
 
             // act
-            TransactionLookup lookup = gateway.findTransaction("TEST-TX-0001");
+            PgPaymentStatusCheckResult lookup = gateway.checkPaymentStatusByTransactionKey("TEST-TX-0001");
 
             // assert
-            assertThat(lookup).isInstanceOf(TransactionLookup.Unavailable.class);
+            assertThat(lookup.outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.COULD_NOT_CHECK);
         }
     }
 
@@ -350,7 +346,7 @@ class PaymentProviderContractTest {
             pg.addTransaction("LP-ORD-0000000099", 500, "SUCCESS");
 
             // act
-            OrderLookup lookup = gateway.findTransactions(ORDER_ID);
+            PgPaymentStatusCheckResult lookup = gateway.checkPaymentStatusByOrder(ORDER_ID);
 
             // assert
             RecordedRequest sent = pg.lastRequest();
@@ -358,19 +354,18 @@ class PaymentProviderContractTest {
             assertThat(sent.rawPath()).isEqualTo("/api/v1/payments");
             assertThat(sent.rawQuery()).isEqualTo("orderId=" + ORDER_ID);
             assertThat(sent.headers()).containsEntry("x-user-id", "135135");
-            assertThat(lookup).isInstanceOfSatisfying(OrderLookup.Found.class, found ->
-                assertThat(found.transactions())
-                    .containsExactly(new PgTransaction(mine.key(), ORDER_ID, 7_000, PgStatus.PENDING))
-            );
+            assertThat(lookup.outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.ANSWERED);
+            assertThat(lookup.transactions())
+                .containsExactly(new PgTransaction(mine.key(), ORDER_ID, 7_000, PgStatus.PENDING));
             assertThat(pg.lookupByOrderCalls()).isEqualTo(1);
         }
 
         @DisplayName("거래가 없으면 빈 목록이다. 조회 불가와 구분한다.")
         @Test
         void returnsEmptyList_whenNoTransaction() {
-            assertThat(gateway.findTransactions(ORDER_ID)).isInstanceOfSatisfying(OrderLookup.Found.class, found ->
-                assertThat(found.transactions()).isEmpty()
-            );
+            PgPaymentStatusCheckResult lookup = gateway.checkPaymentStatusByOrder(ORDER_ID);
+            assertThat(lookup.outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.ANSWERED);
+            assertThat(lookup.transactions()).isEmpty();
         }
 
         @DisplayName("같은 주문의 거래가 여러 건이면 모두 돌려준다. 하나를 고르는 일은 호출하는 쪽의 판단이다.")
@@ -381,13 +376,12 @@ class PaymentProviderContractTest {
             pg.addTransaction(ORDER_ID, 7_000, "SUCCESS");
 
             // act
-            OrderLookup lookup = gateway.findTransactions(ORDER_ID);
+            PgPaymentStatusCheckResult lookup = gateway.checkPaymentStatusByOrder(ORDER_ID);
 
             // assert
-            assertThat(lookup).isInstanceOfSatisfying(OrderLookup.Found.class, found ->
-                assertThat(found.transactions()).extracting(PgTransaction::status)
-                    .containsExactly(PgStatus.PENDING, PgStatus.SUCCESS)
-            );
+            assertThat(lookup.outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.ANSWERED);
+            assertThat(lookup.transactions()).extracting(PgTransaction::status)
+                .containsExactly(PgStatus.PENDING, PgStatus.SUCCESS);
         }
 
         @DisplayName("query 값은 URI builder 로 인코딩한다. 특수문자가 다른 파라미터로 해석되지 않는다.")
@@ -397,7 +391,7 @@ class PaymentProviderContractTest {
             String tricky = "LP ORD&x=1";
 
             // act
-            gateway.findTransactions(tricky);
+            gateway.checkPaymentStatusByOrder(tricky);
 
             // assert
             RecordedRequest sent = pg.lastRequest();
@@ -423,10 +417,10 @@ class PaymentProviderContractTest {
             pg.respondToLookupsWith(status, body);
 
             // act
-            OrderLookup lookup = gateway.findTransactions(ORDER_ID);
+            PgPaymentStatusCheckResult lookup = gateway.checkPaymentStatusByOrder(ORDER_ID);
 
             // assert
-            assertThat(lookup).isInstanceOf(OrderLookup.Unavailable.class);
+            assertThat(lookup.outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.COULD_NOT_CHECK);
         }
 
         @DisplayName("읽기 timeout 안에 응답이 없으면 조회 불가다.")
@@ -437,10 +431,10 @@ class PaymentProviderContractTest {
             pg.delayLookups(Duration.ofMillis(1_500));
 
             // act
-            OrderLookup lookup = gateway.findTransactions(ORDER_ID);
+            PgPaymentStatusCheckResult lookup = gateway.checkPaymentStatusByOrder(ORDER_ID);
 
             // assert
-            assertThat(lookup).isInstanceOf(OrderLookup.Unavailable.class);
+            assertThat(lookup.outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.COULD_NOT_CHECK);
         }
     }
 
@@ -458,7 +452,7 @@ class PaymentProviderContractTest {
         void sendsCardNumberOnlyInCreateBody() {
             // act
             gateway.requestPayment(request());
-            gateway.findTransactions(ORDER_ID);
+            gateway.checkPaymentStatusByOrder(ORDER_ID);
 
             // assert
             List<RecordedRequest> sent = pg.requests();

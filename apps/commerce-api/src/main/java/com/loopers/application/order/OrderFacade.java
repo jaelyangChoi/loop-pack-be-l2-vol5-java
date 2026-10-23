@@ -2,8 +2,8 @@ package com.loopers.application.order;
 
 import com.loopers.application.payment.PaymentAttemptInfo;
 import com.loopers.application.payment.PaymentGateway;
-import com.loopers.application.payment.PaymentGateway.CreateResult;
 import com.loopers.application.payment.PaymentGateway.PaymentRequest;
+import com.loopers.application.payment.PaymentGateway.PgPaymentRequestResult;
 import com.loopers.application.payment.PaymentPreparation;
 import com.loopers.application.payment.PaymentResultApplier;
 import com.loopers.application.payment.PaymentStartCommand;
@@ -118,7 +118,7 @@ public class OrderFacade {
         if (!preparation.shouldSend()) {
             return preparation.info();
         }
-        CreateResult result = paymentGateway.requestPayment(preparation.request());
+        PgPaymentRequestResult result = paymentGateway.requestPayment(preparation.request());
         return writeTransaction.execute(
             status -> paymentResultApplier.applyCreateResult(preparation.info().orderId(), result)
         );

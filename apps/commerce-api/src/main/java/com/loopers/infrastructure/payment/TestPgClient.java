@@ -3,13 +3,14 @@ package com.loopers.infrastructure.payment;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.loopers.application.payment.PaymentGateway.CreateResult;
 import com.loopers.application.payment.PaymentGateway.PaymentRequest;
+import com.loopers.application.payment.PaymentGateway.PgPaymentRequestResult;
 import com.loopers.application.payment.PaymentGateway.PgStatus;
 import com.loopers.application.payment.PaymentGateway.PgTransaction;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import jakarta.annotation.PreDestroy;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -29,8 +30,8 @@ import java.util.function.Supplier;
 /**
  * 로컬 테스트 PG 의 HTTP 호출. 메서드·경로·헤더·JSON 타입·응답 해석을 이 클래스가 숨긴다.
  *
- * <p>{@link #create} 는 예외를 던지지 않고 모든 결과를 {@link CreateResult} 로 돌려준다. 거래 생성 전 확정 거절 4조건을
- * 모두 만족한 응답만 {@code RejectedNoEffect} 이고, 그 밖의 비정상은 한곳에서 {@code Unknown} 으로 합류한다. 결제 생성에는
+ * <p>{@link #create} 는 예외를 던지지 않고 모든 결과를 {@link PgPaymentRequestResult} 로 돌려준다. 거래 생성 전 확정 거절 4조건을
+ * 모두 만족한 응답만 {@code REJECTED_WITHOUT_TRANSACTION} 이고, 그 밖의 비정상은 한곳에서 {@code UNKNOWN} 으로 합류한다. 결제 생성에는
  * timeout 만 있고 재시도·회로가 없다 (D-48).
  *
  * <p>조회({@link #getTransaction}, {@link #getTransactions})는 조회하지 못하면 {@link PgUnavailableException} 을 던지고,
@@ -41,6 +42,7 @@ import java.util.function.Supplier;
  * <p>JDK {@link HttpClient} 는 POST 를 자동 재시도하지 않는다 ({@code jdk.httpclient.enableAllMethodRetry} 기본 꺼짐).
  * 읽기 timeout 은 응답 헤더를 받을 때까지의 시간에 적용된다.
  */
+@Slf4j
 @Component
 public class TestPgClient {
 
@@ -83,8 +85,8 @@ public class TestPgClient {
         httpClient.shutdownNow();
     }
 
-    /** 결제 생성을 한 번 요청한다. 어떤 결과든 예외 없이 {@link CreateResult} 로 돌려준다. */
-    public CreateResult create(PaymentRequest request) {
+    /** 결제 생성을 한 번 요청한다. 어떤 결과든 예외 없이 {@link PgPaymentRequestResult} 로 돌려준다. */
+    public PgPaymentRequestResult create(PaymentRequest request) {
         byte[] payload = createPayload(request);
         RawResponse response;
         try {
@@ -95,7 +97,7 @@ public class TestPgClient {
                 .body(payload)
                 .exchange((httpRequest, httpResponse) -> raw(httpResponse.getStatusCode().value(), httpResponse.getBody()));
         } catch (RestClientException e) {
-            return new CreateResult.Unknown("요청 중 I/O 오류: " + e.getClass().getSimpleName());
+            return unknown("요청 중 I/O 오류: " + e.getClass().getSimpleName());
         }
         return mapCreateResponse(request, response);
     }
@@ -158,18 +160,24 @@ public class TestPgClient {
      * 202 이고 본문이 요청과 맞는 PENDING 거래이면 수락, 4조건을 모두 만족한 422 이면 효과 없는 확정 거절이다. 나머지는
      * 거래 생성 여부를 알 수 없으므로 모두 Unknown 이다.
      */
-    private CreateResult mapCreateResponse(PaymentRequest request, RawResponse response) {
+    private PgPaymentRequestResult mapCreateResponse(PaymentRequest request, RawResponse response) {
         if (response.status() == 202) {
             Optional<PgTransaction> transaction = parseTransaction(readTree(response.body()));
             if (transaction.isPresent() && matchesAcceptedRequest(request, transaction.get())) {
-                return new CreateResult.Accepted(transaction.get());
+                return PgPaymentRequestResult.accepted(transaction.get());
             }
-            return new CreateResult.Unknown("202 응답 본문이 요청과 맞지 않음");
+            return unknown("202 응답 본문이 요청과 맞지 않음");
         }
         if (response.status() == 422 && isConfirmedRejection(request, readTree(response.body()))) {
-            return new CreateResult.RejectedNoEffect();
+            return PgPaymentRequestResult.rejectedWithoutTransaction();
         }
-        return new CreateResult.Unknown("생성 응답 상태 " + response.status());
+        return unknown("생성 응답 상태 " + response.status());
+    }
+
+    // 거래가 생겼는지 모르는 결과. 사유는 결과 타입에 담지 않고 로그로만 남긴다.
+    private PgPaymentRequestResult unknown(String reason) {
+        log.warn("PG 결제 요청 결과 미확인: {}", reason);
+        return PgPaymentRequestResult.unknown();
     }
 
     private boolean matchesAcceptedRequest(PaymentRequest request, PgTransaction transaction) {

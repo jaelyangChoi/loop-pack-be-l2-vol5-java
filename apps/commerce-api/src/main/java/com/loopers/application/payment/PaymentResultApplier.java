@@ -1,6 +1,7 @@
 package com.loopers.application.payment;
 
-import com.loopers.application.payment.PaymentGateway.CreateResult;
+import com.loopers.application.payment.PaymentGateway.PgPaymentRequestResult;
+import com.loopers.application.payment.PaymentGateway.PgPaymentStatusCheckResult;
 import com.loopers.application.payment.PaymentGateway.PgStatus;
 import com.loopers.application.payment.PaymentGateway.PgTransaction;
 import com.loopers.domain.order.Order;
@@ -13,6 +14,8 @@ import com.loopers.domain.payment.PaymentAttemptService;
 import com.loopers.domain.payment.PaymentAttemptStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 /**
  * PG 결과를 시도·주문·재고에 반영하는 로컬 트랜잭션 B 의 내용. 트랜잭션은 호출하는 쪽(Facade)이 열고, 외부 호출은 그
@@ -31,13 +34,13 @@ public class PaymentResultApplier {
     private final OrderStockService orderStockService;
 
     /** 결제 생성 요청의 결과를 반영한다. */
-    public PaymentAttemptInfo applyCreateResult(Long orderId, CreateResult result) {
+    public PaymentAttemptInfo applyCreateResult(Long orderId, PgPaymentRequestResult result) {
         Order order = orderService.getForUpdate(orderId);
         PaymentAttempt attempt = paymentAttemptService.getByOrderId(orderId);
-        switch (result) {
-            case CreateResult.Accepted accepted -> applyAccepted(attempt, accepted.transaction());
-            case CreateResult.Unknown unknown -> applyUnknown(attempt);
-            case CreateResult.RejectedNoEffect rejected -> applyRejected(order, attempt);
+        switch (result.outcome()) {
+            case ACCEPTED -> applyAccepted(attempt, result.transaction());
+            case UNKNOWN -> applyUnknown(attempt);
+            case REJECTED_WITHOUT_TRANSACTION -> applyRejected(order, attempt);
         }
         return PaymentAttemptInfo.of(order, attempt);
     }
@@ -50,22 +53,25 @@ public class PaymentResultApplier {
      * 결과를 보게 되어 효과가 없다. 재고 반환은 주문의 {@code PAYMENT_PENDING → PAYMENT_FAILED} 전이와 같은 트랜잭션에서
      * 한 번만 일어난다. 이 트랜잭션이 DB 오류로 취소되면 아무것도 바뀌지 않으므로 같은 거래를 다시 조회해 반영하면 된다.
      */
-    public PaymentAttemptInfo apply(Long orderId, PaymentObservation observation) {
+    public PaymentAttemptInfo apply(Long orderId, PgPaymentStatusCheckResult checkResult) {
         Order order = orderService.getForUpdate(orderId);
         PaymentAttempt attempt = paymentAttemptService.getByOrderId(orderId);
-        switch (observation) {
-            case PaymentObservation.Transaction found -> applyTransaction(order, attempt, found.transaction());
-            case PaymentObservation.TransactionNotFound notFound -> recordUnlessSettled(
-                attempt, PaymentAnomaly.TRANSACTION_NOT_FOUND
-            );
-            case PaymentObservation.MultipleTransactions multiple -> recordUnlessSettled(
-                attempt, PaymentAnomaly.MULTIPLE_TRANSACTIONS
-            );
-            // 거래가 보이지 않거나 조회하지 못한 것은 아무것도 알려 주지 않는다. 상태도 재고도 그대로다.
-            case PaymentObservation.NoTransaction none -> { }
-            case PaymentObservation.Unavailable unavailable -> { }
+        switch (checkResult.outcome()) {
+            case KEY_NOT_FOUND -> recordUnlessSettled(attempt, PaymentAnomaly.TRANSACTION_NOT_FOUND);
+            case ANSWERED -> applyAnswer(order, attempt, checkResult.transactions());
+            // 묻지 못한 것은 아무것도 알려 주지 않는다. 상태도 재고도 그대로다.
+            case COULD_NOT_CHECK -> { }
         }
         return PaymentAttemptInfo.of(order, attempt);
+    }
+
+    // 거래가 0건이면 아직 안 보이는 것일 수 있어 아무것도 정하지 않는다. 여러 건이면 하나를 임의로 고르지 않는다.
+    private void applyAnswer(Order order, PaymentAttempt attempt, List<PgTransaction> transactions) {
+        switch (transactions.size()) {
+            case 0 -> { }
+            case 1 -> applyTransaction(order, attempt, transactions.get(0));
+            default -> recordUnlessSettled(attempt, PaymentAnomaly.MULTIPLE_TRANSACTIONS);
+        }
     }
 
     private void recordUnlessSettled(PaymentAttempt attempt, PaymentAnomaly anomaly) {

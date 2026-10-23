@@ -1,7 +1,6 @@
 package com.loopers.application.payment;
 
-import com.loopers.application.payment.PaymentGateway.OrderLookup;
-import com.loopers.application.payment.PaymentGateway.TransactionLookup;
+import com.loopers.application.payment.PaymentGateway.PgPaymentStatusCheckResult;
 import com.loopers.domain.order.Order;
 import com.loopers.domain.order.OrderService;
 import com.loopers.domain.payment.PaymentAttempt;
@@ -55,8 +54,8 @@ public class PaymentFacade {
     public PaymentCheckResult reconcile(Long userId, Long orderId) {
         PaymentTarget target = readOnlyTransaction.execute(status -> findMine(userId, orderId));
         return refresh(target, () -> target.transactionKey() != null
-            ? observeByKey(target.transactionKey())
-            : observeByOrder(target.providerOrderId()));
+            ? paymentGateway.checkPaymentStatusByTransactionKey(target.transactionKey())
+            : paymentGateway.checkPaymentStatusByOrder(target.providerOrderId()));
     }
 
     /**
@@ -65,39 +64,22 @@ public class PaymentFacade {
      */
     public PaymentCheckResult handleCallback(String providerOrderId, String transactionKey) {
         PaymentTarget target = readOnlyTransaction.execute(status -> findByProviderOrderId(providerOrderId));
-        return refresh(target, () -> observeByKey(transactionKey));
+        return refresh(target, () -> paymentGateway.checkPaymentStatusByTransactionKey(transactionKey));
     }
 
-    // 이미 종결된 시도는 PG 를 다시 부르지 않는다. 조회하지 못하면 저장된 상태를 그대로 돌려주며 아무것도 정하지 않는다.
-    private PaymentCheckResult refresh(PaymentTarget target, Supplier<PaymentObservation> observe) {
+    // 이미 종결된 시도는 PG 를 다시 부르지 않는다. 묻지 못하면 저장된 상태를 그대로 돌려주며 아무것도 정하지 않는다.
+    private PaymentCheckResult refresh(PaymentTarget target, Supplier<PgPaymentStatusCheckResult> askPg) {
         if (target.settled()) {
             return new PaymentCheckResult(target.info(), false);
         }
-        PaymentObservation observation = observe.get();
-        if (observation instanceof PaymentObservation.Unavailable) {
+        PgPaymentStatusCheckResult checkResult = askPg.get();
+        if (checkResult.outcome() == PgPaymentStatusCheckResult.Outcome.COULD_NOT_CHECK) {
             return new PaymentCheckResult(target.info(), true);
         }
-        PaymentAttemptInfo info = writeTransaction.execute(status -> paymentResultApplier.apply(target.orderId(), observation));
+        PaymentAttemptInfo info = writeTransaction.execute(
+            status -> paymentResultApplier.apply(target.orderId(), checkResult)
+        );
         return new PaymentCheckResult(info, false);
-    }
-
-    private PaymentObservation observeByKey(String transactionKey) {
-        return switch (paymentGateway.findTransaction(transactionKey)) {
-            case TransactionLookup.Found found -> new PaymentObservation.Transaction(found.transaction());
-            case TransactionLookup.NotFound notFound -> new PaymentObservation.TransactionNotFound();
-            case TransactionLookup.Unavailable unavailable -> new PaymentObservation.Unavailable();
-        };
-    }
-
-    private PaymentObservation observeByOrder(String providerOrderId) {
-        return switch (paymentGateway.findTransactions(providerOrderId)) {
-            case OrderLookup.Found found -> switch (found.transactions().size()) {
-                case 0 -> new PaymentObservation.NoTransaction();
-                case 1 -> new PaymentObservation.Transaction(found.transactions().get(0));
-                default -> new PaymentObservation.MultipleTransactions(found.transactions().size());
-            };
-            case OrderLookup.Unavailable unavailable -> new PaymentObservation.Unavailable();
-        };
     }
 
     // 본인 주문의 시도를 읽는다. 없는 주문과 다른 사용자의 주문은 구분하지 않고 NOT_FOUND 이고, 결제를 시작하지 않은

@@ -1,10 +1,9 @@
 package com.loopers.infrastructure.payment;
 
 import com.loopers.application.payment.PaymentGateway;
-import com.loopers.application.payment.PaymentGateway.CreateResult;
-import com.loopers.application.payment.PaymentGateway.OrderLookup;
+import com.loopers.application.payment.PaymentGateway.PgPaymentRequestResult;
+import com.loopers.application.payment.PaymentGateway.PgPaymentStatusCheckResult;
 import com.loopers.application.payment.PaymentGateway.PaymentRequest;
-import com.loopers.application.payment.PaymentGateway.TransactionLookup;
 import com.loopers.support.pg.FakePgServer;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
@@ -79,8 +78,8 @@ class PaymentResilienceTest {
     // 항상 500 인 조회를 두 번 부르면 실제 호출 5건에서 실패율 100% 로 OPEN 된다 (3 + 2, 여섯 번째는 회로가 막는다).
     private void openCircuit() {
         pg.failLookups(500);
-        gateway.findTransaction(KEY);
-        gateway.findTransaction(KEY);
+        gateway.checkPaymentStatusByTransactionKey(KEY);
+        gateway.checkPaymentStatusByTransactionKey(KEY);
         assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreaker.State.OPEN);
     }
 
@@ -104,8 +103,8 @@ class PaymentResilienceTest {
             pg.addTransaction(ORDER_ID, 7_000, "PENDING");
 
             // act
-            gateway.findTransaction(KEY);
-            gateway.findTransactions(ORDER_ID);
+            gateway.checkPaymentStatusByTransactionKey(KEY);
+            gateway.checkPaymentStatusByOrder(ORDER_ID);
 
             // assert
             assertThat(circuitBreaker.getMetrics().getNumberOfSuccessfulCalls()).isEqualTo(2);
@@ -122,10 +121,10 @@ class PaymentResilienceTest {
             pg.failLookups(500);
 
             // act
-            TransactionLookup lookup = gateway.findTransaction(KEY);
+            PgPaymentStatusCheckResult lookup = gateway.checkPaymentStatusByTransactionKey(KEY);
 
             // assert
-            assertThat(lookup).isInstanceOf(TransactionLookup.Unavailable.class);
+            assertThat(lookup.outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.COULD_NOT_CHECK);
             assertThat(pg.lookupByKeyCalls()).isEqualTo(3);
             assertThat(circuitBreaker.getMetrics().getNumberOfFailedCalls()).isEqualTo(3);
             assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreaker.State.CLOSED);
@@ -138,10 +137,10 @@ class PaymentResilienceTest {
             pg.failLookups(503);
 
             // act
-            OrderLookup lookup = gateway.findTransactions(ORDER_ID);
+            PgPaymentStatusCheckResult lookup = gateway.checkPaymentStatusByOrder(ORDER_ID);
 
             // assert
-            assertThat(lookup).isInstanceOf(OrderLookup.Unavailable.class);
+            assertThat(lookup.outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.COULD_NOT_CHECK);
             assertThat(pg.lookupByOrderCalls()).isEqualTo(3);
             assertThat(circuitBreaker.getMetrics().getNumberOfFailedCalls()).isEqualTo(3);
         }
@@ -153,8 +152,8 @@ class PaymentResilienceTest {
             pg.failLookups(500);
 
             // act
-            gateway.findTransaction(KEY);
-            gateway.findTransaction(KEY);
+            gateway.checkPaymentStatusByTransactionKey(KEY);
+            gateway.checkPaymentStatusByTransactionKey(KEY);
 
             // assert
             assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreaker.State.OPEN);
@@ -169,10 +168,10 @@ class PaymentResilienceTest {
             pg.failNextLookups(1, 500);
 
             // act
-            TransactionLookup lookup = gateway.findTransaction(KEY);
+            PgPaymentStatusCheckResult lookup = gateway.checkPaymentStatusByTransactionKey(KEY);
 
             // assert
-            assertThat(lookup).isInstanceOf(TransactionLookup.Found.class);
+            assertThat(lookup.outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.ANSWERED);
             assertThat(pg.lookupByKeyCalls()).isEqualTo(2);
             assertThat(circuitBreaker.getMetrics().getNumberOfFailedCalls()).isEqualTo(1);
             assertThat(circuitBreaker.getMetrics().getNumberOfSuccessfulCalls()).isEqualTo(1);
@@ -190,12 +189,12 @@ class PaymentResilienceTest {
             int callsBefore = pg.lookupByKeyCalls();
 
             // act
-            TransactionLookup byKey = gateway.findTransaction(KEY);
-            OrderLookup byOrder = gateway.findTransactions(ORDER_ID);
+            PgPaymentStatusCheckResult byKey = gateway.checkPaymentStatusByTransactionKey(KEY);
+            PgPaymentStatusCheckResult byOrder = gateway.checkPaymentStatusByOrder(ORDER_ID);
 
             // assert
-            assertThat(byKey).isInstanceOf(TransactionLookup.Unavailable.class);
-            assertThat(byOrder).isInstanceOf(OrderLookup.Unavailable.class);
+            assertThat(byKey.outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.COULD_NOT_CHECK);
+            assertThat(byOrder.outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.COULD_NOT_CHECK);
             assertThat(pg.lookupByKeyCalls()).isEqualTo(callsBefore);
             assertThat(pg.lookupByOrderCalls()).isZero();
         }
@@ -208,7 +207,7 @@ class PaymentResilienceTest {
             long notPermittedBefore = circuitBreaker.getMetrics().getNumberOfNotPermittedCalls();
 
             // act
-            gateway.findTransaction(KEY);
+            gateway.checkPaymentStatusByTransactionKey(KEY);
 
             // assert
             assertThat(circuitBreaker.getMetrics().getNumberOfNotPermittedCalls() - notPermittedBefore).isEqualTo(1);
@@ -225,9 +224,9 @@ class PaymentResilienceTest {
             waitForHalfOpen();
 
             // act & assert
-            assertThat(gateway.findTransaction(KEY)).isInstanceOf(TransactionLookup.Found.class);
+            assertThat(gateway.checkPaymentStatusByTransactionKey(KEY).outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.ANSWERED);
             assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreaker.State.HALF_OPEN);
-            assertThat(gateway.findTransaction(KEY)).isInstanceOf(TransactionLookup.Found.class);
+            assertThat(gateway.checkPaymentStatusByTransactionKey(KEY).outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.ANSWERED);
             assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreaker.State.CLOSED);
             assertThat(pg.lookupByKeyCalls() - callsBefore).isEqualTo(2);
         }
@@ -241,10 +240,10 @@ class PaymentResilienceTest {
             waitForHalfOpen();
 
             // act
-            TransactionLookup lookup = gateway.findTransaction(KEY);
+            PgPaymentStatusCheckResult lookup = gateway.checkPaymentStatusByTransactionKey(KEY);
 
             // assert
-            assertThat(lookup).isInstanceOf(TransactionLookup.Unavailable.class);
+            assertThat(lookup.outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.COULD_NOT_CHECK);
             assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreaker.State.OPEN);
             assertThat(pg.lookupByKeyCalls() - callsBefore).isEqualTo(2);
         }
@@ -257,12 +256,10 @@ class PaymentResilienceTest {
             openCircuit();
 
             // act
-            TransactionLookup lookup = gateway.findTransaction(KEY);
+            PgPaymentStatusCheckResult lookup = gateway.checkPaymentStatusByTransactionKey(KEY);
 
             // assert
-            assertThat(lookup)
-                .isNotInstanceOf(TransactionLookup.NotFound.class)
-                .isNotInstanceOf(TransactionLookup.Found.class);
+            assertThat(lookup.outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.COULD_NOT_CHECK);
         }
     }
 
@@ -274,8 +271,8 @@ class PaymentResilienceTest {
         void doesNotCountNotFoundAndEmptyAsFailure() {
             // act
             for (int i = 0; i < 12; i++) {
-                assertThat(gateway.findTransaction("TEST-TX-9999")).isInstanceOf(TransactionLookup.NotFound.class);
-                assertThat(gateway.findTransactions(ORDER_ID)).isInstanceOf(OrderLookup.Found.class);
+                assertThat(gateway.checkPaymentStatusByTransactionKey("TEST-TX-9999").outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.KEY_NOT_FOUND);
+                assertThat(gateway.checkPaymentStatusByOrder(ORDER_ID).outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.ANSWERED);
             }
 
             // assert
@@ -296,7 +293,7 @@ class PaymentResilienceTest {
 
             // act
             for (int i = 0; i < 6; i++) {
-                assertThat(gateway.requestPayment(request())).isInstanceOf(CreateResult.Unknown.class);
+                assertThat(gateway.requestPayment(request()).outcome()).isEqualTo(PgPaymentRequestResult.Outcome.UNKNOWN);
             }
 
             // assert
@@ -312,10 +309,10 @@ class PaymentResilienceTest {
             openCircuit();
 
             // act
-            CreateResult result = gateway.requestPayment(request());
+            PgPaymentRequestResult result = gateway.requestPayment(request());
 
             // assert
-            assertThat(result).isInstanceOf(CreateResult.Accepted.class);
+            assertThat(result.outcome()).isEqualTo(PgPaymentRequestResult.Outcome.ACCEPTED);
             assertThat(pg.createCalls()).isEqualTo(1);
         }
 

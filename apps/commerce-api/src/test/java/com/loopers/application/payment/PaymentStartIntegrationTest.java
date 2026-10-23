@@ -1,6 +1,6 @@
 package com.loopers.application.payment;
 
-import com.loopers.application.payment.PaymentGateway.CreateResult;
+import com.loopers.application.payment.PaymentGateway.PgPaymentRequestResult;
 import com.loopers.application.payment.PaymentGateway.PgStatus;
 import com.loopers.application.payment.PaymentGateway.PgTransaction;
 import com.loopers.domain.order.OrderStatus;
@@ -169,8 +169,8 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             orderFacade.confirm(command(user, orderId, KEY));
 
             // act
-            applyCreateResult(orderId, new CreateResult.RejectedNoEffect());
-            applyCreateResult(orderId, new CreateResult.RejectedNoEffect());
+            applyCreateResult(orderId, PgPaymentRequestResult.rejectedWithoutTransaction());
+            applyCreateResult(orderId, PgPaymentRequestResult.rejectedWithoutTransaction());
 
             // assert
             assertThat(stockOf(product)).isEqualTo(5);
@@ -375,7 +375,7 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             orderFacade.confirm(command(user, orderId, KEY));
 
             // act
-            PaymentAttemptInfo info = applyCreateResult(orderId, new CreateResult.Unknown("late"));
+            PaymentAttemptInfo info = applyCreateResult(orderId, PgPaymentRequestResult.unknown());
 
             // assert
             assertThat(info.attemptStatus()).isEqualTo(PaymentAttemptStatus.PENDING);
@@ -394,7 +394,7 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
 
             // act
             PaymentAttemptInfo info =
-                applyCreateResult(orderId, new CreateResult.Accepted(lateTransaction));
+                applyCreateResult(orderId, PgPaymentRequestResult.accepted(lateTransaction));
 
             // assert
             assertThat(info.attemptStatus()).isEqualTo(PaymentAttemptStatus.FAILED);
@@ -414,7 +414,7 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
 
             // act
             PaymentAttemptInfo info =
-                applyCreateResult(orderId, new CreateResult.RejectedNoEffect());
+                applyCreateResult(orderId, PgPaymentRequestResult.rejectedWithoutTransaction());
 
             // assert
             assertThat(info.attemptStatus()).isEqualTo(PaymentAttemptStatus.PENDING);
@@ -438,7 +438,7 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
 
             // act: 이 확정 거절은 결과 미확인 시도를 FAILED 로 종결하는 경로를 쓴다(조회로 FAILED 를 확인했을 때와 같은 반환).
             PaymentAttemptInfo info =
-                applyCreateResult(orderId, new CreateResult.RejectedNoEffect());
+                applyCreateResult(orderId, PgPaymentRequestResult.rejectedWithoutTransaction());
 
             // assert
             assertThat(info.orderStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED);

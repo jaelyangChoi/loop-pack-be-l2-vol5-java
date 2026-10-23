@@ -1,7 +1,8 @@
 package com.loopers.application.payment;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.loopers.application.payment.PaymentGateway.CreateResult;
+import com.loopers.application.payment.PaymentGateway.PgPaymentRequestResult;
+import com.loopers.application.payment.PaymentGateway.PgPaymentStatusCheckResult;
 import com.loopers.application.payment.PaymentGateway.PgStatus;
 import com.loopers.application.payment.PaymentGateway.PgTransaction;
 import com.loopers.application.order.OrderFacade;
@@ -24,6 +25,8 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.PlatformTransactionManager;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -471,15 +474,13 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             reconcile();
 
             // act 1: 같은 결과
-            applyObservation(orderId, new PaymentObservation.Transaction(
-                new PgTransaction(key, providerOrderIdOf(orderId), 7_000, PgStatus.SUCCESS)));
+            applyStatusCheckResult(orderId, PgPaymentStatusCheckResult.answered(List.of(new PgTransaction(key, providerOrderIdOf(orderId), 7_000, PgStatus.SUCCESS))));
 
             // assert 1
             assertThat(attemptOf(orderId).get("anomaly")).isNull();
 
             // act 2: 같은 거래가 FAILED 로 관찰됨(상충)
-            applyObservation(orderId, new PaymentObservation.Transaction(
-                new PgTransaction(key, providerOrderIdOf(orderId), 7_000, PgStatus.FAILED)));
+            applyStatusCheckResult(orderId, PgPaymentStatusCheckResult.answered(List.of(new PgTransaction(key, providerOrderIdOf(orderId), 7_000, PgStatus.FAILED))));
 
             // assert 2
             assertThat(orderStatusOf(orderId)).isEqualTo("CONFIRMED");
@@ -498,8 +499,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             reconcile();
 
             // act
-            applyObservation(orderId, new PaymentObservation.Transaction(
-                new PgTransaction(key, providerOrderIdOf(orderId), 7_000, PgStatus.PENDING)));
+            applyStatusCheckResult(orderId, PgPaymentStatusCheckResult.answered(List.of(new PgTransaction(key, providerOrderIdOf(orderId), 7_000, PgStatus.PENDING))));
 
             // assert
             assertThat(attemptOf(orderId).get("status")).isEqualTo("SUCCEEDED");
@@ -516,8 +516,8 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             callback(key);
 
             // act: 늦게 도착한 결과 미확인과, 같은 거래를 알리는 생성 응답
-            applyCreateResult(orderId, new CreateResult.Unknown("late"));
-            applyCreateResult(orderId, new CreateResult.Accepted(
+            applyCreateResult(orderId, PgPaymentRequestResult.unknown());
+            applyCreateResult(orderId, PgPaymentRequestResult.accepted(
                 new PgTransaction(key, providerOrderIdOf(orderId), 7_000, PgStatus.PENDING)));
 
             // assert
