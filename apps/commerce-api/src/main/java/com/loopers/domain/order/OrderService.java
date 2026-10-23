@@ -46,6 +46,14 @@ public class OrderService {
         return orderRepository.findByIdAndUserIdForUpdate(orderId, userId).orElseThrow(OrderService::notFound);
     }
 
+    /**
+     * 주문자와 무관하게 주문을 잠그고 조회한다. 없으면 {@code NOT_FOUND} 다. 결제 결과 적용이 첫 주문 조회로 쓴다. 소유권은
+     * 확인하지 않으므로 요청자가 있는 입구는 먼저 {@link #getMine} 류로 확인한다.
+     */
+    public Order getForUpdate(Long orderId) {
+        return orderRepository.findByIdForUpdate(orderId).orElseThrow(OrderService::notFound);
+    }
+
     private static CoreException notFound() {
         return new CoreException(ErrorType.NOT_FOUND, "주문을 찾을 수 없습니다.");
     }
