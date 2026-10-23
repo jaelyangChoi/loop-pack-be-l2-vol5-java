@@ -59,7 +59,7 @@ public abstract class PaymentFlowTestSupport {
     }
 
     @Autowired
-    protected PaymentFacade paymentFacade;
+    protected PaymentResultCheckFacade paymentResultCheckFacade;
 
     @Autowired
     protected PaymentResultApplier paymentResultApplier;
@@ -116,8 +116,8 @@ public abstract class PaymentFlowTestSupport {
         return orderFacade.create(user.getId(), List.of(new OrderItemCommand(product.getId(), quantity))).id();
     }
 
-    protected PaymentStartCommand command(User user, Long orderId, String attemptKey) {
-        return new PaymentStartCommand(user.getId(), orderId, attemptKey, "TEST", CARD_NO);
+    protected OrderConfirmCommand command(User user, Long orderId, String attemptKey) {
+        return new OrderConfirmCommand(user.getId(), orderId, attemptKey, "TEST", CARD_NO);
     }
 
     protected static String providerOrderIdOf(Long orderId) {
@@ -154,15 +154,15 @@ public abstract class PaymentFlowTestSupport {
     }
 
     // 결과 반영은 호출하는 Facade 가 트랜잭션을 연다. Facade 를 거치지 않고 반영 로직만 실행할 때도 같은 경계를 만든다.
-    protected PaymentAttemptInfo applyCreateResult(Long orderId, PgPaymentRequestResult result) {
+    protected PaymentAttemptInfo applyPaymentRequestResult(Long orderId, PgPaymentRequestResult result) {
         return new TransactionTemplate(transactionManager).execute(
-            status -> paymentResultApplier.applyCreateResult(orderId, result)
+            status -> paymentResultApplier.applyPaymentRequestResult(orderId, result)
         );
     }
 
-    protected PaymentAttemptInfo applyStatusCheckResult(Long orderId, PgPaymentStatusCheckResult checkResult) {
+    protected PaymentAttemptInfo applyPaymentStatusCheckResult(Long orderId, PgPaymentStatusCheckResult checkResult) {
         return new TransactionTemplate(transactionManager).execute(
-            status -> paymentResultApplier.apply(orderId, checkResult)
+            status -> paymentResultApplier.applyPaymentStatusCheckResult(orderId, checkResult)
         );
     }
 }

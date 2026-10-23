@@ -29,10 +29,10 @@ class PaymentResultConcurrencyTest extends PaymentFlowTestSupport {
     private List<Runnable> callbacksAndReconciles(User user, Long orderId, String transactionKey) {
         List<Runnable> requests = new ArrayList<>();
         for (int i = 0; i < CALLBACKS; i++) {
-            requests.add(() -> paymentFacade.handleCallback(providerOrderIdOf(orderId), transactionKey));
+            requests.add(() -> paymentResultCheckFacade.checkPaymentResultOnPgCallback(providerOrderIdOf(orderId), transactionKey));
         }
         for (int i = 0; i < RECONCILES; i++) {
-            requests.add(() -> paymentFacade.reconcile(user.getId(), orderId));
+            requests.add(() -> paymentResultCheckFacade.checkMyPaymentResult(user.getId(), orderId));
         }
         return requests;
     }

@@ -2,11 +2,11 @@ package com.loopers.application.order;
 
 import com.loopers.application.payment.PaymentAttemptInfo;
 import com.loopers.application.payment.PaymentGateway;
-import com.loopers.application.payment.PaymentGateway.PaymentRequest;
+import com.loopers.application.payment.PaymentGateway.PgPaymentRequest;
 import com.loopers.application.payment.PaymentGateway.PgPaymentRequestResult;
-import com.loopers.application.payment.PaymentPreparation;
+import com.loopers.application.payment.ConfirmPreparation;
 import com.loopers.application.payment.PaymentResultApplier;
-import com.loopers.application.payment.PaymentStartCommand;
+import com.loopers.application.payment.OrderConfirmCommand;
 import com.loopers.domain.order.Order;
 import com.loopers.domain.order.OrderLine;
 import com.loopers.domain.order.OrderLines;
@@ -113,14 +113,14 @@ public class OrderFacade {
      * <p>메소드에 트랜잭션을 열지 않는다. 준비를 commit 한 뒤에 PG 를 호출하고, 그 결과를 별도 트랜잭션으로 반영한다. 발송
      * 기록(REQUESTED)을 commit 한 뒤에는 자동으로 create 를 다시 보내지 않는다 (D-48).
      */
-    public PaymentAttemptInfo confirm(PaymentStartCommand command) {
-        PaymentPreparation preparation = prepareConfirm(command);
-        if (!preparation.shouldSend()) {
+    public PaymentAttemptInfo confirm(OrderConfirmCommand command) {
+        ConfirmPreparation preparation = prepareConfirm(command);
+        if (!preparation.isNewAttempt()) {
             return preparation.info();
         }
         PgPaymentRequestResult result = paymentGateway.requestPayment(preparation.request());
         return writeTransaction.execute(
-            status -> paymentResultApplier.applyCreateResult(preparation.info().orderId(), result)
+            status -> paymentResultApplier.applyPaymentRequestResult(preparation.info().orderId(), result)
         );
     }
 
@@ -131,13 +131,13 @@ public class OrderFacade {
      * <p>오류 우선순위: 주문 조회(404) → 시도 키·기존 시도(409) → 확정 여부(409) → 상품 삭제(409) → 재고(409). 재고 부족·삭제·
      * 잘못된 입력이면 전체 rollback 되고 PG 는 호출하지 않는다.
      */
-    public PaymentPreparation prepareConfirm(PaymentStartCommand command) {
+    public ConfirmPreparation prepareConfirm(OrderConfirmCommand command) {
         return writeTransaction.execute(status -> prepare(command));
     }
 
     // 발송 권한은 시도를 새로 저장한 실행만 얻는다. 이미 시도가 있는 주문에 같은 키로 다시 오면 저장된 상태만 돌려주고
     // 발송하지 않는다. 다른 키이거나, 다른 주문에 쓰인 키이면 PAYMENT_ATTEMPT_CONFLICT 다.
-    private PaymentPreparation prepare(PaymentStartCommand command) {
+    private ConfirmPreparation prepare(OrderConfirmCommand command) {
         // 주문 행 잠금이 같은 주문의 동시 요청을 줄 세운다. 나중 요청은 먼저 요청의 commit 을 보고 저장된 시도를 만난다.
         Order order = orderService.getMineForUpdate(command.orderId(), command.userId());
 
@@ -151,11 +151,11 @@ public class OrderFacade {
         }
 
         order.markPaymentPending(); // 이미 확정된 주문은 ORDER_ALREADY_CONFIRMED
-        orderStockService.deduct(order);
+        orderStockService.deductStock(order);
         PaymentAttempt attempt = saveAttempt(order, command);
-        return new PaymentPreparation(
+        return new ConfirmPreparation(
             PaymentAttemptInfo.of(order, attempt),
-            new PaymentRequest(
+            new PgPaymentRequest(
                 attempt.getProviderOrderId(), command.cardType(), command.cardNo(), attempt.getAmount().amount()
             )
         );
@@ -163,16 +163,16 @@ public class OrderFacade {
 
     // 이미 시도가 있는 주문의 재요청이다. 같은 키면 저장된 상태만 돌려주고 PG 에는 보내지 않는다. 다른 키면 충돌이며,
     // 새 키를 보내도 두 번째 시도는 만들지 않는다.
-    private PaymentPreparation returnExisting(Order order, PaymentAttempt attempt, PaymentStartCommand command) {
+    private ConfirmPreparation returnExisting(Order order, PaymentAttempt attempt, OrderConfirmCommand command) {
         if (!attempt.getAttemptKey().equals(command.attemptKey())) {
             throw attemptConflict();
         }
-        return new PaymentPreparation(PaymentAttemptInfo.of(order, attempt), null);
+        return new ConfirmPreparation(PaymentAttemptInfo.of(order, attempt), null);
     }
 
     // 서로 다른 주문이 같은 키를 동시에 쓰면 둘 다 위의 확인을 통과할 수 있다. 유일 제약이 마지막 방어선이며, 졌을 때는
     // 앞서 차감한 재고까지 이 트랜잭션과 함께 되돌아간다.
-    private PaymentAttempt saveAttempt(Order order, PaymentStartCommand command) {
+    private PaymentAttempt saveAttempt(Order order, OrderConfirmCommand command) {
         try {
             return paymentAttemptService.request(order.getId(), command.attemptKey(), order.getTotalAmount());
         } catch (DataIntegrityViolationException e) {

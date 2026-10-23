@@ -1,6 +1,6 @@
 package com.loopers.interfaces.api.payment;
 
-import com.loopers.application.payment.PaymentFacade;
+import com.loopers.application.payment.PaymentResultCheckFacade;
 import com.loopers.interfaces.api.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -18,13 +18,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/payments")
 public class PaymentController implements PaymentApiSpec {
 
-    private final PaymentFacade paymentFacade;
+    private final PaymentResultCheckFacade paymentResultCheckFacade;
 
     @PostMapping("/callback")
     @Override
     public ApiResponse<PaymentDto.CallbackResponse> callback(@Valid @RequestBody PaymentDto.CallbackRequest request) {
         return ApiResponse.success(PaymentDto.CallbackResponse.from(
-            paymentFacade.handleCallback(request.providerOrderId(), request.transactionKey())
+            paymentResultCheckFacade.checkPaymentResultOnPgCallback(request.providerOrderId(), request.transactionKey())
         ));
     }
 }

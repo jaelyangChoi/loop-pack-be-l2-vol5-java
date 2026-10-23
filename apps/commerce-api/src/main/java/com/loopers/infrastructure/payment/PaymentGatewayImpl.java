@@ -20,7 +20,7 @@ public class PaymentGatewayImpl implements PaymentGateway {
     private final TestPgClient client;
 
     @Override
-    public PgPaymentRequestResult requestPayment(PaymentRequest request) {
+    public PgPaymentRequestResult requestPayment(PgPaymentRequest request) {
         return client.create(request);
     }
 

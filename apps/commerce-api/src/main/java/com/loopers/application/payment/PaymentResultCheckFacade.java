@@ -21,7 +21,7 @@ import java.util.function.Supplier;
  * <p>결제를 시작하는 확정 요청은 주문의 유스케이스라 {@code OrderFacade.confirm} 이 맡는다.
  */
 @Component
-public class PaymentFacade {
+public class PaymentResultCheckFacade {
 
     private final PaymentGateway paymentGateway;
     private final PaymentResultApplier paymentResultApplier;
@@ -30,7 +30,7 @@ public class PaymentFacade {
     private final TransactionTemplate readOnlyTransaction;
     private final TransactionTemplate writeTransaction;
 
-    public PaymentFacade(
+    public PaymentResultCheckFacade(
         PaymentGateway paymentGateway,
         PaymentResultApplier paymentResultApplier,
         OrderService orderService,
@@ -51,8 +51,8 @@ public class PaymentFacade {
      * 시도는 PG 를 부르지 않고 저장된 결과를 돌려준다. 거래 키를 알면 그 거래를, 모르면 PG 용 주문 식별자로 조회한다.
      * <b>create 는 다시 보내지 않는다.</b> 거래가 보이지 않아도 새 결제를 만들지 않는다.
      */
-    public PaymentCheckResult reconcile(Long userId, Long orderId) {
-        PaymentTarget target = readOnlyTransaction.execute(status -> findMine(userId, orderId));
+    public PaymentCheckInfo checkMyPaymentResult(Long userId, Long orderId) {
+        PaymentAttemptInfo target = readOnlyTransaction.execute(status -> findMine(userId, orderId));
         return refresh(target, () -> target.transactionKey() != null
             ? paymentGateway.checkPaymentStatusByTransactionKey(target.transactionKey())
             : paymentGateway.checkPaymentStatusByOrder(target.providerOrderId()));
@@ -62,41 +62,41 @@ public class PaymentFacade {
      * PG 의 결과 알림을 받는다. 알림은 확인 요청의 신호일 뿐이다. 본문의 상태 문자열은 쓰지 않고, 알림이 가리키는 시도를
      * 찾은 뒤 알림의 거래 키로 PG 를 조회해 확인한 사실만 반영한다. 시도를 찾지 못하면 {@code NOT_FOUND} 이며 아무 효과도 없다.
      */
-    public PaymentCheckResult handleCallback(String providerOrderId, String transactionKey) {
-        PaymentTarget target = readOnlyTransaction.execute(status -> findByProviderOrderId(providerOrderId));
+    public PaymentCheckInfo checkPaymentResultOnPgCallback(String providerOrderId, String transactionKey) {
+        PaymentAttemptInfo target = readOnlyTransaction.execute(status -> findByProviderOrderId(providerOrderId));
         return refresh(target, () -> paymentGateway.checkPaymentStatusByTransactionKey(transactionKey));
     }
 
     // 이미 종결된 시도는 PG 를 다시 부르지 않는다. 묻지 못하면 저장된 상태를 그대로 돌려주며 아무것도 정하지 않는다.
-    private PaymentCheckResult refresh(PaymentTarget target, Supplier<PgPaymentStatusCheckResult> askPg) {
+    private PaymentCheckInfo refresh(PaymentAttemptInfo target, Supplier<PgPaymentStatusCheckResult> askPg) {
         if (target.settled()) {
-            return new PaymentCheckResult(target.info(), false);
+            return new PaymentCheckInfo(target, false);
         }
         PgPaymentStatusCheckResult checkResult = askPg.get();
         if (checkResult.outcome() == PgPaymentStatusCheckResult.Outcome.COULD_NOT_CHECK) {
-            return new PaymentCheckResult(target.info(), true);
+            return new PaymentCheckInfo(target, true);
         }
         PaymentAttemptInfo info = writeTransaction.execute(
-            status -> paymentResultApplier.apply(target.orderId(), checkResult)
+            status -> paymentResultApplier.applyPaymentStatusCheckResult(target.orderId(), checkResult)
         );
-        return new PaymentCheckResult(info, false);
+        return new PaymentCheckInfo(info, false);
     }
 
     // 본인 주문의 시도를 읽는다. 없는 주문과 다른 사용자의 주문은 구분하지 않고 NOT_FOUND 이고, 결제를 시작하지 않은
     // 주문은 확인할 시도가 없으므로 CONFLICT 다.
-    private PaymentTarget findMine(Long userId, Long orderId) {
+    private PaymentAttemptInfo findMine(Long userId, Long orderId) {
         Order order = orderService.getMine(orderId, userId);
         PaymentAttempt attempt = paymentAttemptService.findByOrderId(order.getId()).orElseThrow(
             () -> new CoreException(ErrorType.CONFLICT, "결제를 시작한 주문이 아닙니다.")
         );
-        return PaymentTarget.of(order, attempt);
+        return PaymentAttemptInfo.of(order, attempt);
     }
 
     // PG 알림이 가리키는 시도를 읽는다. 알림은 요청자가 없으므로 소유권 확인 없이 PG 용 주문 식별자로 찾는다.
-    private PaymentTarget findByProviderOrderId(String providerOrderId) {
+    private PaymentAttemptInfo findByProviderOrderId(String providerOrderId) {
         PaymentAttempt attempt = paymentAttemptService.findByProviderOrderId(providerOrderId).orElseThrow(
             () -> new CoreException(ErrorType.NOT_FOUND, "결제 시도를 찾을 수 없습니다.")
         );
-        return PaymentTarget.of(orderService.get(attempt.getOrderId()), attempt);
+        return PaymentAttemptInfo.of(orderService.get(attempt.getOrderId()), attempt);
     }
 }

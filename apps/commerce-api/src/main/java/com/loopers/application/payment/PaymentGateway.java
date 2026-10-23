@@ -9,7 +9,7 @@ import java.util.List;
 public interface PaymentGateway {
 
     /** 결제를 요청한다. 자동으로 재시도하지 않고, 예외 없이 모든 결과를 {@link PgPaymentRequestResult} 로 돌려준다. */
-    PgPaymentRequestResult requestPayment(PaymentRequest request);
+    PgPaymentRequestResult requestPayment(PgPaymentRequest request);
 
     /** 거래 키로 PG 에 결제 상태를 묻는다. */
     PgPaymentStatusCheckResult checkPaymentStatusByTransactionKey(String transactionKey);
@@ -18,10 +18,10 @@ public interface PaymentGateway {
     PgPaymentStatusCheckResult checkPaymentStatusByOrder(String providerOrderId);
 
     /** 결제 요청. 금액은 저장된 주문 합계다. 카드 값은 합성 값만 쓰며 {@code toString} 에 드러내지 않는다. */
-    record PaymentRequest(String providerOrderId, String cardType, String cardNo, long amount) {
+    record PgPaymentRequest(String providerOrderId, String cardType, String cardNo, long amount) {
         @Override
         public String toString() {
-            return "PaymentRequest[providerOrderId=" + providerOrderId + ", cardType=" + cardType
+            return "PgPaymentRequest[providerOrderId=" + providerOrderId + ", cardType=" + cardType
                 + ", cardNo=****, amount=" + amount + "]";
         }
     }

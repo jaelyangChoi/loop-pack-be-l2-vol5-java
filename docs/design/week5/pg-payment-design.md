@@ -132,7 +132,7 @@ TX A  OrderFacade.prepareConfirm                 ← 로컬 TX (TransactionTempl
 HTTP  PaymentGateway.requestPayment              ← TX 밖 (잠금·커넥션 보유 없음)
   POST /api/v1/payments   (자동 재시도 없음)
 
-TX B  PaymentResultApplier.apply                 ← 로컬 TX (호출하는 Facade가 TransactionTemplate으로 감쌈)
+TX B  PaymentResultApplier.applyPaymentStatusCheckResult ← 로컬 TX (호출하는 Facade가 TransactionTemplate으로 감쌈)
   주문 FOR UPDATE → 시도 조회
   → 식별·금액 확인 → 멱등 가드
   → 관찰에 따라 시도·주문·재고 전이
@@ -169,10 +169,10 @@ TX B  PaymentResultApplier.apply                 ← 로컬 TX (호출하는 Fac
 ```
 confirm   ───▶ OrderFacade.confirm (TX 없음, 오케스트레이션)
 reconcile ──┐
-callback  ──┴─▶ PaymentFacade (TX 없음, 오케스트레이션)
+callback  ──┴─▶ PaymentResultCheckFacade (TX 없음, 오케스트레이션)
                       │
           (둘 다)     ├─ 조회/발송 (TX 밖)
-                      └─ PaymentResultApplier.apply(...)   ← 유일한 상태 쓰기 지점
+                      └─ PaymentResultApplier.applyPaymentStatusCheckResult(...)   ← 유일한 상태 쓰기 지점
 ```
 
 - **confirm**: TX A → create → `apply`(create 결과 반영). `UNKNOWN`이어도 같은 요청 안에서 조회하지 않고 202를 돌려준다 (D-48).
@@ -224,15 +224,15 @@ apply(orderId, observation):
 |---|---|---|
 | 포트 | `application.payment.PaymentGateway` | 입출력은 application 타입만 쓴다 |
 | HTTP 호출 | `infrastructure.payment.TestPgClient` | URL·헤더·JSON·timeout을 숨기고 응답을 해석한다. 조회는 하지 못하면 `PgUnavailableException`을 던진다. 조회 메서드에 Retry·CB를 건다 |
-| 포트 구현 | `infrastructure.payment.PaymentGatewayImpl` | `TestPgClient`를 호출하고, 조회 실패 예외(`PgUnavailableException`, 회로가 막은 `CallNotPermittedException`)를 `Unavailable`로 바꾼다 |
+| 포트 구현 | `infrastructure.payment.PaymentGatewayImpl` | `TestPgClient`를 호출하고, 조회 실패 예외(`PgUnavailableException`, 회로가 막은 `CallNotPermittedException`)를 `COULD_NOT_CHECK`로 바꾼다 |
 
 ```
-requestPayment(...)             → Accepted(transactionKey) | RejectedNoEffect | Unknown
-findTransaction(transactionKey) → Found(tx) | NotFound | Unavailable
-findTransactions(providerOrderId) → Found(list) | Unavailable
+requestPayment(...)                         → outcome: ACCEPTED | REJECTED_WITHOUT_TRANSACTION | UNKNOWN
+checkPaymentStatusByTransactionKey(key)     → outcome: ANSWERED(거래 1건) | KEY_NOT_FOUND | COULD_NOT_CHECK
+checkPaymentStatusByOrder(providerOrderId)  → outcome: ANSWERED(거래 0건 이상) | COULD_NOT_CHECK
 ```
 
-- `Unavailable`은 timeout·5xx·회로 OPEN을 포함한다. 결제 결과가 아니라 "확인하지 못함"이다.
+- `COULD_NOT_CHECK`는 timeout·5xx·회로 OPEN을 포함한다. 결제 결과가 아니라 "확인하지 못함"이다.
 - HTTP client는 `RestClient` + `JdkClientHttpRequestFactory`다. Feign·WebClient는 새로 들이지 않는다.
 - timeout은 request factory에 건다: connect 1초, create read 3초, 조회 read 1초. 가정이 아니라 설정 객체에서 확인하는 테스트를 둔다.
 - JDK `HttpClient`는 POST를 자동 재시도하지 않는다. 그래도 **fixture의 create 횟수로** 숨은 재시도가 없음을 확인한다.
@@ -316,7 +316,7 @@ create는 다시 실행하면 새 거래가 생길 수 있다. HALF_OPEN 탐색 
 
 - **`fallbackMethod`를 쓰지 않는다.** annotation을 건 `TestPgClient`는 조회하지 못하면 예외를 그대로 던지고(그래야 Retry가 재시도하고 CB가 센다), 그 예외를 `Unavailable`로 바꾸는 일은 `TestPgClient`를 호출하는 **다른 빈** `PaymentGatewayImpl`이 한다. Retry·CB 바깥에서 변환하므로 fallback이 재시도를 가로채는 일이 없다.
 - 변환은 `Unavailable`을 돌려줄 뿐이다. **결제 결과를 정하지 않는다.** 실패 확정, 성공 응답, 금액 0, 포인트 대체 결제, 예약 임의 반환을 하지 않는다. 회로가 OPEN이어도 기존 `UNKNOWN`·`PENDING`을 미발송으로 되돌리지 않는다.
-- annotation은 프록시를 거칠 때만 동작한다. 호출하는 쪽(`PaymentGatewayImpl`)이 다른 빈이므로 자기 호출이 구조적으로 생기지 않는다. 어느 조회를 쓸지의 분기(거래 키 유무)도 adapter 안이 아니라 application(`PaymentFacade`)에 둔다. `TestPgClient` 안에서 `this.getTransaction...`을 부르면 Retry·CB가 조용히 빠진다.
+- annotation은 프록시를 거칠 때만 동작한다. 호출하는 쪽(`PaymentGatewayImpl`)이 다른 빈이므로 자기 호출이 구조적으로 생기지 않는다. 어느 조회를 쓸지의 분기(거래 키 유무)도 adapter 안이 아니라 application(`PaymentResultCheckFacade`)에 둔다. `TestPgClient` 안에서 `this.getTransaction...`을 부르면 Retry·CB가 조용히 빠진다.
 
 ### 5-5. 조회를 시작시키는 트리거
 
@@ -447,7 +447,7 @@ create는 다시 실행하면 새 거래가 생길 수 있다. HALF_OPEN 탐색 
 ### D-49. 결과 적용은 한 경계로 모으고 callback은 확인 요청의 신호로만 쓴다
 
 - **상황**: callback은 유실·중복·지연·순서 변경이 가능하고, 본문만 믿으면 위조된 요청이 결제를 완료시킬 수 있다.
-- **결정**: confirm·reconcile·callback은 모두 `PaymentResultApplier.apply`를 거친다. callback은 본문의 `status`를 쓰지 않고 `transactionKey`로 adapter 권위 조회를 한 뒤, 계정·`providerOrderId`·`transactionKey`·저장 금액을 확인하고 적용한다. 주문 행 잠금 아래에서 단방향 전이만 허용하며, 종결 뒤 상충은 덮어쓰지 않고 `anomaly`로 남긴다.
+- **결정**: confirm·reconcile·callback은 모두 `PaymentResultApplier.applyPaymentStatusCheckResult`를 거친다. callback은 본문의 `status`를 쓰지 않고 `transactionKey`로 adapter 권위 조회를 한 뒤, 계정·`providerOrderId`·`transactionKey`·저장 금액을 확인하고 적용한다. 주문 행 잠금 아래에서 단방향 전이만 허용하며, 종결 뒤 상충은 덮어쓰지 않고 `anomaly`로 남긴다.
 - **근거**: 여러 입구가 각자 상태를 쓰면 순서에 따라 결과가 갈린다. 단일 경계와 전이 조건이 callback-first·lookup-first의 수렴을 보장한다.
 - **비용**: callback마다 PG 조회가 한 번 더 나간다. 서명 검증은 하지 않는다 (10장).
 - **기각한 대안**: callback 본문을 신뢰(위조에 취약), 입구마다 상태 직접 변경(중복 확정·반환 위험).
@@ -463,7 +463,7 @@ create는 다시 실행하면 새 거래가 생길 수 있다. HALF_OPEN 탐색 
 ### D-51. 트랜잭션 경계는 Facade 메소드가 아니라 `TransactionTemplate`으로 구간마다 둔다
 
 - **상황**: CLAUDE.md는 트랜잭션 경계를 Facade의 `@Transactional`로 두라고 한다. 그런데 결제는 TX A, HTTP(TX 밖), TX B가 한 유스케이스 안에 순서대로 이어진다. 한 Facade 메소드에 `@Transactional`을 달면 HTTP가 트랜잭션 안으로 들어오고, 같은 클래스 안에서 호출하면 프록시를 거치지 않는다.
-- **결정**: 결제를 시작하는 `OrderFacade.confirm`과 결과를 확인하는 `PaymentFacade.reconcile`·`handleCallback`은 메소드에 트랜잭션을 열지 않고, 필요한 구간(TX A, TX B, PG 조회 전 읽기)만 `TransactionTemplate`으로 감싼다. `PaymentResultApplier`는 `@Transactional` 없이 반영 로직만 가지며 호출하는 Facade가 트랜잭션을 연다. 도메인 `Service`에는 여전히 `@Transactional`을 붙이지 않는다. `ProductFacade`가 이미 같은 방식으로 읽기 구간만 감싼다.
+- **결정**: 결제를 시작하는 `OrderFacade.confirm`과 결과를 확인하는 `PaymentResultCheckFacade.checkMyPaymentResult`·`checkPaymentResultOnPgCallback`은 메소드에 트랜잭션을 열지 않고, 필요한 구간(TX A, TX B, PG 조회 전 읽기)만 `TransactionTemplate`으로 감싼다. `PaymentResultApplier`는 `@Transactional` 없이 반영 로직만 가지며 호출하는 Facade가 트랜잭션을 연다. 도메인 `Service`에는 여전히 `@Transactional`을 붙이지 않는다. `ProductFacade`가 이미 같은 방식으로 읽기 구간만 감싼다.
 - **근거**: PG 호출 동안 DB 트랜잭션·재고 잠금을 잡지 않는다는 요구는 경계를 나누는 것으로만 지킬 수 있다. 구간이 Facade 코드에 그대로 보여 흐름(TX A → PG → TX B)을 한 곳에서 읽을 수 있고, 트랜잭션 전용 빈을 따로 두지 않아도 된다. `/confirm`은 주문의 확정 요청이므로 `OrderFacade`에 둔다.
 - **비용**: 구조가 경계를 강제하지 않는다. `TransactionTemplate` 구간 밖에서 쓰기를 하거나 구간 안에서 PG를 호출하는 실수를 막으려면 `PaymentTransactionTest`가 필요하다. "트랜잭션은 Facade의 `@Transactional`"이라는 단순 규칙에 예외가 생긴다.
 - **기각한 대안**: Facade 한 메소드에 `@Transactional`(HTTP가 잠금·커넥션을 쥠), 트랜잭션 전용 빈(`PaymentStarter`·`Applier`에 `@Transactional`: 경계는 구조가 강제하지만 클래스가 늘고 흐름이 여러 파일로 흩어짐).

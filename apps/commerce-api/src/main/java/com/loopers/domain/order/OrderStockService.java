@@ -27,7 +27,7 @@ public class OrderStockService {
      * 주문 품목마다 가용 재고를 차감한다. 상품이 삭제됐거나 없으면 {@code PRODUCT_UNAVAILABLE}, 재고가 모자라면
      * {@code OUT_OF_STOCK} 이며 호출하는 쪽의 트랜잭션이 되돌아간다.
      */
-    public void deduct(Order order) {
+    public void deductStock(Order order) {
         Map<Long, Product> products = productService.getAllActiveByIdsForUpdate(order.productIds());
         requireAllAvailable(order, products);
         order.getItems().forEach(item -> products.get(item.getProductId()).decreaseStock(item.getQuantity()));
@@ -37,7 +37,7 @@ public class OrderStockService {
      * 확보했던 재고를 돌려준다. 그사이 상품이 삭제됐어도 수량은 돌려받고, 삭제 상태는 그대로라 상품이 다시 노출되지 않는다.
      * 상품 행 자체가 없으면 돌려줄 곳이 없으므로 데이터의 문제로 보고 {@code INTERNAL_ERROR} 다.
      */
-    public void restore(Order order) {
+    public void restoreStock(Order order) {
         Map<Long, Product> products = productService.getAllByIdsForUpdate(order.productIds());
         for (OrderItem item : order.getItems()) {
             Product product = products.get(item.getProductId());

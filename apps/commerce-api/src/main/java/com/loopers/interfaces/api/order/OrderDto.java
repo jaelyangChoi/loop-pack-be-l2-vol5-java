@@ -6,8 +6,8 @@ import com.loopers.application.order.OrderItemInfo;
 import com.loopers.application.order.OrderSummaryInfo;
 import com.loopers.application.order.PaymentInfo;
 import com.loopers.application.payment.PaymentAttemptInfo;
-import com.loopers.application.payment.PaymentCheckResult;
-import com.loopers.application.payment.PaymentStartCommand;
+import com.loopers.application.payment.PaymentCheckInfo;
+import com.loopers.application.payment.OrderConfirmCommand;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -39,8 +39,8 @@ public class OrderDto {
         @NotBlank String cardType,
         @NotBlank @Pattern(regexp = "\\d{4}-\\d{4}-\\d{4}-\\d{4}") String cardNo
     ) {
-        public PaymentStartCommand toCommand(Long userId, Long orderId) {
-            return new PaymentStartCommand(userId, orderId, paymentAttemptKey, cardType, cardNo);
+        public OrderConfirmCommand toCommand(Long userId, Long orderId) {
+            return new OrderConfirmCommand(userId, orderId, paymentAttemptKey, cardType, cardNo);
         }
 
         @Override
@@ -65,11 +65,11 @@ public class OrderDto {
             );
         }
 
-        public static PaymentStartResponse from(PaymentCheckResult result) {
+        public static PaymentStartResponse from(PaymentCheckInfo result) {
             PaymentStartResponse base = from(result.info());
             return new PaymentStartResponse(
                 base.orderId(), base.orderStatus(), base.payment(), base.links(),
-                result.lookupUnavailable() ? Boolean.TRUE : null
+                result.lookupFailed() ? Boolean.TRUE : null
             );
         }
     }

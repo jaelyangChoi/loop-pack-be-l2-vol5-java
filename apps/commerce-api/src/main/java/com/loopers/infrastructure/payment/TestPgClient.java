@@ -3,7 +3,7 @@ package com.loopers.infrastructure.payment;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.loopers.application.payment.PaymentGateway.PaymentRequest;
+import com.loopers.application.payment.PaymentGateway.PgPaymentRequest;
 import com.loopers.application.payment.PaymentGateway.PgPaymentRequestResult;
 import com.loopers.application.payment.PaymentGateway.PgStatus;
 import com.loopers.application.payment.PaymentGateway.PgTransaction;
@@ -86,7 +86,7 @@ public class TestPgClient {
     }
 
     /** 결제 생성을 한 번 요청한다. 어떤 결과든 예외 없이 {@link PgPaymentRequestResult} 로 돌려준다. */
-    public PgPaymentRequestResult create(PaymentRequest request) {
+    public PgPaymentRequestResult create(PgPaymentRequest request) {
         byte[] payload = createPayload(request);
         RawResponse response;
         try {
@@ -141,7 +141,7 @@ public class TestPgClient {
         return transactions;
     }
 
-    private byte[] createPayload(PaymentRequest request) {
+    private byte[] createPayload(PgPaymentRequest request) {
         try {
             return objectMapper.writeValueAsBytes(
                 objectMapper.createObjectNode()
@@ -160,7 +160,7 @@ public class TestPgClient {
      * 202 이고 본문이 요청과 맞는 PENDING 거래이면 수락, 4조건을 모두 만족한 422 이면 효과 없는 확정 거절이다. 나머지는
      * 거래 생성 여부를 알 수 없으므로 모두 Unknown 이다.
      */
-    private PgPaymentRequestResult mapCreateResponse(PaymentRequest request, RawResponse response) {
+    private PgPaymentRequestResult mapCreateResponse(PgPaymentRequest request, RawResponse response) {
         if (response.status() == 202) {
             Optional<PgTransaction> transaction = parseTransaction(readTree(response.body()));
             if (transaction.isPresent() && matchesAcceptedRequest(request, transaction.get())) {
@@ -180,14 +180,14 @@ public class TestPgClient {
         return PgPaymentRequestResult.unknown();
     }
 
-    private boolean matchesAcceptedRequest(PaymentRequest request, PgTransaction transaction) {
+    private boolean matchesAcceptedRequest(PgPaymentRequest request, PgTransaction transaction) {
         return transaction.status() == PgStatus.PENDING
             && transaction.providerOrderId().equals(request.providerOrderId())
             && transaction.amount() == request.amount();
     }
 
     // 422 + 정확한 code + boolean false + 요청 orderId·amount 일치. 하나라도 어긋나면 효과가 없다는 증거가 아니다.
-    private boolean isConfirmedRejection(PaymentRequest request, JsonNode body) {
+    private boolean isConfirmedRejection(PgPaymentRequest request, JsonNode body) {
         if (body == null || !body.isObject()) {
             return false;
         }

@@ -2,8 +2,8 @@ package com.loopers.interfaces.api.order;
 
 import com.loopers.application.order.OrderFacade;
 import com.loopers.application.payment.PaymentAttemptInfo;
-import com.loopers.application.payment.PaymentCheckResult;
-import com.loopers.application.payment.PaymentFacade;
+import com.loopers.application.payment.PaymentCheckInfo;
+import com.loopers.application.payment.PaymentResultCheckFacade;
 import com.loopers.interfaces.api.ApiResponse;
 import com.loopers.interfaces.api.PageResponse;
 import com.loopers.interfaces.api.Requester;
@@ -26,7 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class OrderController implements OrderApiSpec {
 
     private final OrderFacade orderFacade;
-    private final PaymentFacade paymentFacade;
+    private final PaymentResultCheckFacade paymentResultCheckFacade;
 
     @PostMapping
     @Override
@@ -43,7 +43,7 @@ public class OrderController implements OrderApiSpec {
         @Requester Long userId,
         @PathVariable Long orderId
     ) {
-        PaymentCheckResult result = paymentFacade.reconcile(userId, orderId);
+        PaymentCheckInfo result = paymentResultCheckFacade.checkMyPaymentResult(userId, orderId);
         HttpStatus status = result.info().settled() ? HttpStatus.OK : HttpStatus.ACCEPTED;
         return ResponseEntity.status(status).body(ApiResponse.success(OrderDto.PaymentStartResponse.from(result)));
     }

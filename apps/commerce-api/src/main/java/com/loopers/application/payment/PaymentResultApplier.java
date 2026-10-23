@@ -34,7 +34,7 @@ public class PaymentResultApplier {
     private final OrderStockService orderStockService;
 
     /** 결제 생성 요청의 결과를 반영한다. */
-    public PaymentAttemptInfo applyCreateResult(Long orderId, PgPaymentRequestResult result) {
+    public PaymentAttemptInfo applyPaymentRequestResult(Long orderId, PgPaymentRequestResult result) {
         Order order = orderService.getForUpdate(orderId);
         PaymentAttempt attempt = paymentAttemptService.getByOrderId(orderId);
         switch (result.outcome()) {
@@ -53,7 +53,7 @@ public class PaymentResultApplier {
      * 결과를 보게 되어 효과가 없다. 재고 반환은 주문의 {@code PAYMENT_PENDING → PAYMENT_FAILED} 전이와 같은 트랜잭션에서
      * 한 번만 일어난다. 이 트랜잭션이 DB 오류로 취소되면 아무것도 바뀌지 않으므로 같은 거래를 다시 조회해 반영하면 된다.
      */
-    public PaymentAttemptInfo apply(Long orderId, PgPaymentStatusCheckResult checkResult) {
+    public PaymentAttemptInfo applyPaymentStatusCheckResult(Long orderId, PgPaymentStatusCheckResult checkResult) {
         Order order = orderService.getForUpdate(orderId);
         PaymentAttempt attempt = paymentAttemptService.getByOrderId(orderId);
         switch (checkResult.outcome()) {
@@ -106,7 +106,7 @@ public class PaymentResultApplier {
             case FAILED -> {
                 attempt.markFailed(key);
                 order.failPayment();
-                orderStockService.restore(order);
+                orderStockService.restoreStock(order);
             }
         }
     }
@@ -164,7 +164,7 @@ public class PaymentResultApplier {
             case REQUESTED, UNKNOWN -> {
                 attempt.markFailed(null);
                 order.failPayment();
-                orderStockService.restore(order);
+                orderStockService.restoreStock(order);
             }
             case FAILED -> { }
             case PENDING, SUCCEEDED -> attempt.recordAnomaly(PaymentAnomaly.CONFLICTING_RESULT);

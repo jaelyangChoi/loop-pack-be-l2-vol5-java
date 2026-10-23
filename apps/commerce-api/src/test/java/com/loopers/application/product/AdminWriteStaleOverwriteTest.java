@@ -3,7 +3,7 @@ package com.loopers.application.product;
 import com.loopers.application.brand.AdminBrandFacade;
 import com.loopers.application.order.OrderFacade;
 import com.loopers.application.order.OrderItemCommand;
-import com.loopers.application.payment.PaymentStartCommand;
+import com.loopers.application.payment.OrderConfirmCommand;
 import com.loopers.domain.brand.Brand;
 import com.loopers.domain.brand.BrandRepository;
 import com.loopers.domain.common.Money;
@@ -249,8 +249,8 @@ class AdminWriteStaleOverwriteTest {
         assertThat(stockOf(removed)).isEqualTo(10);
     }
 
-    private PaymentStartCommand startCommand(User buyer, Long orderId, String attemptKey) {
-        return new PaymentStartCommand(buyer.getId(), orderId, attemptKey, "TEST", "0000-0000-0000-0000");
+    private OrderConfirmCommand startCommand(User buyer, Long orderId, String attemptKey) {
+        return new OrderConfirmCommand(buyer.getId(), orderId, attemptKey, "TEST", "0000-0000-0000-0000");
     }
 
     private User withBalance(long amount) {
