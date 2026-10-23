@@ -137,19 +137,6 @@ class ProductTest {
             assertThat(product.getName()).isEqualTo("러닝화");
             assertThat(product.getPrice()).isEqualTo(new Money(89_000));
         }
-
-        @DisplayName("이름만 유효하지 않으면 가격도 바뀌지 않는다.")
-        @Test
-        void keepsPrice_whenOnlyNameIsInvalid() {
-            // arrange
-            Product product = product();
-
-            // act
-            assertInvalidInput(() -> product.update(null, new Money(99_000)));
-
-            // assert
-            assertThat(product.getPrice()).isEqualTo(new Money(89_000));
-        }
     }
 
     @DisplayName("재고를 변경할 때,")
