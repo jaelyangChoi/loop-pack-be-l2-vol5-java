@@ -12,6 +12,8 @@ Loopers 에서 제공하는 Spring Boot(Java 21) 멀티 모듈 커머스 템플�
 
 실행·빌드 명령어와 모듈 구조 전체는 `docs/guide/development-environment.md`를 참고합니다.
 
+설계 문서는 `docs/design/{주차}/`에 두며, 사람용(`{주제}.md`, 80줄 이내)과 AI용 상세(`{주제}.ai.md`)로 나눕니다.
+
 `local` 프로필 실행 전에 `docker/infra-compose.yml`로 인프라(MySQL, Redis)를 먼저 띄웁니다. 모니터링(Prometheus + Grafana)은 `docker/monitoring-compose.yml`로 별도 실행하며 http://localhost:3000 (admin/admin) 으로 접속합니다.
 
 ## 빌드 및 테스트 명령어
@@ -101,5 +103,5 @@ Loopers 에서 제공하는 Spring Boot(Java 21) 멀티 모듈 커머스 템플�
 - 합의한 계약·기대값·패키지 의존을 따른다. 미정 정책은 먼저 질문한다.
 - 이번 기능에서 변경할 책임·파일·관련 테스트를 먼저 제안한다.
 - 작은 기능을 구현하고 diff와 관련 테스트·lint·ArchUnit 결과를 확인한다.
-- 검사를 통과시키기 위한 테스트·기대값·규칙 삭제나 완화는 하지 않는다.
+- 검사를 통과시키기 위한 테스트·기대값·규칙 삭제나 완화는 하지 않는다. 단, 사용자가 요청한 테스트 정리는 예외다.
 - 정책·검사 기준 변경이나 범위 밖 개편은 이유와 영향을 설명하고 확인을 받는다.
