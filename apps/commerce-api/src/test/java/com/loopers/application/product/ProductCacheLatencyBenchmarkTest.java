@@ -46,7 +46,6 @@ import static org.mockito.Mockito.doReturn;
  * 호출 시간을 순차로 잰다(준비 20회, 측정 100회, 3라운드). HTTP 지연은 아니다.
  *
  * <p>측정용이라 환경변수 {@code PERF_CACHE_BENCHMARK=true} 일 때만 실행하고, 평소 {@code check} 에서는 건너뛴다(skip 으로 표시된다).
- * 결과는 {@code docs/design/week4/product-list-baseline.md} 5장에 기록한다.
  *
  * <pre>
  * PERF_CACHE_BENCHMARK=true ./gradlew :apps:commerce-api:test --tests '*ProductCacheLatencyBenchmarkTest' -i

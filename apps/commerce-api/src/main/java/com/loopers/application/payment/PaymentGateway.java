@@ -6,7 +6,7 @@ import com.loopers.application.payment.pg.PgPaymentStatusCheckResult;
 
 /**
  * 외부 결제 시스템(PG)과의 경계. HTTP·JSON·timeout 같은 전송 지식은 구현({@code infrastructure.payment})이 숨기고,
- * application 의 타입({@code payment.pg} 패키지)으로만 입출력한다 (설계 2-3).
+ * application 의 타입({@code payment.pg} 패키지)으로만 입출력한다.
  */
 public interface PaymentGateway {
 

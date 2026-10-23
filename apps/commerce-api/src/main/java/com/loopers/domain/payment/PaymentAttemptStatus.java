@@ -1,7 +1,7 @@
 package com.loopers.domain.payment;
 
 /**
- * 결제 시도의 상태. 허용하는 전이는 {@link #canMoveTo} 에 모여 있다 (설계 2-2).
+ * 결제 시도의 상태. 허용하는 전이는 {@link #canMoveTo} 에 모여 있다.
  *
  * <p>SUCCEEDED 와 FAILED 는 종결 상태라 나가는 전이가 없다. PENDING 에서 UNKNOWN 으로 되돌아가지도 않는다.
  * 이미 나아간 상태를 늦게 도착한 응답이 되돌리지 못하게 하기 위해서다.

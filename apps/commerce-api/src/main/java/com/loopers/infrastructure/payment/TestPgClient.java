@@ -32,8 +32,7 @@ import java.util.function.Supplier;
  *
  * <p>{@link #create} 는 예외 없이 모든 결과를 돌려주고 timeout 만 있다(재시도·회로 없음). 조회는 못 하면
  * {@link PgUnavailableException} 을 던지며 이 메서드들에만 {@code @Retry}·{@code @CircuitBreaker} 를 건다. 예외를 결과로
- * 바꾸는 일은 {@link PaymentGatewayImpl} 이 한다. 호출하는 쪽이 다른 빈이라 프록시를 거치지 않는 자기 호출이 생기지 않는다
- * (설계 5-4).
+ * 바꾸는 일은 {@link PaymentGatewayImpl} 이 한다. 호출하는 쪽이 다른 빈이라 프록시를 거치지 않는 자기 호출이 생기지 않는다.
  */
 @Slf4j
 @Component

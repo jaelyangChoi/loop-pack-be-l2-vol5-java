@@ -37,7 +37,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 
 /**
- * 상품 목록 캐시(cache-aside)의 miss·hit 결과와 SQL 수를 실제 MySQL·Redis 로 확인한다(week4 product-cache-design.md 4장).
+ * 상품 목록 캐시(cache-aside)의 miss·hit 결과와 SQL 수를 실제 MySQL·Redis 로 확인한다.
  * miss: 상품 페이지 + 총 개수 + 브랜드 + 좋아요 수 = 4. hit: 좋아요 수(삭제 확인 겸) = 1.
  */
 @SpringBootTest(properties = "spring.jpa.properties.hibernate.generate_statistics=true")

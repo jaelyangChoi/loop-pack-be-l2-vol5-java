@@ -34,7 +34,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 관리자 쓰기가 commit 된 뒤 상품 목록 캐시를 비우는지 실제 MySQL·Redis 로 확인한다(week4 product-cache-design.md 5장).
+ * 관리자 쓰기가 commit 된 뒤 상품 목록 캐시를 비우는지 실제 MySQL·Redis 로 확인한다.
  * 각 테스트는 먼저 목록을 조회해 캐시를 채운 뒤 쓰기를 하고, 캐시가 남았는지와 다시 조회한 결과를 본다.
  */
 @SpringBootTest

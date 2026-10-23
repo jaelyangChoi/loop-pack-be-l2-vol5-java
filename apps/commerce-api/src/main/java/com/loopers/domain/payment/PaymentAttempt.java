@@ -17,7 +17,7 @@ import lombok.Getter;
 /**
  * 주문의 PG 결제 시도(Aggregate root). 주문당 한 건이다.
  *
- * <p>식별자의 역할이 달라 네 가지를 따로 보존한다 (설계 1-2). {@code orderId} 는 주문, {@code attemptKey} 는 고객이 보낸
+ * <p>식별자의 역할이 달라 네 가지를 따로 보존한다. {@code orderId} 는 주문, {@code attemptKey} 는 고객이 보낸
  * 같은 시도의 구분, {@code providerOrderId} 는 PG 요청·조회에 쓰는 변환된 주문 식별자, {@code transactionKey} 는 PG 가
  * 발급한 거래 키이며 응답을 받기 전에는 없다. 멱등성은 키 문자열이 아니라 세 유일 제약과 상태 전이가 만든다.
  *
