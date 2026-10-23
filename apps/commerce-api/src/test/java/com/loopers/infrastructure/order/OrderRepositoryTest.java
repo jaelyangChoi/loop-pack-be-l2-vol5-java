@@ -153,12 +153,12 @@ class OrderRepositoryTest {
         void returnsPaymentResult_andPaymentStatuses() {
             // arrange
             Order paid = newOrder(7L);
-            paid.startPayment();
+            paid.markPaymentPending();
             paid.completePayment(new PaymentResult(new Money(7_000)));
             Order pending = newOrder(7L);
-            pending.startPayment();
+            pending.markPaymentPending();
             Order failed = newOrder(7L);
-            failed.startPayment();
+            failed.markPaymentPending();
             failed.failPayment();
             Long paidId = orderRepository.save(paid).getId();
             Long pendingId = orderRepository.save(pending).getId();

@@ -116,13 +116,13 @@ public class Order extends BaseEntity {
     }
 
     /**
-     * 결제를 시작해 PAYMENT_PENDING 으로 바꾼다. DRAFT 에서만 시작할 수 있다. 재고 확보와 시도 기록은 호출하는 쪽
-     * (application)이 같은 트랜잭션에서 한다.
+     * 상태만 PAYMENT_PENDING(결제 대기)으로 바꾼다. PG 호출은 하지 않는다. DRAFT 에서만 바꿀 수 있다. 재고 확보와 시도
+     * 기록은 호출하는 쪽(application)이 같은 트랜잭션에서 한다.
      *
      * <p>이미 CONFIRMED 인 주문은 기존 계약대로 ORDER_ALREADY_CONFIRMED 로, 그 밖의 진행 중·실패 주문은 CONFLICT 로
      * 거절한다. 이미 시도가 있는 주문에 같은 요청이 다시 오는 경우는 application 이 저장된 결과로 먼저 응답한다.
      */
-    public void startPayment() {
+    public void markPaymentPending() {
         if (status == OrderStatus.CONFIRMED) {
             throw new CoreException(ErrorType.ORDER_ALREADY_CONFIRMED);
         }

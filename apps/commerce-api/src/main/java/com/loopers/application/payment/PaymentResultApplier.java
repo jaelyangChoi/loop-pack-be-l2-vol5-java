@@ -5,6 +5,7 @@ import com.loopers.application.payment.PaymentGateway.PgStatus;
 import com.loopers.application.payment.PaymentGateway.PgTransaction;
 import com.loopers.domain.order.Order;
 import com.loopers.domain.order.OrderService;
+import com.loopers.domain.order.OrderStockService;
 import com.loopers.domain.order.PaymentResult;
 import com.loopers.domain.payment.PaymentAnomaly;
 import com.loopers.domain.payment.PaymentAttempt;
@@ -27,7 +28,7 @@ public class PaymentResultApplier {
 
     private final OrderService orderService;
     private final PaymentAttemptService paymentAttemptService;
-    private final OrderStockHandler orderStockHandler;
+    private final OrderStockService orderStockService;
 
     /** 결제 생성 요청의 결과를 반영한다. */
     @Transactional
@@ -101,7 +102,7 @@ public class PaymentResultApplier {
             case FAILED -> {
                 attempt.markFailed(key);
                 order.failPayment();
-                orderStockHandler.restore(order);
+                orderStockService.restore(order);
             }
         }
     }
@@ -159,7 +160,7 @@ public class PaymentResultApplier {
             case REQUESTED, UNKNOWN -> {
                 attempt.markFailed(null);
                 order.failPayment();
-                orderStockHandler.restore(order);
+                orderStockService.restore(order);
             }
             case FAILED -> { }
             case PENDING, SUCCEEDED -> attempt.recordAnomaly(PaymentAnomaly.CONFLICTING_RESULT);

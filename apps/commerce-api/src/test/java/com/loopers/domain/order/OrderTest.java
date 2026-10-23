@@ -204,7 +204,7 @@ class OrderTest {
 
         private Order pendingOrder() {
             Order order = draftOrder();
-            order.startPayment();
+            order.markPaymentPending();
             return order;
         }
 
@@ -219,7 +219,7 @@ class OrderTest {
             Order order = draftOrder();
 
             // act
-            order.startPayment();
+            order.markPaymentPending();
 
             // assert
             assertThat(order.getStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
@@ -237,9 +237,9 @@ class OrderTest {
             failed.failPayment();
 
             // act & assert
-            assertErrorType(ErrorType.ORDER_ALREADY_CONFIRMED, confirmed::startPayment);
-            assertErrorType(ErrorType.CONFLICT, pending::startPayment);
-            assertErrorType(ErrorType.CONFLICT, failed::startPayment);
+            assertErrorType(ErrorType.ORDER_ALREADY_CONFIRMED, confirmed::markPaymentPending);
+            assertErrorType(ErrorType.CONFLICT, pending::markPaymentPending);
+            assertErrorType(ErrorType.CONFLICT, failed::markPaymentPending);
             assertThat(confirmed.getStatus()).isEqualTo(OrderStatus.CONFIRMED);
             assertThat(pending.getStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
             assertThat(failed.getStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED);

@@ -3,6 +3,7 @@ package com.loopers.application.payment;
 import com.loopers.application.payment.PaymentGateway.PaymentRequest;
 import com.loopers.domain.order.Order;
 import com.loopers.domain.order.OrderService;
+import com.loopers.domain.order.OrderStockService;
 import com.loopers.domain.payment.PaymentAttempt;
 import com.loopers.domain.payment.PaymentAttemptService;
 import com.loopers.support.error.CoreException;
@@ -29,7 +30,7 @@ public class PaymentStarter {
 
     private final OrderService orderService;
     private final PaymentAttemptService paymentAttemptService;
-    private final OrderStockHandler orderStockHandler;
+    private final OrderStockService orderStockService;
 
     /**
      * 발송 권한은 시도를 <b>새로 저장한</b> 실행만 얻는다. 이미 시도가 있는 주문에 같은 키로 다시 오면 저장된 상태만 돌려주고
@@ -42,15 +43,15 @@ public class PaymentStarter {
 
         Optional<PaymentAttempt> existing = paymentAttemptService.findByOrderId(order.getId());
         if (existing.isPresent()) {
-            return resend(order, existing.get(), command);
+            return returnExisting(order, existing.get(), command);
         }
         // 이 주문에는 시도가 없으므로, 같은 키가 이미 있다면 다른 주문의 것이다.
         if (paymentAttemptService.findByAttemptKey(command.attemptKey()).isPresent()) {
             throw attemptConflict();
         }
 
-        order.startPayment(); // 이미 확정된 주문은 ORDER_ALREADY_CONFIRMED
-        orderStockHandler.deduct(order);
+        order.markPaymentPending(); // 이미 확정된 주문은 ORDER_ALREADY_CONFIRMED
+        orderStockService.deduct(order);
         PaymentAttempt attempt = saveAttempt(order, command);
         return new StartOutcome(
             PaymentAttemptInfo.of(order, attempt),
@@ -60,8 +61,9 @@ public class PaymentStarter {
         );
     }
 
-    // 같은 키의 재요청은 저장된 결과를 돌려주고 추가 효과를 만들지 않는다. 새 키를 보내도 두 번째 시도는 만들지 않는다.
-    private StartOutcome resend(Order order, PaymentAttempt attempt, PaymentStartCommand command) {
+    // 이미 시도가 있는 주문의 재요청이다. 같은 키면 저장된 상태만 돌려주고 PG 에는 보내지 않는다. 다른 키면 충돌이며,
+    // 새 키를 보내도 두 번째 시도는 만들지 않는다.
+    private StartOutcome returnExisting(Order order, PaymentAttempt attempt, PaymentStartCommand command) {
         if (!attempt.getAttemptKey().equals(command.attemptKey())) {
             throw attemptConflict();
         }

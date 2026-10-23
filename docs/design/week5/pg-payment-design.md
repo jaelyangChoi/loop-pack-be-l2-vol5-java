@@ -61,7 +61,7 @@ DRAFT ──start──▶ PAYMENT_PENDING ──complete──▶ CONFIRMED
                         └─────fail────────▶ PAYMENT_FAILED
 ```
 
-- 전이는 모델 메서드(`startPayment`, `completePayment(PaymentResult)`, `failPayment`)로만 일어난다. 각각 정해진 상태에서만 허용하고, 아니면 예외를 던진다.
+- 전이는 모델 메서드(`markPaymentPending`, `completePayment(PaymentResult)`, `failPayment`)로만 일어난다. 각각 정해진 상태에서만 허용하고, 아니면 예외를 던진다.
 - `CONFIRMED`·`PAYMENT_FAILED`는 종결이다. 나가는 전이가 없다.
 - `PaymentResult`는 week4와 같이 `paidAmount`만 담는다. 결제 수단을 구분하는 필드는 두지 않는다. PG가 포인트 결제를 대체했고 과거 주문은 이미 `CONFIRMED`로 가정하므로 구분할 필요가 없다. PG 결제의 거래 사실은 `PaymentAttempt`에 있다.
 

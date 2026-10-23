@@ -1,7 +1,5 @@
-package com.loopers.application.payment;
+package com.loopers.domain.order;
 
-import com.loopers.domain.order.Order;
-import com.loopers.domain.order.OrderItem;
 import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductService;
 import com.loopers.support.error.CoreException;
@@ -21,7 +19,7 @@ import java.util.Map;
  */
 @RequiredArgsConstructor
 @Component
-public class OrderStockHandler {
+public class OrderStockService {
 
     private final ProductService productService;
 
