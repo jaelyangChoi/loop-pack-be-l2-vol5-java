@@ -148,6 +148,39 @@ class OrderRepositoryTest {
             });
         }
 
+        @DisplayName("PG 결제로 확정한 주문은 결제액이 읽히고, 결제 대기·실패 상태는 결제 결과가 null 이다.")
+        @Test
+        void returnsPaymentResult_andPaymentStatuses() {
+            // arrange
+            Order paid = newOrder(7L);
+            paid.startPayment();
+            paid.completePayment(new PaymentResult(new Money(7_000)));
+            Order pending = newOrder(7L);
+            pending.startPayment();
+            Order failed = newOrder(7L);
+            failed.startPayment();
+            failed.failPayment();
+            Long paidId = orderRepository.save(paid).getId();
+            Long pendingId = orderRepository.save(pending).getId();
+            Long failedId = orderRepository.save(failed).getId();
+
+            // act & assert
+            transactionTemplate.executeWithoutResult(status -> {
+                Order foundPaid = orderJpaRepository.findById(paidId).orElseThrow();
+                assertThat(foundPaid.getStatus()).isEqualTo(OrderStatus.CONFIRMED);
+                assertThat(foundPaid.getPaymentResult())
+                    .isEqualTo(new PaymentResult(new Money(7_000)));
+
+                Order foundPending = orderJpaRepository.findById(pendingId).orElseThrow();
+                assertThat(foundPending.getStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
+                assertThat(foundPending.getPaymentResult()).isNull();
+
+                Order foundFailed = orderJpaRepository.findById(failedId).orElseThrow();
+                assertThat(foundFailed.getStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED);
+                assertThat(foundFailed.getPaymentResult()).isNull();
+            });
+        }
+
         @DisplayName("확정하지 않은 주문은 결제 결과가 null 로 읽힌다.")
         @Test
         void returnsNullPaymentResult_whenOrderIsDraft() {

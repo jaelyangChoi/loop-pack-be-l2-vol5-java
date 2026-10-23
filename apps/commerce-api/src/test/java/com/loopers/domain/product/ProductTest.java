@@ -229,4 +229,48 @@ class ProductTest {
         }
 
     }
+
+    @DisplayName("재고를 돌려줄 때,")
+    @Nested
+    class IncreaseStock {
+        @DisplayName("수량만큼 재고가 늘어난다.")
+        @Test
+        void increasesStock() {
+            // arrange
+            Product product = product();
+
+            // act
+            product.increaseStock(2);
+
+            // assert
+            assertThat(product.getStock()).isEqualTo(new Stock(12));
+        }
+
+        @DisplayName("0 이하의 수량이면 INVALID_INPUT 으로 거절하고, 재고는 그대로다.")
+        @ParameterizedTest
+        @ValueSource(ints = {0, -1})
+        void rejectsWithInvalidInput_andKeepsStock_whenQuantityIsNotPositive(int quantity) {
+            // arrange
+            Product product = product();
+
+            // act & assert
+            assertInvalidInput(() -> product.increaseStock(quantity));
+            assertThat(product.getStock()).isEqualTo(new Stock(10));
+        }
+
+        @DisplayName("삭제된 상품도 수량을 돌려받고, 삭제 상태는 그대로다 (실패 반환이 상품을 다시 노출하지 않는다).")
+        @Test
+        void increasesStock_andKeepsDeleted_whenProductIsDeleted() {
+            // arrange
+            Product product = product();
+            product.delete();
+
+            // act
+            product.increaseStock(2);
+
+            // assert
+            assertThat(product.getStock()).isEqualTo(new Stock(12));
+            assertThat(product.getDeletedAt()).isNotNull();
+        }
+    }
 }
