@@ -1,6 +1,7 @@
 package com.loopers.application.product.cache;
 
 import com.loopers.application.product.dto.ProductListItemInfo;
+import com.loopers.application.product.dto.ProductListQuery;
 import org.springframework.data.domain.Page;
 
 import java.util.List;

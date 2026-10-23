@@ -26,7 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>결제 시작은 포인트를 건드리지 않으므로 모든 구매자의 잔액은 그대로여야 한다. 데이터는 요청 전에 commit 하고 테스트를
  * 부모 트랜잭션으로 감싸지 않는다. 요청은 출발만 맞춰 동시에 시작하고, 모두
- * 끝난 뒤 {@link JdbcTemplate} 으로 DB 를 새로 읽어 확인한다. 어느 쪽이 먼저 잠금을 잡는지는 정해지지 않으므로, 두 순서
+ * 끝난 뒤 {@code JdbcTemplate} 으로 DB 를 새로 읽어 확인한다. 어느 쪽이 먼저 잠금을 잡는지는 정해지지 않으므로, 두 순서
  * 모두에서 성립하는 결과를 확인하고 경쟁은 확률적이라 반복 실행한다.
  */
 class AdminWriteConcurrencyTest extends PaymentFlowTestSupport {
