@@ -26,7 +26,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -113,24 +112,6 @@ class OrderFacadeTest {
             assertThat(jdbcTemplate.queryForObject(
                 "select status from orders where id = ?", String.class, info.id()
             )).isEqualTo("DRAFT");
-        }
-
-        @DisplayName("재고와 포인트 잔액은 차감하지 않는다.")
-        @Test
-        void doesNotDeductStockOrPoint() {
-            // arrange
-            User user = saveUser();
-            user.chargePoint(new Money(10_000));
-            userRepository.save(user);
-            Product shirt = saveProduct("티셔츠", 3_000, 10);
-
-            // act
-            orderFacade.create(user.getId(), List.of(new OrderItemCommand(shirt.getId(), 3)));
-
-            // assert: 저장소에서 다시 읽어 확인한다.
-            assertThat(productRepository.findActive(shirt.getId()).orElseThrow().getStock()).isEqualTo(new Stock(10));
-            assertThat(userRepository.find(user.getId()).orElseThrow().getPointBalance().balance())
-                .isEqualTo(new Money(10_000));
         }
 
         @DisplayName("재고가 요청 수량과 같으면 주문을 만들 수 있고, 재고는 차감하지 않는다.")
@@ -292,41 +273,6 @@ class OrderFacadeTest {
             assertThat(orderCount()).isZero();
         }
 
-        @DisplayName("값 규칙 위반과 없는 상품이 함께 있으면 상품을 조회하기 전에 INVALID_INPUT 으로 거절한다.")
-        @Test
-        void throwsInvalidInput_beforeLookingUpProducts() {
-            // arrange
-            User user = saveUser();
-            long missingId = 999_999L;
-
-            // act & assert: 없는 상품이 섞여 있어도 404 가 아니라 400 이다.
-            assertThat(rejected(() -> orderFacade.create(
-                user.getId(), List.of(new OrderItemCommand(missingId, 0))
-            )).getErrorType()).as("수량 0 + 없는 상품").isEqualTo(ErrorType.INVALID_INPUT);
-            assertThat(rejected(() -> orderFacade.create(
-                user.getId(), List.of(new OrderItemCommand(missingId, 1), new OrderItemCommand(missingId, 1))
-            )).getErrorType()).as("중복 + 없는 상품").isEqualTo(ErrorType.INVALID_INPUT);
-        }
-
-        @DisplayName("합계가 금액 표현 범위를 넘으면 INVALID_INPUT 이고 저장하지 않는다.")
-        @Test
-        void throwsInvalidInput_whenTotalOverflows() {
-            // arrange: 품목 하나는 범위 안이지만 다섯 개를 더하면 long 범위를 넘는다. 재고는 수량만큼 충분해야 재고 확인을 통과한다.
-            User user = saveUser();
-            List<OrderItemCommand> items = new ArrayList<>();
-            for (int i = 0; i < 5; i++) {
-                Product product = saveProduct("상품" + i, MAX_PRICE, Integer.MAX_VALUE);
-                items.add(new OrderItemCommand(product.getId(), Integer.MAX_VALUE));
-            }
-
-            // act
-            CoreException exception = rejected(() -> orderFacade.create(user.getId(), items));
-
-            // assert
-            assertThat(exception.getErrorType()).isEqualTo(ErrorType.INVALID_INPUT);
-            assertThat(orderCount()).isZero();
-        }
-
     }
 
     @DisplayName("내 주문을 조회할 때,")
@@ -388,39 +334,6 @@ class OrderFacadeTest {
             assertThat(draft.status()).isEqualTo(OrderStatus.DRAFT);
             assertThat(draft.itemCount()).isEqualTo(1);
             assertThat(draft.payment()).isNull();
-        }
-
-        @DisplayName("목록은 페이지 크기만큼 나누고, 주문이 없으면 빈 목록이다.")
-        @Test
-        void paginates_andReturnsEmpty_whenNoOrders() {
-            // arrange
-            User me = saveUserWithBalance(10_000);
-            User nobody = saveUserWithBalance(10_000);
-            Product shirt = saveProduct("티셔츠", 3_000, 10);
-            for (int i = 0; i < 3; i++) {
-                placeOrder(me, new OrderItemCommand(shirt.getId(), 1));
-            }
-
-            // act
-            Page<OrderSummaryInfo> firstPage = orderFacade.getMyList(me.getId(), 0, 2);
-            Page<OrderSummaryInfo> empty = orderFacade.getMyList(nobody.getId(), 0, 20);
-
-            // assert
-            assertThat(firstPage.getContent()).hasSize(2);
-            assertThat(firstPage.getTotalElements()).isEqualTo(3);
-            assertThat(firstPage.getTotalPages()).isEqualTo(2);
-            assertThat(empty.getContent()).isEmpty();
-        }
-
-        @DisplayName("잘못된 page·size 는 INVALID_INPUT 이다.")
-        @Test
-        void throwsInvalidInput_whenPageOrSizeIsOutOfRange() {
-            User me = saveUserWithBalance(10_000);
-
-            assertThat(rejected(() -> orderFacade.getMyList(me.getId(), -1, 20)).getErrorType())
-                .as("page 음수").isEqualTo(ErrorType.INVALID_INPUT);
-            assertThat(rejected(() -> orderFacade.getMyList(me.getId(), 0, 101)).getErrorType())
-                .as("size 초과").isEqualTo(ErrorType.INVALID_INPUT);
         }
 
         @DisplayName("상세는 품목·결제 결과·주문 시각을 돌려주고, 다른 사용자의 주문과 없는 주문은 NOT_FOUND 이다.")

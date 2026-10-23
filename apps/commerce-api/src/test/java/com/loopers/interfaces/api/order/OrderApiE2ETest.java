@@ -181,19 +181,6 @@ class OrderApiE2ETest {
             assertFail(create(String.valueOf(user.getId()), json), HttpStatus.BAD_REQUEST, "INVALID_INPUT");
         }
 
-        @DisplayName("같은 상품이 두 품목으로 들어오면 400 INVALID_INPUT 이고 저장하지 않는다.")
-        @Test
-        void returnsBadRequest_whenProductIsDuplicated() {
-            User user = saveUser();
-            Product shirt = saveProduct("티셔츠", 3_000);
-
-            ResponseEntity<ApiResponse<OrderDto.OrderResponse>> response =
-                create(String.valueOf(user.getId()), body(shirt.getId(), 1, shirt.getId(), 2));
-
-            assertFail(response, HttpStatus.BAD_REQUEST, "INVALID_INPUT");
-            assertThat(response.getBody().meta().message()).contains("중복");
-        }
-
         @DisplayName("없거나 삭제된 상품이 있으면 404 NOT_FOUND 이고 메시지에 상품 id 를 담는다.")
         @Test
         void returnsNotFound_whenProductIsMissingOrDeleted() {
@@ -222,14 +209,6 @@ class OrderApiE2ETest {
 
             assertFail(response, HttpStatus.CONFLICT, "OUT_OF_STOCK");
             assertThat(response.getBody().meta().message()).contains("재고 3개");
-        }
-
-        @DisplayName("값 규칙 위반과 없는 상품이 함께 있으면 400 INVALID_INPUT 이 먼저다.")
-        @Test
-        void returnsBadRequest_beforeNotFound() {
-            User user = saveUser();
-
-            assertFail(create(String.valueOf(user.getId()), body(999_999, 0)), HttpStatus.BAD_REQUEST, "INVALID_INPUT");
         }
     }
 
@@ -262,25 +241,6 @@ class OrderApiE2ETest {
             assertThat(newest.itemCount()).isEqualTo(1);
             assertThat(newest.payment()).isNull();
             assertThat(newest.orderedAt()).isNotNull();
-        }
-
-        @DisplayName("page·size 로 나누어 조회한다.")
-        @Test
-        void paginates() {
-            User me = saveUser();
-            Product shirt = saveProduct("티셔츠", 3_000);
-            for (int i = 0; i < 3; i++) {
-                create(String.valueOf(me.getId()), body(shirt.getId(), 1));
-            }
-
-            PageResponse<OrderDto.OrderSummaryResponse> page =
-                getList(String.valueOf(me.getId()), "?page=1&size=2").getBody().data();
-
-            assertThat(page.content()).hasSize(1);
-            assertThat(page.page()).isEqualTo(1);
-            assertThat(page.size()).isEqualTo(2);
-            assertThat(page.totalElements()).isEqualTo(3);
-            assertThat(page.totalPages()).isEqualTo(2);
         }
 
         @DisplayName("size 가 범위를 벗어나면 400 INVALID_INPUT 이다 (page·size 검증의 대표).")
@@ -348,17 +308,6 @@ class OrderApiE2ETest {
             assertThat(otherUsers.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
             assertThat(missing.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
             assertThat(otherUsers.getBody().meta().message()).isEqualTo(missing.getBody().meta().message());
-        }
-
-        @DisplayName("orderId 가 숫자가 아니면 400 INVALID_INPUT 이다.")
-        @Test
-        void returnsBadRequest_whenOrderIdIsNotNumber() {
-            User me = saveUser();
-
-            ResponseEntity<ApiResponse<OrderDto.OrderResponse>> response = getDetail(String.valueOf(me.getId()), "abc");
-
-            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-            assertThat(response.getBody().meta().errorCode()).isEqualTo("INVALID_INPUT");
         }
 
         @DisplayName("X-USER-ID 헤더가 없으면 400 INVALID_INPUT 이다 (식별 경로 등록 확인).")

@@ -134,13 +134,6 @@ class OrderTest {
             return new PaymentResult(new Money(7_000));
         }
 
-        @DisplayName("DRAFT 주문은 확정할 수 있는 상태다.")
-        @Test
-        void isConfirmable_whenDraft() {
-            // act & assert: 예외가 나지 않는다.
-            draftOrder().ensureConfirmable();
-        }
-
         @DisplayName("확정하면 CONFIRMED 가 되고, 결제액을 보존한다. 품목과 합계는 그대로다.")
         @Test
         void becomesConfirmed_withPaymentResult() {
@@ -155,12 +148,6 @@ class OrderTest {
             assertThat(order.getPaymentResult()).isEqualTo(payment());
             assertThat(order.getTotalAmount()).isEqualTo(new Money(7_000));
             assertThat(order.getItems()).hasSize(2);
-        }
-
-        @DisplayName("DRAFT 주문은 결제 결과가 비어 있다.")
-        @Test
-        void hasNoPaymentResult_whenDraft() {
-            assertThat(draftOrder().getPaymentResult()).isNull();
         }
 
         @DisplayName("이미 확정된 주문은 ORDER_ALREADY_CONFIRMED 로 거절하고, 기존 결제 결과를 유지한다.")

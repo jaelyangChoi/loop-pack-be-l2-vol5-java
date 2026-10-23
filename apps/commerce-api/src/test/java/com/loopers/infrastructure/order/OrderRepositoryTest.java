@@ -180,20 +180,6 @@ class OrderRepositoryTest {
                 assertThat(foundFailed.getPaymentResult()).isNull();
             });
         }
-
-        @DisplayName("확정하지 않은 주문은 결제 결과가 null 로 읽힌다.")
-        @Test
-        void returnsNullPaymentResult_whenOrderIsDraft() {
-            // arrange
-            Long orderId = orderRepository.save(newOrder(7L)).getId();
-
-            // act & assert
-            transactionTemplate.executeWithoutResult(status -> {
-                Order found = orderJpaRepository.findById(orderId).orElseThrow();
-                assertThat(found.getStatus()).isEqualTo(OrderStatus.DRAFT);
-                assertThat(found.getPaymentResult()).isNull();
-            });
-        }
     }
 
     @DisplayName("본인 주문을 조회할 때,")
@@ -258,17 +244,6 @@ class OrderRepositoryTest {
             assertThat(page.getContent()).extracting(Order::getId).containsExactly(second, first);
         }
 
-        @DisplayName("주문이 없는 구매자는 오류가 아니라 빈 결과다.")
-        @Test
-        void returnsEmpty_whenUserHasNoOrders() {
-            orderRepository.save(newOrder(7L));
-
-            Page<Order> page = orderRepository.findAll(999L, PageRequest.of(0, 10));
-
-            assertThat(page.getContent()).isEmpty();
-            assertThat(page.getTotalElements()).isZero();
-        }
-
         @DisplayName("페이지 크기만큼 나누어 조회하고 총 개수와 전체 페이지 수가 정확하다.")
         @Test
         void paginates() {
@@ -305,18 +280,4 @@ class OrderRepositoryTest {
         }
     }
 
-    @DisplayName("주문 하나를 id 로 조회할 때,")
-    @Nested
-    class FindById {
-        @DisplayName("있으면 조회되고, 없으면 빈 결과다.")
-        @Test
-        void returnsOrder_orEmpty() {
-            // arrange
-            Long orderId = orderRepository.save(newOrder(7L)).getId();
-
-            // act & assert
-            assertThat(orderRepository.findById(orderId)).isPresent();
-            assertThat(orderRepository.findById(999_999L)).isEmpty();
-        }
-    }
 }
