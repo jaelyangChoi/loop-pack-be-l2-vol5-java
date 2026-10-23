@@ -2,6 +2,7 @@ package com.loopers.interfaces.api.order;
 
 import com.loopers.application.order.OrderFacade;
 import com.loopers.application.payment.PaymentAttemptInfo;
+import com.loopers.application.payment.PaymentCheckResult;
 import com.loopers.application.payment.PaymentFacade;
 import com.loopers.interfaces.api.ApiResponse;
 import com.loopers.interfaces.api.PageResponse;
@@ -34,6 +35,17 @@ public class OrderController implements OrderApiSpec {
         @Valid @RequestBody OrderDto.CreateRequest request
     ) {
         return ApiResponse.success(OrderDto.OrderResponse.from(orderFacade.create(userId, request.toCommands())));
+    }
+
+    @PostMapping("/{orderId}/payment/reconcile")
+    @Override
+    public ResponseEntity<ApiResponse<OrderDto.PaymentStartResponse>> reconcile(
+        @Requester Long userId,
+        @PathVariable Long orderId
+    ) {
+        PaymentCheckResult result = paymentFacade.reconcile(userId, orderId);
+        HttpStatus status = result.info().settled() ? HttpStatus.OK : HttpStatus.ACCEPTED;
+        return ResponseEntity.status(status).body(ApiResponse.success(OrderDto.PaymentStartResponse.from(result)));
     }
 
     @GetMapping

@@ -9,8 +9,10 @@ import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.Stock;
 import com.loopers.domain.user.User;
 import com.loopers.domain.user.UserRepository;
+import com.loopers.infrastructure.payment.TestPgClient;
 import com.loopers.support.pg.FakePgServer;
 import com.loopers.utils.DatabaseCleanUp;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -73,11 +75,16 @@ public abstract class PaymentFlowTestSupport {
     @Autowired
     private DatabaseCleanUp databaseCleanUp;
 
+    @Autowired
+    private CircuitBreakerRegistry circuitBreakerRegistry;
+
     protected FakePgServer pg;
 
+    // 조회 실패 시나리오가 회로를 열어 두면 컨텍스트를 공유하는 다음 테스트의 조회가 막힌다. 매 테스트 전에 PG 와 회로를 비운다.
     @BeforeEach
     void resetPg() {
         PG.reset();
+        circuitBreakerRegistry.circuitBreaker(TestPgClient.LOOKUP_RESILIENCE).reset();
         pg = PG;
     }
 
@@ -126,6 +133,11 @@ public abstract class PaymentFlowTestSupport {
 
     protected long attemptCount() {
         return jdbcTemplate.queryForObject("select count(*) from payment_attempts", Long.class);
+    }
+
+    /** PG 가 이 주문에 대해 가진 첫 거래의 키. */
+    protected String pgKeyOf(Long orderId) {
+        return pg.transactionsOf(providerOrderIdOf(orderId)).get(0).key();
     }
 
     protected Map<String, Object> attemptOf(Long orderId) {

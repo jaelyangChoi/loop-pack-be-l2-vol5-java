@@ -6,6 +6,7 @@ import com.loopers.application.order.OrderItemInfo;
 import com.loopers.application.order.OrderSummaryInfo;
 import com.loopers.application.order.PaymentInfo;
 import com.loopers.application.payment.PaymentAttemptInfo;
+import com.loopers.application.payment.PaymentCheckResult;
 import com.loopers.application.payment.PaymentStartCommand;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -49,14 +50,26 @@ public class OrderDto {
     }
 
     // 결제 시작·확인의 응답. 처리 중이거나 결과 미확인이면 202, PG 결과로 종결한 시도면 200 이다. 주문 상태와 시도 상태를
-    // 함께 담고, 최종 결과를 알려면 links.order 로 조회한다.
-    public record PaymentStartResponse(Long orderId, String orderStatus, AttemptResponse payment, LinksResponse links) {
+    // 함께 담고, 최종 결과를 알려면 links.order 로 조회한다. lookupUnavailable 은 PG 를 조회하지 못해 저장된 상태를 그대로
+    // 돌려줬을 때만 true 이며, 실패가 아니라 아직 확인하지 못했다는 뜻이다(조회했다면 응답에서 생략된다).
+    public record PaymentStartResponse(
+        Long orderId, String orderStatus, AttemptResponse payment, LinksResponse links, Boolean lookupUnavailable
+    ) {
         public static PaymentStartResponse from(PaymentAttemptInfo info) {
             return new PaymentStartResponse(
                 info.orderId(),
                 info.orderStatus().name(),
                 new AttemptResponse(info.attemptStatus().name(), info.amount()),
-                new LinksResponse("/api/v1/orders/" + info.orderId())
+                new LinksResponse("/api/v1/orders/" + info.orderId()),
+                null
+            );
+        }
+
+        public static PaymentStartResponse from(PaymentCheckResult result) {
+            PaymentStartResponse base = from(result.info());
+            return new PaymentStartResponse(
+                base.orderId(), base.orderStatus(), base.payment(), base.links(),
+                result.lookupUnavailable() ? Boolean.TRUE : null
             );
         }
     }

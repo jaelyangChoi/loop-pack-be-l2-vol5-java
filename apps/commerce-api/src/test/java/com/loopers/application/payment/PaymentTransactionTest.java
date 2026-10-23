@@ -193,4 +193,82 @@ class PaymentTransactionTest extends PaymentFlowTestSupport {
             assertThat(stockOf(shirt)).isEqualTo(9);
         }
     }
+
+    @DisplayName("PG 에서 확인한 결과를 반영하는 중에,")
+    @Nested
+    class ApplyVerifiedResult {
+        @DisplayName("성공을 확인한 뒤 내부 저장이 실패하면 전부 취소된다. 같은 거래를 다시 조회해 한 번만 확정하고 create 는 추가되지 않는다.")
+        @Test
+        void rollsBackSuccess_andSettlesOnceByRequerying() {
+            // arrange: 3,000 x 1. 결제를 시작해 PENDING 이고 PG 는 SUCCESS 가 되었다.
+            User user = saveUser(USER_BALANCE);
+            Product shirt = saveProduct("티셔츠", 3_000, 10);
+            Long orderId = orderFacade.create(user.getId(), List.of(new OrderItemCommand(shirt.getId(), 1))).id();
+            paymentFacade.start(command(user, orderId, "attempt-1"));
+            pg.setStatus(pgKeyOf(orderId), "SUCCESS");
+            // 주문 UPDATE 가 DB 로 나간 뒤 시도 UPDATE 에서 실패시킨다.
+            FailingStatementInspector.arm("update payment_attempts", 1);
+
+            // act & assert 1
+            assertThatThrownBy(() -> paymentFacade.reconcile(user.getId(), orderId))
+                .hasRootCauseInstanceOf(InjectedFailureException.class);
+            List<String> mutations = FailingStatementInspector.mutations();
+            assertThat(mutations.get(mutations.size() - 1)).startsWith("update payment_attempts");
+            assertThat(mutations.subList(0, mutations.size() - 1)).anyMatch(sql -> sql.startsWith("update orders"));
+
+            FailingStatementInspector.disarm();
+            assertThat(orderStatusOf(orderId)).isEqualTo("PAYMENT_PENDING");
+            assertThat(attemptOf(orderId)).containsEntry("status", "PENDING");
+            assertThat(jdbcTemplate.queryForObject("select paid_amount from orders where id = ?", Long.class, orderId))
+                .isNull();
+            assertThat(stockOf(shirt)).isEqualTo(9);
+
+            // act & assert 2: 같은 거래를 다시 조회해 반영한다. 새 결제를 만들지 않는다.
+            PaymentCheckResult again = paymentFacade.reconcile(user.getId(), orderId);
+            assertThat(again.info().orderStatus().name()).isEqualTo("CONFIRMED");
+            assertThat(orderStatusOf(orderId)).isEqualTo("CONFIRMED");
+            assertThat(pg.createCalls()).isEqualTo(1);
+            assertThat(pg.transactionCount()).isEqualTo(1);
+            assertThat(pg.lookupByKeyCalls()).isEqualTo(2);
+            assertThat(stockOf(shirt)).isEqualTo(9);
+            assertThat(balanceOf(user)).isEqualTo(USER_BALANCE);
+        }
+
+        @DisplayName("실패를 확인한 뒤 재고를 돌려주는 중에 저장이 실패하면 전부 취소된다. 다시 조회해도 재고는 한 번만 돌아온다.")
+        @Test
+        void rollsBackFailure_andReturnsStockOnceByRequerying() {
+            // arrange: 품목 둘. 결제를 시작해 재고 9, 4 이고 PG 는 FAILED 가 되었다.
+            User user = saveUser(USER_BALANCE);
+            Product shirt = saveProduct("티셔츠", 3_000, 10);
+            Product socks = saveProduct("양말", 2_000, 5);
+            Long orderId = orderFacade.create(user.getId(), List.of(
+                new OrderItemCommand(shirt.getId(), 1), new OrderItemCommand(socks.getId(), 1)
+            )).id();
+            paymentFacade.start(command(user, orderId, "attempt-1"));
+            assertThat(stockOf(shirt)).isEqualTo(9);
+            assertThat(stockOf(socks)).isEqualTo(4);
+            pg.setStatus(pgKeyOf(orderId), "FAILED");
+            // 첫 상품의 재고 반환이 DB 로 나간 뒤 둘째 반환에서 실패시킨다.
+            FailingStatementInspector.arm("update products", 2);
+
+            // act & assert 1
+            assertThatThrownBy(() -> paymentFacade.reconcile(user.getId(), orderId))
+                .hasRootCauseInstanceOf(InjectedFailureException.class);
+            assertThat(FailingStatementInspector.mutations().stream().filter(sql -> sql.startsWith("update products")))
+                .hasSize(2);
+
+            FailingStatementInspector.disarm();
+            assertThat(orderStatusOf(orderId)).isEqualTo("PAYMENT_PENDING");
+            assertThat(attemptOf(orderId)).containsEntry("status", "PENDING");
+            assertThat(stockOf(shirt)).as("절반만 돌려주지 않는다").isEqualTo(9);
+            assertThat(stockOf(socks)).isEqualTo(4);
+
+            // act & assert 2
+            paymentFacade.reconcile(user.getId(), orderId);
+            assertThat(orderStatusOf(orderId)).isEqualTo("PAYMENT_FAILED");
+            assertThat(stockOf(shirt)).isEqualTo(10);
+            assertThat(stockOf(socks)).isEqualTo(5);
+            assertThat(pg.createCalls()).isEqualTo(1);
+        }
+    }
 }

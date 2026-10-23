@@ -27,6 +27,10 @@ public class PaymentAttemptService {
         return paymentAttemptRepository.findByAttemptKey(attemptKey);
     }
 
+    public Optional<PaymentAttempt> findByProviderOrderId(String providerOrderId) {
+        return paymentAttemptRepository.findByProviderOrderId(providerOrderId);
+    }
+
     /**
      * 결제를 시작한 주문의 시도를 조회한다. 결제 대기 주문에 시도가 없는 것은 호출하는 쪽이 아니라 데이터의 문제라
      * {@code INTERNAL_ERROR} 다.

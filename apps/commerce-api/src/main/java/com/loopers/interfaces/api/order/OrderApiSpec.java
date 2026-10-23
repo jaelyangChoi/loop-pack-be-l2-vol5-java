@@ -46,6 +46,22 @@ public interface OrderApiSpec {
     );
 
     @Operation(
+        summary = "결제 결과 확인",
+        description = "본인 주문의 결제 시도를 PG 에 다시 물어 결과를 반영합니다. PG 의 알림이 오지 않았거나 202 를 받은 뒤 결과를 "
+            + "알고 싶을 때 부르며, 알림과 무관하게 쓸 수 있는 기본 복구 경로입니다. 미종결이면 202, PG 결과로 끝났으면 200 입니다. "
+            + "PG 를 조회하지 못하면 저장된 상태를 그대로 돌려주며 lookupUnavailable 이 true 입니다. 이는 실패가 아니라 아직 확인하지 "
+            + "못했다는 뜻이고, 결제를 새로 요청하지 않으며 나중에 다시 확인하면 됩니다. 이미 끝난 시도는 PG 를 부르지 않고 저장된 "
+            + "결과를 돌려줍니다. 결제를 시작하지 않은 주문은 409(CONFLICT), 없는 주문과 다른 사용자의 주문은 404 입니다."
+    )
+    @Parameter(name = "X-USER-ID", in = ParameterIn.HEADER, required = true, description = "요청자(사용자) ID")
+    ResponseEntity<ApiResponse<OrderDto.PaymentStartResponse>> reconcile(
+        @Parameter(hidden = true)
+        Long userId,
+        @Parameter(name = "orderId", description = "결과를 확인할 주문의 ID")
+        Long orderId
+    );
+
+    @Operation(
         summary = "내 주문 목록 조회",
         description = "내 주문을 최신순으로 요약해 조회합니다. 항목은 상태, 합계, 품목 수, 결제 결과(확정된 주문만), 주문 시각이며 "
             + "품목은 상세 조회에서 봅니다."

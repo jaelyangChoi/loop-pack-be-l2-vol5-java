@@ -355,8 +355,8 @@ create는 다시 실행하면 새 거래가 생길 수 있다. HALF_OPEN 탐색 
 | 기능 | method · path | 성공 | 대표 오류 |
 |---|---|---|---|
 | 결제 시작 | `POST /api/v1/orders/{orderId}/confirm` (본문: `paymentAttemptKey`, `cardType`, `cardNo`) | 미종결(`PENDING`/`UNKNOWN`) **202**, 같은 시도의 종결 **200**. 본문: `orderId`, `orderStatus`, `payment{status, amount}`, `links.order`(주문 조회 경로). 카드 값은 응답에 담지 않는다 | 404, 400, 409 `PAYMENT_ATTEMPT_CONFLICT`, 409 `PRODUCT_UNAVAILABLE`·`OUT_OF_STOCK`·`ORDER_ALREADY_CONFIRMED` |
-| 결제 확인 | `POST /api/v1/orders/{orderId}/payment/reconcile` | 미종결 202(`lookupUnavailable` 표시 가능), 종결 200 | 404(없는·타인 주문), 409(시도 없음) |
-| PG 알림 | `POST /api/v1/payments/callback` (본문: `providerOrderId`, `transactionKey`, `status`) | 200 현재 상태 | 404(모르는 `providerOrderId`) |
+| 결제 확인 | `POST /api/v1/orders/{orderId}/payment/reconcile` | 결제 시작과 같은 응답 모양. 미종결 202, 종결 200. PG 를 조회하지 못했으면 저장된 상태와 `lookupUnavailable: true`(조회했다면 생략). 이미 종결된 시도는 PG 를 부르지 않는다 | 404(없는·타인 주문), 409 `CONFLICT`(결제를 시작하지 않은 주문), 400(형식·헤더 누락) |
+| PG 알림 | `POST /api/v1/payments/callback` (본문: `providerOrderId`, `transactionKey`, `status` 모두 필수, 식별 헤더 없음) | 200 수신 확인 `{orderId, orderStatus, paymentStatus, lookupUnavailable?}`. 본문의 `status` 는 쓰지 않고 `transactionKey` 로 PG 를 조회해 확인한 사실만 반영한다 | 404(모르는 `providerOrderId`, 효과 없음), 400(본문 오류) |
 | 주문 상세 | `GET /api/v1/orders/{orderId}` | 기존 응답 + `payment{status, paidAmount?}`. PG 호출 없음 | 기존과 동일 |
 | 관리자 주문 조회 | `GET /api-admin/v1/orders[/{id}]` | 결제 대기·미확인·최종 결과 표시 | 기존과 동일 |
 
@@ -476,7 +476,8 @@ create는 다시 실행하면 새 거래가 생길 수 있다. HALF_OPEN 탐색 
 | 장기 `UNKNOWN`·`REQUESTED`의 종결 | 시간 경과만으로 실패 처리하지 않는다. 자동 만료·상시 스케줄러는 넣지 않는다. 확인되지 않는 동안 재고가 점유되는 비용이 남는다. 운영 개입과 별도 판단을 전제로 한다 |
 | 발송 기록 뒤 실제 미발송 시도 | create를 다시 보내지 않으므로 영구 미완료일 수 있다. 중복 방지와 모든 시도의 자동 완료는 같은 보장이 아니다 |
 | 같은 키의 "다른 요청" 비교 | 같은 키 재요청의 일치는 **주문과 키**로만 확인한다. 금액은 요청이 아니라 저장된 주문 합계로 정하므로 달라질 수 없고, 카드 값은 저장하지 않으므로 비교할 수 없다. 같은 주문·같은 키로 카드 값만 다르게 보내도 저장된 결과를 돌려주고 새로 발송하지 않는다 |
-| callback 서명 검증 | 하지 않는다. 대신 권위 조회로 검증한다 (로컬 실습 한정) |
+| callback 서명 검증 | 하지 않는다. 대신 권위 조회로 검증한다 (로컬 실습 한정). 위조 알림은 확정이나 실패를 만들지 못하지만, 다른 주문의 거래 키를 담은 알림은 해당 시도에 `MISMATCH` 기록을 남길 수 있다(상태·재고는 그대로) |
+| 종결 뒤의 재확인 | 이미 종결된 시도는 reconcile·callback 이 PG 를 다시 부르지 않고 저장된 결과를 돌려준다. 그래서 종결 뒤 PG 쪽 결과가 달라져도 상충 기록(`CONFLICTING_RESULT`)은 동시에 도착한 요청 사이에서만 남는다 |
 | reconcile 호출 빈도 제한 | 하지 않는다. 남용 방지는 범위 밖 |
 | 프론트 폴링 주기 | 과제 범위 밖. `GET /orders/{id}`는 PG를 호출하지 않으므로 폴링 비용은 DB 조회 수준이다 |
 | 회로 수치(윈도우 10, 최소 5, 50%, 10초, 탐색 2) | 가설. 로컬 fixture에서의 동작은 테스트로 확인하지만 실제 부하에서의 적정값은 측정하지 않았다 |
