@@ -28,6 +28,15 @@ product:
   list-cache:
     ttl: 60s # 무효화가 실패했을 때 낡은 목록이 남는 상한 (D-40)
 
+payment:
+  pg: # 로컬 테스트 PG 계약. 실제 PG 가 아니며 127.0.0.1 밖의 주소는 거절한다
+    base-url: http://127.0.0.1:8082
+    callback-url: http://127.0.0.1:8080/api/v1/payments/callback
+    user-id: "135135" # 합성 제공자 계정. 내부 고객 인증을 대신하지 않는다
+    connect-timeout: 1s
+    create-read-timeout: 3s # 응답 헤더를 기다리는 시간. 넘으면 결과 미확인(UNKNOWN)이다
+    lookup-read-timeout: 1s
+
 springdoc:
   use-fqn: true
   swagger-ui:
