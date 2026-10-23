@@ -4,7 +4,7 @@ import com.loopers.application.payment.dto.PaymentAttemptInfo;
 import com.loopers.application.payment.pg.PgPaymentRequestResult;
 import com.loopers.application.payment.pg.PgPaymentStatusCheckResult;
 import com.loopers.application.payment.pg.PgStatus;
-import com.loopers.application.payment.pg.PgTransaction;
+import com.loopers.application.payment.pg.PgTransactionInfo;
 import com.loopers.domain.order.Order;
 import com.loopers.domain.order.OrderService;
 import com.loopers.domain.order.OrderStockService;
@@ -60,7 +60,7 @@ public class PaymentResultApplier {
     }
 
     // 거래가 0건이면 아직 안 보이는 것일 수 있어 아무것도 정하지 않는다. 여러 건이면 하나를 임의로 고르지 않는다.
-    private void applyAnswer(Order order, PaymentAttempt attempt, List<PgTransaction> transactions) {
+    private void applyAnswer(Order order, PaymentAttempt attempt, List<PgTransactionInfo> transactions) {
         switch (transactions.size()) {
             case 0 -> { }
             case 1 -> applyTransaction(order, attempt, transactions.get(0));
@@ -74,7 +74,7 @@ public class PaymentResultApplier {
         }
     }
 
-    private void applyTransaction(Order order, PaymentAttempt attempt, PgTransaction transaction) {
+    private void applyTransaction(Order order, PaymentAttempt attempt, PgTransactionInfo transaction) {
         // 다른 주문의 거래, 금액이 다른 거래, 이미 아는 거래와 다른 거래는 이 시도에 적용하지 않는다.
         if (!belongsTo(attempt, transaction)) {
             attempt.recordAnomaly(PaymentAnomaly.MISMATCH);
@@ -107,7 +107,7 @@ public class PaymentResultApplier {
 
     // 종결된 시도는 같은 결과가 다시 와도 효과가 없고, 다른 결과가 오면 덮어쓰지 않고 상충만 남긴다.
     // 종결 뒤에 도착한 처리 중 관찰은 낡은 정보라 무시한다.
-    private void applyToSettled(PaymentAttempt attempt, PgTransaction transaction) {
+    private void applyToSettled(PaymentAttempt attempt, PgTransactionInfo transaction) {
         if (transaction.status() == PgStatus.PENDING) {
             return;
         }
@@ -119,14 +119,14 @@ public class PaymentResultApplier {
         attempt.recordAnomaly(PaymentAnomaly.CONFLICTING_RESULT);
     }
 
-    private boolean belongsTo(PaymentAttempt attempt, PgTransaction transaction) {
+    private boolean belongsTo(PaymentAttempt attempt, PgTransactionInfo transaction) {
         return transaction.providerOrderId().equals(attempt.getProviderOrderId())
             && transaction.amount() == attempt.getAmount().amount()
             && (attempt.getTransactionKey() == null || attempt.getTransactionKey().equals(transaction.transactionKey()));
     }
 
     // PG 가 거래를 만들었다. 거래 키를 기록한다. 이미 나아간 상태는 되돌리지 않고, 다른 거래라면 이상 징후로 남긴다.
-    private void applyAccepted(PaymentAttempt attempt, PgTransaction transaction) {
+    private void applyAccepted(PaymentAttempt attempt, PgTransactionInfo transaction) {
         String key = transaction.transactionKey();
         switch (attempt.getStatus()) {
             case REQUESTED, UNKNOWN -> attempt.markPending(key);

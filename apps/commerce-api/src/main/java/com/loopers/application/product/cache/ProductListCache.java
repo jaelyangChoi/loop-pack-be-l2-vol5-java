@@ -1,7 +1,7 @@
 package com.loopers.application.product.cache;
 
 import com.loopers.application.product.dto.ProductListQuery;
-import com.loopers.application.product.cache.CachedProductList;
+import com.loopers.application.product.cache.CachedProductListInfo;
 
 import java.util.Optional;
 
@@ -13,9 +13,9 @@ import java.util.Optional;
  */
 public interface ProductListCache {
 
-    Optional<CachedProductList> find(ProductListQuery query);
+    Optional<CachedProductListInfo> find(ProductListQuery query);
 
-    void save(ProductListQuery query, CachedProductList snapshot);
+    void save(ProductListQuery query, CachedProductListInfo snapshot);
 
     /** 상품 목록 캐시 전체를 지운다. 다른 캐시 영역은 건드리지 않는다. */
     void evictAll();

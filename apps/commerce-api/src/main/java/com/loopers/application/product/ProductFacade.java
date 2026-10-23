@@ -1,6 +1,6 @@
 package com.loopers.application.product;
 
-import com.loopers.application.product.cache.CachedProductList;
+import com.loopers.application.product.cache.CachedProductListInfo;
 import com.loopers.application.product.cache.ProductListCache;
 import com.loopers.application.product.dto.ProductDetailInfo;
 import com.loopers.application.product.dto.ProductListItemInfo;
@@ -90,7 +90,7 @@ public class ProductFacade {
             return cached.get();
         }
         Page<ProductListItemInfo> loaded = load(brandId, productSort, pageRequest);
-        productListCache.save(query, CachedProductList.from(loaded));
+        productListCache.save(query, CachedProductListInfo.from(loaded));
         return loaded;
     }
 
@@ -112,9 +112,9 @@ public class ProductFacade {
     // 캐시 hit 경로. 좋아요 수 조회가 삭제 확인을 겸한다: 집계 행이 없는 상품(삭제됨)이 하나라도 있으면
     // 캐시 값을 쓰지 않고 DB 로 다시 읽는다. 무효화가 실패해도 삭제된 상품이 나가지 않고 페이지가 짧아지지도 않는다.
     // 조회 하나라 트랜잭션을 열지 않는다.
-    private Optional<Page<ProductListItemInfo>> withLikeCounts(CachedProductList snapshot, PageRequest pageRequest) {
+    private Optional<Page<ProductListItemInfo>> withLikeCounts(CachedProductListInfo snapshot, PageRequest pageRequest) {
         Map<Long, Long> likeCounts = likeService.countByProductIds(
-            snapshot.items().stream().map(CachedProductList.Item::id).toList());
+            snapshot.items().stream().map(CachedProductListInfo.Item::id).toList());
         if (likeCounts.size() != snapshot.items().size()) {
             return Optional.empty();
         }

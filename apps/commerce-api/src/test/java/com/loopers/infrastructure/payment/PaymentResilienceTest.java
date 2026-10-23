@@ -3,7 +3,7 @@ package com.loopers.infrastructure.payment;
 import com.loopers.application.payment.PaymentGateway;
 import com.loopers.application.payment.pg.PgPaymentRequestResult;
 import com.loopers.application.payment.pg.PgPaymentStatusCheckResult;
-import com.loopers.application.payment.pg.PgPaymentRequest;
+import com.loopers.application.payment.pg.PgPaymentRequestCommand;
 import com.loopers.support.pg.FakePgServer;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
@@ -316,8 +316,8 @@ class PaymentResilienceTest {
             assertThat(pg.createCalls()).isEqualTo(1);
         }
 
-        private PgPaymentRequest request() {
-            return new PgPaymentRequest(ORDER_ID, "TEST", "0000-0000-0000-0000", 7_000);
+        private PgPaymentRequestCommand request() {
+            return new PgPaymentRequestCommand(ORDER_ID, "TEST", "0000-0000-0000-0000", 7_000);
         }
     }
 }

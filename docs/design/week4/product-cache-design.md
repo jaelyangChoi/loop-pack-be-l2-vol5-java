@@ -81,9 +81,9 @@ product:list:v1:brand={brandId|all}:sort={latest|price_asc}:page={n}:size={n}
 
 ```
 application.product
-  ProductListCache           포트: find(ProductListQuery) / save(ProductListQuery, CachedProductList) / evictAll()
+  ProductListCache           포트: find(ProductListQuery) / save(ProductListQuery, CachedProductListInfo) / evictAll()
   ProductListQuery           조회 조건 record (brandId|null, sort, page, size)
-  CachedProductList        payload record (상품 id·name·price·brand{id,name}, totalElements). page·size는 키에 있어 담지 않음. likeCount 없음
+  CachedProductListInfo        payload record (상품 id·name·price·brand{id,name}, totalElements). page·size는 키에 있어 담지 않음. likeCount 없음
   ProductListItemInfo        고객 목록 항목 (payload 항목 + likeCount). DB 조회·hit 가 같은 타입을 돌려준다
   ProductListChangedEvent      관리자 쓰기가 발행하는 이벤트
   ProductListCacheEvictor    @TransactionalEventListener(AFTER_COMMIT) → evictAll()
@@ -226,7 +226,7 @@ infrastructure.product
   - 캐시 조회·저장과 hit의 좋아요 수 조회(SQL 1개)는 트랜잭션 밖에서 실행한다.
   - `ProductCacheQueryCountTest.TransactionScope`가 호출 순서와 트랜잭션 여부를 고정한다: 캐시 조회(밖) → 좋아요 수(안) → 캐시 저장(밖) / 캐시 조회(밖) → 좋아요 수(밖). SQL 수(miss 4, hit 1)는 그대로다.
 - **payload에서 `page`·`size` 제거**: 키에 이미 있고 hit 때도 요청의 페이지 정보로 결과를 만들어, 저장만 되고 읽히지 않았다. 배포 전이라 형식 버전 `v1`은 유지한다.
-- **변환 위치 통일**: 캐시 값 → 결과 변환을 `CachedProductList.Item.withLikeCount`로 옮겨, 결과 → 캐시 값 변환(`CachedProductList.from`)과 같은 곳에 둔다.
+- **변환 위치 통일**: 캐시 값 → 결과 변환을 `CachedProductListInfo.Item.withLikeCount`로 옮겨, 결과 → 캐시 값 변환(`CachedProductListInfo.from`)과 같은 곳에 둔다.
 
 ### 10-6. 측정과 최종 검사
 

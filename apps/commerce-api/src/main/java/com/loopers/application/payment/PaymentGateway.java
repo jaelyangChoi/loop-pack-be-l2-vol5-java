@@ -1,6 +1,6 @@
 package com.loopers.application.payment;
 
-import com.loopers.application.payment.pg.PgPaymentRequest;
+import com.loopers.application.payment.pg.PgPaymentRequestCommand;
 import com.loopers.application.payment.pg.PgPaymentRequestResult;
 import com.loopers.application.payment.pg.PgPaymentStatusCheckResult;
 
@@ -11,7 +11,7 @@ import com.loopers.application.payment.pg.PgPaymentStatusCheckResult;
 public interface PaymentGateway {
 
     /** 결제를 요청한다. 자동으로 재시도하지 않고, 예외 없이 모든 결과를 {@link PgPaymentRequestResult} 로 돌려준다. */
-    PgPaymentRequestResult requestPayment(PgPaymentRequest request);
+    PgPaymentRequestResult requestPayment(PgPaymentRequestCommand request);
 
     /** 거래 키로 PG 에 결제 상태를 묻는다. */
     PgPaymentStatusCheckResult checkPaymentStatusByTransactionKey(String transactionKey);

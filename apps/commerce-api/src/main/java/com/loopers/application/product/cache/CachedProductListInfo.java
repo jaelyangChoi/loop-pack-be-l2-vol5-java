@@ -11,9 +11,9 @@ import java.util.List;
  *
  * <p>좋아요 수는 가장 잦은 쓰기라 담지 않는다. 캐시를 쓸 때마다 카운터 테이블에서 읽어 합친다.
  */
-public record CachedProductList(List<Item> items, long totalElements) {
+public record CachedProductListInfo(List<Item> items, long totalElements) {
 
-    public CachedProductList {
+    public CachedProductListInfo {
         // 깨진 값(items 누락)을 정상 목록으로 읽지 않도록 만들 때 거절한다.
         items = List.copyOf(items);
     }
@@ -25,10 +25,10 @@ public record CachedProductList(List<Item> items, long totalElements) {
         }
     }
 
-    public static CachedProductList from(Page<ProductListItemInfo> page) {
+    public static CachedProductListInfo from(Page<ProductListItemInfo> page) {
         List<Item> items = page.getContent().stream()
             .map(info -> new Item(info.id(), info.name(), info.price(), info.brand()))
             .toList();
-        return new CachedProductList(items, page.getTotalElements());
+        return new CachedProductListInfo(items, page.getTotalElements());
     }
 }

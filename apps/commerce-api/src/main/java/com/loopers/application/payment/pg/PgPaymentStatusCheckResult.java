@@ -3,7 +3,7 @@ package com.loopers.application.payment.pg;
 import java.util.List;
 
 /** PG 에 결제 상태를 물어본 결과. {@code transactions} 는 {@code ANSWERED} 일 때만 의미가 있다. */
-public record PgPaymentStatusCheckResult(Outcome outcome, List<PgTransaction> transactions) {
+public record PgPaymentStatusCheckResult(Outcome outcome, List<PgTransactionInfo> transactions) {
 
     public enum Outcome {
         /** PG 가 답했다. 거래가 0건이어도 답이다(아직 안 보이는 것일 수 있어 거래가 없다는 증거는 아니다). */
@@ -14,7 +14,7 @@ public record PgPaymentStatusCheckResult(Outcome outcome, List<PgTransaction> tr
         COULD_NOT_CHECK
     }
 
-    public static PgPaymentStatusCheckResult answered(List<PgTransaction> transactions) {
+    public static PgPaymentStatusCheckResult answered(List<PgTransactionInfo> transactions) {
         return new PgPaymentStatusCheckResult(Outcome.ANSWERED, List.copyOf(transactions));
     }
 

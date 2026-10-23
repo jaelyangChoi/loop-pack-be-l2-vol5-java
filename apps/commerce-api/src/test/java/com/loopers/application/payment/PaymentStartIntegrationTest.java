@@ -3,7 +3,7 @@ package com.loopers.application.payment;
 import com.loopers.application.payment.dto.PaymentAttemptInfo;
 import com.loopers.application.payment.pg.PgPaymentRequestResult;
 import com.loopers.application.payment.pg.PgStatus;
-import com.loopers.application.payment.pg.PgTransaction;
+import com.loopers.application.payment.pg.PgTransactionInfo;
 import com.loopers.domain.order.OrderStatus;
 import com.loopers.domain.payment.PaymentAttemptStatus;
 import com.loopers.domain.product.Product;
@@ -390,8 +390,8 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             arrange();
             pg.onCreate(FakePgServer.rejectBeforeCreate());
             orderFacade.confirm(command(user, orderId, KEY));
-            PgTransaction lateTransaction =
-                new PgTransaction("TEST-TX-LATE", providerOrderIdOf(orderId), 7_000, PgStatus.PENDING);
+            PgTransactionInfo lateTransaction =
+                new PgTransactionInfo("TEST-TX-LATE", providerOrderIdOf(orderId), 7_000, PgStatus.PENDING);
 
             // act
             PaymentAttemptInfo info =

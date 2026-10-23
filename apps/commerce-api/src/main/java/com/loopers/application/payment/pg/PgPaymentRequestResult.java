@@ -1,7 +1,7 @@
 package com.loopers.application.payment.pg;
 
 /** 결제 요청의 결과. {@code transaction} 은 {@code ACCEPTED} 일 때만 있다. */
-public record PgPaymentRequestResult(Outcome outcome, PgTransaction transaction) {
+public record PgPaymentRequestResult(Outcome outcome, PgTransactionInfo transaction) {
 
     public enum Outcome {
         /** 거래를 만들었다(202). 요청과 식별·금액이 일치하고 PENDING 일 때만 이 결과다. */
@@ -12,7 +12,7 @@ public record PgPaymentRequestResult(Outcome outcome, PgTransaction transaction)
         UNKNOWN
     }
 
-    public static PgPaymentRequestResult accepted(PgTransaction transaction) {
+    public static PgPaymentRequestResult accepted(PgTransactionInfo transaction) {
         return new PgPaymentRequestResult(Outcome.ACCEPTED, transaction);
     }
 

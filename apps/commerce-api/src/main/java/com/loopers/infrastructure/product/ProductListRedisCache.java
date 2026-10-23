@@ -4,7 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.loopers.application.product.cache.ProductListCache;
 import com.loopers.application.product.dto.ProductListQuery;
-import com.loopers.application.product.cache.CachedProductList;
+import com.loopers.application.product.cache.CachedProductListInfo;
 import com.loopers.config.redis.RedisConfig;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
@@ -56,14 +56,14 @@ public class ProductListRedisCache implements ProductListCache {
     }
 
     @Override
-    public Optional<CachedProductList> find(ProductListQuery query) {
+    public Optional<CachedProductListInfo> find(ProductListQuery query) {
         String key = keyOf(query);
         try {
             String payload = redisTemplate.opsForValue().get(key);
             if (payload == null) {
                 return Optional.empty();
             }
-            return Optional.of(objectMapper.readValue(payload, CachedProductList.class));
+            return Optional.of(objectMapper.readValue(payload, CachedProductListInfo.class));
         } catch (DataAccessException | JsonProcessingException e) {
             recordError("find", key, e);
             return Optional.empty();
@@ -71,7 +71,7 @@ public class ProductListRedisCache implements ProductListCache {
     }
 
     @Override
-    public void save(ProductListQuery query, CachedProductList snapshot) {
+    public void save(ProductListQuery query, CachedProductListInfo snapshot) {
         String key = keyOf(query);
         try {
             redisTemplate.opsForValue().set(key, objectMapper.writeValueAsString(snapshot), ttl);

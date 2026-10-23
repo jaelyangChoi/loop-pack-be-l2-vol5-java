@@ -1,6 +1,6 @@
 package com.loopers.application.order;
 
-import com.loopers.application.order.dto.ConfirmPreparation;
+import com.loopers.application.order.dto.ConfirmPreparationResult;
 import com.loopers.application.order.dto.OrderConfirmCommand;
 import com.loopers.application.order.dto.OrderInfo;
 import com.loopers.application.order.dto.OrderItemCommand;
@@ -8,7 +8,7 @@ import com.loopers.application.order.dto.OrderSummaryInfo;
 import com.loopers.application.payment.PaymentGateway;
 import com.loopers.application.payment.PaymentResultApplier;
 import com.loopers.application.payment.dto.PaymentAttemptInfo;
-import com.loopers.application.payment.pg.PgPaymentRequest;
+import com.loopers.application.payment.pg.PgPaymentRequestCommand;
 import com.loopers.application.payment.pg.PgPaymentRequestResult;
 import com.loopers.domain.order.Order;
 import com.loopers.domain.order.OrderLine;
@@ -105,7 +105,7 @@ public class OrderFacade {
      * CONFIRMED 가 된다. 결과 미확인이어도 create 를 다시 보내지 않는다.
      */
     public PaymentAttemptInfo confirm(OrderConfirmCommand command) {
-        ConfirmPreparation preparation = prepareConfirm(command);
+        ConfirmPreparationResult preparation = prepareConfirm(command);
         if (!preparation.isNewAttempt()) {
             return preparation.info();
         }
@@ -116,12 +116,12 @@ public class OrderFacade {
     }
 
     /** TX A. PG 호출 전에 주문 잠금, 재고 차감, 시도 저장을 한 번에 commit 한다. 실패하면 전부 rollback 되고 PG 는 호출하지 않는다. */
-    public ConfirmPreparation prepareConfirm(OrderConfirmCommand command) {
+    public ConfirmPreparationResult prepareConfirm(OrderConfirmCommand command) {
         return writeTransaction.execute(status -> prepare(command));
     }
 
     // 시도를 새로 저장한 실행만 PG 에 보낸다. 이미 시도가 있으면 같은 키는 저장된 상태를, 다른 키는 충돌을 돌려준다.
-    private ConfirmPreparation prepare(OrderConfirmCommand command) {
+    private ConfirmPreparationResult prepare(OrderConfirmCommand command) {
         // 주문 행 잠금이 같은 주문의 동시 요청을 줄 세운다.
         Order order = orderService.getMineForUpdate(command.orderId(), command.userId());
 
@@ -137,20 +137,20 @@ public class OrderFacade {
         order.markPaymentPending(); // 이미 확정된 주문은 ORDER_ALREADY_CONFIRMED
         orderStockService.deductStock(order);
         PaymentAttempt attempt = saveAttempt(order, command);
-        return new ConfirmPreparation(
+        return new ConfirmPreparationResult(
             PaymentAttemptInfo.of(order, attempt),
-            new PgPaymentRequest(
+            new PgPaymentRequestCommand(
                 attempt.getProviderOrderId(), command.cardType(), command.cardNo(), attempt.getAmount().amount()
             )
         );
     }
 
     // 이미 시도가 있는 주문의 재요청. 새 키를 보내도 두 번째 시도는 만들지 않는다.
-    private ConfirmPreparation returnExisting(Order order, PaymentAttempt attempt, OrderConfirmCommand command) {
+    private ConfirmPreparationResult returnExisting(Order order, PaymentAttempt attempt, OrderConfirmCommand command) {
         if (!attempt.getAttemptKey().equals(command.attemptKey())) {
             throw attemptConflict();
         }
-        return new ConfirmPreparation(PaymentAttemptInfo.of(order, attempt), null);
+        return new ConfirmPreparationResult(PaymentAttemptInfo.of(order, attempt), null);
     }
 
     // 다른 주문이 같은 키를 동시에 쓰면 유일 제약이 마지막 방어선이다. 이때 차감한 재고도 함께 rollback 된다.

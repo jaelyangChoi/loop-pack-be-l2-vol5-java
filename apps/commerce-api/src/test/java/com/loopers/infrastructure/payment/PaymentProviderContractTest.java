@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.loopers.application.payment.pg.PgPaymentRequestResult;
 import com.loopers.application.payment.pg.PgPaymentStatusCheckResult;
-import com.loopers.application.payment.pg.PgPaymentRequest;
+import com.loopers.application.payment.pg.PgPaymentRequestCommand;
 import com.loopers.application.payment.pg.PgStatus;
-import com.loopers.application.payment.pg.PgTransaction;
+import com.loopers.application.payment.pg.PgTransactionInfo;
 import com.loopers.support.pg.FakePgServer;
 import com.loopers.support.pg.FakePgServer.FakeTransaction;
 import com.loopers.support.pg.FakePgServer.RecordedRequest;
@@ -65,8 +65,8 @@ class PaymentProviderContractTest {
         gateway = new PaymentGatewayImpl(client);
     }
 
-    private PgPaymentRequest request() {
-        return new PgPaymentRequest(ORDER_ID, "TEST", CARD_NO, 7_000);
+    private PgPaymentRequestCommand request() {
+        return new PgPaymentRequestCommand(ORDER_ID, "TEST", CARD_NO, 7_000);
     }
 
     @DisplayName("결제를 생성할 때,")
@@ -104,7 +104,7 @@ class PaymentProviderContractTest {
             // assert
             assertThat(result.outcome()).isEqualTo(PgPaymentRequestResult.Outcome.ACCEPTED);
             assertThat(result.transaction())
-                .isEqualTo(new PgTransaction("TEST-TX-0001", ORDER_ID, 7_000, PgStatus.PENDING));
+                .isEqualTo(new PgTransactionInfo("TEST-TX-0001", ORDER_ID, 7_000, PgStatus.PENDING));
             assertThat(pg.transactionCount()).isEqualTo(1);
             assertThat(pg.createCalls()).isEqualTo(1);
         }
@@ -263,7 +263,7 @@ class PaymentProviderContractTest {
             assertThat(sent.headers()).containsEntry("x-user-id", "135135");
             assertThat(lookup.outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.ANSWERED);
             assertThat(lookup.transactions())
-                .containsExactly(new PgTransaction(seeded.key(), ORDER_ID, 7_000, PgStatus.SUCCESS));
+                .containsExactly(new PgTransactionInfo(seeded.key(), ORDER_ID, 7_000, PgStatus.SUCCESS));
             assertThat(pg.lookupByKeyCalls()).isEqualTo(1);
         }
 
@@ -356,7 +356,7 @@ class PaymentProviderContractTest {
             assertThat(sent.headers()).containsEntry("x-user-id", "135135");
             assertThat(lookup.outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.ANSWERED);
             assertThat(lookup.transactions())
-                .containsExactly(new PgTransaction(mine.key(), ORDER_ID, 7_000, PgStatus.PENDING));
+                .containsExactly(new PgTransactionInfo(mine.key(), ORDER_ID, 7_000, PgStatus.PENDING));
             assertThat(pg.lookupByOrderCalls()).isEqualTo(1);
         }
 
@@ -380,7 +380,7 @@ class PaymentProviderContractTest {
 
             // assert
             assertThat(lookup.outcome()).isEqualTo(PgPaymentStatusCheckResult.Outcome.ANSWERED);
-            assertThat(lookup.transactions()).extracting(PgTransaction::status)
+            assertThat(lookup.transactions()).extracting(PgTransactionInfo::status)
                 .containsExactly(PgStatus.PENDING, PgStatus.SUCCESS);
         }
 

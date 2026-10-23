@@ -7,7 +7,7 @@ import com.loopers.application.payment.dto.PaymentCheckInfo;
 import com.loopers.application.payment.pg.PgPaymentRequestResult;
 import com.loopers.application.payment.pg.PgPaymentStatusCheckResult;
 import com.loopers.application.payment.pg.PgStatus;
-import com.loopers.application.payment.pg.PgTransaction;
+import com.loopers.application.payment.pg.PgTransactionInfo;
 import com.loopers.domain.order.OrderService;
 import com.loopers.domain.order.OrderStatus;
 import com.loopers.domain.order.OrderStockService;
@@ -476,13 +476,13 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             reconcile();
 
             // act 1: 같은 결과
-            applyPaymentStatusCheckResult(orderId, PgPaymentStatusCheckResult.answered(List.of(new PgTransaction(key, providerOrderIdOf(orderId), 7_000, PgStatus.SUCCESS))));
+            applyPaymentStatusCheckResult(orderId, PgPaymentStatusCheckResult.answered(List.of(new PgTransactionInfo(key, providerOrderIdOf(orderId), 7_000, PgStatus.SUCCESS))));
 
             // assert 1
             assertThat(attemptOf(orderId).get("anomaly")).isNull();
 
             // act 2: 같은 거래가 FAILED 로 관찰됨(상충)
-            applyPaymentStatusCheckResult(orderId, PgPaymentStatusCheckResult.answered(List.of(new PgTransaction(key, providerOrderIdOf(orderId), 7_000, PgStatus.FAILED))));
+            applyPaymentStatusCheckResult(orderId, PgPaymentStatusCheckResult.answered(List.of(new PgTransactionInfo(key, providerOrderIdOf(orderId), 7_000, PgStatus.FAILED))));
 
             // assert 2
             assertThat(orderStatusOf(orderId)).isEqualTo("CONFIRMED");
@@ -501,7 +501,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             reconcile();
 
             // act
-            applyPaymentStatusCheckResult(orderId, PgPaymentStatusCheckResult.answered(List.of(new PgTransaction(key, providerOrderIdOf(orderId), 7_000, PgStatus.PENDING))));
+            applyPaymentStatusCheckResult(orderId, PgPaymentStatusCheckResult.answered(List.of(new PgTransactionInfo(key, providerOrderIdOf(orderId), 7_000, PgStatus.PENDING))));
 
             // assert
             assertThat(attemptOf(orderId).get("status")).isEqualTo("SUCCEEDED");
@@ -520,7 +520,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             // act: 늦게 도착한 결과 미확인과, 같은 거래를 알리는 생성 응답
             applyPaymentRequestResult(orderId, PgPaymentRequestResult.unknown());
             applyPaymentRequestResult(orderId, PgPaymentRequestResult.accepted(
-                new PgTransaction(key, providerOrderIdOf(orderId), 7_000, PgStatus.PENDING)));
+                new PgTransactionInfo(key, providerOrderIdOf(orderId), 7_000, PgStatus.PENDING)));
 
             // assert
             assertThat(orderStatusOf(orderId)).isEqualTo("CONFIRMED");

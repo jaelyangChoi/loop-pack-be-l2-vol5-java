@@ -1,6 +1,6 @@
 package com.loopers.application.product;
 
-import com.loopers.application.product.cache.CachedProductList;
+import com.loopers.application.product.cache.CachedProductListInfo;
 import com.loopers.application.product.cache.ProductListCache;
 import com.loopers.application.product.dto.ProductListItemInfo;
 import com.loopers.application.product.dto.ProductListQuery;
@@ -132,7 +132,7 @@ class ProductCacheLatencyBenchmarkTest {
     @DisplayName("영역 비우기(SCAN + UNLINK)의 시간을 키 수별로 기록한다.")
     @Test
     void measureEvictAll() {
-        CachedProductList snapshot = CachedProductList.from(request(7L, "price_asc"));
+        CachedProductListInfo snapshot = CachedProductListInfo.from(request(7L, "price_asc"));
         for (int keys : List.of(100, 1_000, 10_000)) {
             long[] samples = new long[5];
             for (int i = 0; i < samples.length; i++) {

@@ -3,10 +3,10 @@ package com.loopers.infrastructure.payment;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.loopers.application.payment.pg.PgPaymentRequest;
+import com.loopers.application.payment.pg.PgPaymentRequestCommand;
 import com.loopers.application.payment.pg.PgPaymentRequestResult;
 import com.loopers.application.payment.pg.PgStatus;
-import com.loopers.application.payment.pg.PgTransaction;
+import com.loopers.application.payment.pg.PgTransactionInfo;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import jakarta.annotation.PreDestroy;
@@ -78,7 +78,7 @@ public class TestPgClient {
     }
 
     /** 결제 생성을 한 번 요청한다. 어떤 결과든 예외 없이 {@link PgPaymentRequestResult} 로 돌려준다. */
-    public PgPaymentRequestResult create(PgPaymentRequest request) {
+    public PgPaymentRequestResult create(PgPaymentRequestCommand request) {
         byte[] payload = createPayload(request);
         RawResponse response;
         try {
@@ -97,7 +97,7 @@ public class TestPgClient {
     /** 거래 키로 한 건을 조회한다. PG 가 모르는 키(404)이면 비어 있다. 조회하지 못하면 예외를 던진다. */
     @Retry(name = LOOKUP_RESILIENCE)
     @CircuitBreaker(name = LOOKUP_RESILIENCE)
-    public Optional<PgTransaction> getTransaction(String transactionKey) {
+    public Optional<PgTransactionInfo> getTransaction(String transactionKey) {
         RawResponse response = lookup(() -> lookupClient.get()
             .uri(PAYMENTS_PATH + "/{transactionKey}", transactionKey)
             .accept(MediaType.APPLICATION_JSON)
@@ -114,7 +114,7 @@ public class TestPgClient {
     /** 주문 식별자로 거래 목록을 조회한다. 거래가 없으면 빈 목록이다. 조회하지 못하면 예외를 던진다. */
     @Retry(name = LOOKUP_RESILIENCE)
     @CircuitBreaker(name = LOOKUP_RESILIENCE)
-    public List<PgTransaction> getTransactions(String providerOrderId) {
+    public List<PgTransactionInfo> getTransactions(String providerOrderId) {
         RawResponse response = lookup(() -> lookupClient.get()
             .uri(uriBuilder -> uriBuilder.path(PAYMENTS_PATH).queryParam("orderId", "{orderId}").build(providerOrderId))
             .accept(MediaType.APPLICATION_JSON)
@@ -124,7 +124,7 @@ public class TestPgClient {
         if (root == null || !root.isArray()) {
             throw new PgUnavailableException("해석할 수 없는 거래 목록 응답");
         }
-        List<PgTransaction> transactions = new ArrayList<>();
+        List<PgTransactionInfo> transactions = new ArrayList<>();
         for (JsonNode element : root) {
             transactions.add(parseTransaction(element).orElseThrow(
                 () -> new PgUnavailableException("해석할 수 없는 거래 목록 응답")
@@ -133,7 +133,7 @@ public class TestPgClient {
         return transactions;
     }
 
-    private byte[] createPayload(PgPaymentRequest request) {
+    private byte[] createPayload(PgPaymentRequestCommand request) {
         try {
             return objectMapper.writeValueAsBytes(
                 objectMapper.createObjectNode()
@@ -152,9 +152,9 @@ public class TestPgClient {
      * 202 이고 본문이 요청과 맞는 PENDING 거래이면 수락, 4조건을 모두 만족한 422 이면 효과 없는 확정 거절이다. 나머지는
      * 거래 생성 여부를 알 수 없으므로 모두 Unknown 이다.
      */
-    private PgPaymentRequestResult mapCreateResponse(PgPaymentRequest request, RawResponse response) {
+    private PgPaymentRequestResult mapCreateResponse(PgPaymentRequestCommand request, RawResponse response) {
         if (response.status() == 202) {
-            Optional<PgTransaction> transaction = parseTransaction(readTree(response.body()));
+            Optional<PgTransactionInfo> transaction = parseTransaction(readTree(response.body()));
             if (transaction.isPresent() && matchesAcceptedRequest(request, transaction.get())) {
                 return PgPaymentRequestResult.accepted(transaction.get());
             }
@@ -172,14 +172,14 @@ public class TestPgClient {
         return PgPaymentRequestResult.unknown();
     }
 
-    private boolean matchesAcceptedRequest(PgPaymentRequest request, PgTransaction transaction) {
+    private boolean matchesAcceptedRequest(PgPaymentRequestCommand request, PgTransactionInfo transaction) {
         return transaction.status() == PgStatus.PENDING
             && transaction.providerOrderId().equals(request.providerOrderId())
             && transaction.amount() == request.amount();
     }
 
     // 422 + 정확한 code + boolean false + 요청 orderId·amount 일치. 하나라도 어긋나면 효과가 없다는 증거가 아니다.
-    private boolean isConfirmedRejection(PgPaymentRequest request, JsonNode body) {
+    private boolean isConfirmedRejection(PgPaymentRequestCommand request, JsonNode body) {
         if (body == null || !body.isObject()) {
             return false;
         }
@@ -193,7 +193,7 @@ public class TestPgClient {
             && isLong(amount) && amount.asLong() == request.amount();
     }
 
-    private Optional<PgTransaction> parseTransaction(JsonNode node) {
+    private Optional<PgTransactionInfo> parseTransaction(JsonNode node) {
         if (node == null || !node.isObject()) {
             return Optional.empty();
         }
@@ -205,7 +205,7 @@ public class TestPgClient {
             return Optional.empty();
         }
         try {
-            return Optional.of(new PgTransaction(
+            return Optional.of(new PgTransactionInfo(
                 transactionKey.asText(), orderId.asText(), amount.asLong(), PgStatus.valueOf(status.asText())
             ));
         } catch (IllegalArgumentException e) {

@@ -1,7 +1,7 @@
 package com.loopers.infrastructure.payment;
 
 import com.loopers.application.payment.PaymentGateway;
-import com.loopers.application.payment.pg.PgPaymentRequest;
+import com.loopers.application.payment.pg.PgPaymentRequestCommand;
 import com.loopers.application.payment.pg.PgPaymentRequestResult;
 import com.loopers.application.payment.pg.PgPaymentStatusCheckResult;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
@@ -23,7 +23,7 @@ public class PaymentGatewayImpl implements PaymentGateway {
     private final TestPgClient client;
 
     @Override
-    public PgPaymentRequestResult requestPayment(PgPaymentRequest request) {
+    public PgPaymentRequestResult requestPayment(PgPaymentRequestCommand request) {
         return client.create(request);
     }
 
