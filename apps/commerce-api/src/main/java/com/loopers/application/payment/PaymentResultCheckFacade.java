@@ -23,7 +23,7 @@ import java.util.function.Supplier;
 public class PaymentResultCheckFacade {
 
     private final PaymentGateway paymentGateway;
-    private final PaymentResultApplier paymentResultApplier;
+    private final PaymentStatusUpdater paymentStatusUpdater;
     private final OrderService orderService;
     private final PaymentAttemptService paymentAttemptService;
     private final TransactionTemplate readOnlyTransaction;
@@ -31,13 +31,13 @@ public class PaymentResultCheckFacade {
 
     public PaymentResultCheckFacade(
         PaymentGateway paymentGateway,
-        PaymentResultApplier paymentResultApplier,
+        PaymentStatusUpdater paymentStatusUpdater,
         OrderService orderService,
         PaymentAttemptService paymentAttemptService,
         PlatformTransactionManager transactionManager
     ) {
         this.paymentGateway = paymentGateway;
-        this.paymentResultApplier = paymentResultApplier;
+        this.paymentStatusUpdater = paymentStatusUpdater;
         this.orderService = orderService;
         this.paymentAttemptService = paymentAttemptService;
         this.readOnlyTransaction = new TransactionTemplate(transactionManager);
@@ -69,7 +69,7 @@ public class PaymentResultCheckFacade {
             return new PaymentCheckInfo(target, true);
         }
         PaymentAttemptInfo info = writeTransaction.execute(
-            status -> paymentResultApplier.applyPaymentStatusCheckResult(target.orderId(), checkResult)
+            status -> paymentStatusUpdater.updateByStatusCheckResult(target.orderId(), checkResult)
         );
         return new PaymentCheckInfo(info, false);
     }

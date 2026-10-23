@@ -25,14 +25,14 @@ import java.util.List;
  */
 @RequiredArgsConstructor
 @Component
-public class PaymentResultApplier {
+public class PaymentStatusUpdater {
 
     private final OrderService orderService;
     private final PaymentAttemptService paymentAttemptService;
     private final OrderStockService orderStockService;
 
     /** 결제 생성 요청의 결과를 반영한다. */
-    public PaymentAttemptInfo applyPaymentRequestResult(Long orderId, PgPaymentRequestResult result) {
+    public PaymentAttemptInfo updateByPaymentRequestResult(Long orderId, PgPaymentRequestResult result) {
         Order order = orderService.getForUpdate(orderId);
         PaymentAttempt attempt = paymentAttemptService.getByOrderId(orderId);
         switch (result.outcome()) {
@@ -47,7 +47,7 @@ public class PaymentResultApplier {
      * PG 에 물어 확인한 사실을 반영한다. confirm 직후·고객의 확인·PG 의 알림이 모두 여기를 거치므로 입구의 순서가 바뀌어도
      * 같은 결과로 수렴한다. 재고 반환은 {@code PAYMENT_PENDING → PAYMENT_FAILED} 전이와 같은 트랜잭션에서 한 번만 일어난다.
      */
-    public PaymentAttemptInfo applyPaymentStatusCheckResult(Long orderId, PgPaymentStatusCheckResult checkResult) {
+    public PaymentAttemptInfo updateByStatusCheckResult(Long orderId, PgPaymentStatusCheckResult checkResult) {
         Order order = orderService.getForUpdate(orderId);
         PaymentAttempt attempt = paymentAttemptService.getByOrderId(orderId);
         switch (checkResult.outcome()) {

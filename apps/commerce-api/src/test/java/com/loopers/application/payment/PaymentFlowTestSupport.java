@@ -64,7 +64,7 @@ public abstract class PaymentFlowTestSupport {
     protected PaymentResultCheckFacade paymentResultCheckFacade;
 
     @Autowired
-    protected PaymentResultApplier paymentResultApplier;
+    protected PaymentStatusUpdater paymentStatusUpdater;
 
     @Autowired
     private PlatformTransactionManager transactionManager;
@@ -156,15 +156,15 @@ public abstract class PaymentFlowTestSupport {
     }
 
     // 결과 반영은 호출하는 Facade 가 트랜잭션을 연다. Facade 를 거치지 않고 반영 로직만 실행할 때도 같은 경계를 만든다.
-    protected PaymentAttemptInfo applyPaymentRequestResult(Long orderId, PgPaymentRequestResult result) {
+    protected PaymentAttemptInfo updateByPaymentRequestResult(Long orderId, PgPaymentRequestResult result) {
         return new TransactionTemplate(transactionManager).execute(
-            status -> paymentResultApplier.applyPaymentRequestResult(orderId, result)
+            status -> paymentStatusUpdater.updateByPaymentRequestResult(orderId, result)
         );
     }
 
-    protected PaymentAttemptInfo applyPaymentStatusCheckResult(Long orderId, PgPaymentStatusCheckResult checkResult) {
+    protected PaymentAttemptInfo updateByStatusCheckResult(Long orderId, PgPaymentStatusCheckResult checkResult) {
         return new TransactionTemplate(transactionManager).execute(
-            status -> paymentResultApplier.applyPaymentStatusCheckResult(orderId, checkResult)
+            status -> paymentStatusUpdater.updateByStatusCheckResult(orderId, checkResult)
         );
     }
 }

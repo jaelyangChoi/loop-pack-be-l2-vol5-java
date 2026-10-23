@@ -6,7 +6,7 @@ import com.loopers.application.order.dto.OrderInfo;
 import com.loopers.application.order.dto.OrderItemCommand;
 import com.loopers.application.order.dto.OrderSummaryInfo;
 import com.loopers.application.payment.PaymentGateway;
-import com.loopers.application.payment.PaymentResultApplier;
+import com.loopers.application.payment.PaymentStatusUpdater;
 import com.loopers.application.payment.dto.PaymentAttemptInfo;
 import com.loopers.application.payment.pg.PgPaymentRequestCommand;
 import com.loopers.application.payment.pg.PgPaymentRequestResult;
@@ -47,7 +47,7 @@ public class OrderFacade {
     private final OrderStockService orderStockService;
     private final PaymentAttemptService paymentAttemptService;
     private final PaymentGateway paymentGateway;
-    private final PaymentResultApplier paymentResultApplier;
+    private final PaymentStatusUpdater paymentStatusUpdater;
     private final TransactionTemplate writeTransaction;
 
     public OrderFacade(
@@ -56,7 +56,7 @@ public class OrderFacade {
         OrderStockService orderStockService,
         PaymentAttemptService paymentAttemptService,
         PaymentGateway paymentGateway,
-        PaymentResultApplier paymentResultApplier,
+        PaymentStatusUpdater paymentStatusUpdater,
         PlatformTransactionManager transactionManager
     ) {
         this.productService = productService;
@@ -64,7 +64,7 @@ public class OrderFacade {
         this.orderStockService = orderStockService;
         this.paymentAttemptService = paymentAttemptService;
         this.paymentGateway = paymentGateway;
-        this.paymentResultApplier = paymentResultApplier;
+        this.paymentStatusUpdater = paymentStatusUpdater;
         this.writeTransaction = new TransactionTemplate(transactionManager);
     }
 
@@ -111,7 +111,7 @@ public class OrderFacade {
         }
         PgPaymentRequestResult result = paymentGateway.requestPayment(preparation.request());
         return writeTransaction.execute(
-            status -> paymentResultApplier.applyPaymentRequestResult(preparation.info().orderId(), result)
+            status -> paymentStatusUpdater.updateByPaymentRequestResult(preparation.info().orderId(), result)
         );
     }
 

@@ -476,13 +476,13 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             reconcile();
 
             // act 1: 같은 결과
-            applyPaymentStatusCheckResult(orderId, PgPaymentStatusCheckResult.answered(List.of(new PgTransactionInfo(key, providerOrderIdOf(orderId), 7_000, PgStatus.SUCCESS))));
+            updateByStatusCheckResult(orderId, PgPaymentStatusCheckResult.answered(List.of(new PgTransactionInfo(key, providerOrderIdOf(orderId), 7_000, PgStatus.SUCCESS))));
 
             // assert 1
             assertThat(attemptOf(orderId).get("anomaly")).isNull();
 
             // act 2: 같은 거래가 FAILED 로 관찰됨(상충)
-            applyPaymentStatusCheckResult(orderId, PgPaymentStatusCheckResult.answered(List.of(new PgTransactionInfo(key, providerOrderIdOf(orderId), 7_000, PgStatus.FAILED))));
+            updateByStatusCheckResult(orderId, PgPaymentStatusCheckResult.answered(List.of(new PgTransactionInfo(key, providerOrderIdOf(orderId), 7_000, PgStatus.FAILED))));
 
             // assert 2
             assertThat(orderStatusOf(orderId)).isEqualTo("CONFIRMED");
@@ -501,7 +501,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             reconcile();
 
             // act
-            applyPaymentStatusCheckResult(orderId, PgPaymentStatusCheckResult.answered(List.of(new PgTransactionInfo(key, providerOrderIdOf(orderId), 7_000, PgStatus.PENDING))));
+            updateByStatusCheckResult(orderId, PgPaymentStatusCheckResult.answered(List.of(new PgTransactionInfo(key, providerOrderIdOf(orderId), 7_000, PgStatus.PENDING))));
 
             // assert
             assertThat(attemptOf(orderId).get("status")).isEqualTo("SUCCEEDED");
@@ -518,8 +518,8 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             callback(key);
 
             // act: 늦게 도착한 결과 미확인과, 같은 거래를 알리는 생성 응답
-            applyPaymentRequestResult(orderId, PgPaymentRequestResult.unknown());
-            applyPaymentRequestResult(orderId, PgPaymentRequestResult.accepted(
+            updateByPaymentRequestResult(orderId, PgPaymentRequestResult.unknown());
+            updateByPaymentRequestResult(orderId, PgPaymentRequestResult.accepted(
                 new PgTransactionInfo(key, providerOrderIdOf(orderId), 7_000, PgStatus.PENDING)));
 
             // assert
@@ -540,14 +540,14 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
 
         private PaymentResultCheckFacade restartedFacade() {
             return new PaymentResultCheckFacade(
-                restartedGateway(), paymentResultApplier, orderService, paymentAttemptService, transactionManager
+                restartedGateway(), paymentStatusUpdater, orderService, paymentAttemptService, transactionManager
             );
         }
 
         private OrderFacade restartedOrderFacade() {
             return new OrderFacade(
                 productService, orderService, orderStockService, paymentAttemptService, restartedGateway(),
-                paymentResultApplier, transactionManager
+                paymentStatusUpdater, transactionManager
             );
         }
 

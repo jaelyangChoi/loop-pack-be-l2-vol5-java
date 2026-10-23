@@ -170,8 +170,8 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             orderFacade.confirm(command(user, orderId, KEY));
 
             // act
-            applyPaymentRequestResult(orderId, PgPaymentRequestResult.rejectedWithoutTransaction());
-            applyPaymentRequestResult(orderId, PgPaymentRequestResult.rejectedWithoutTransaction());
+            updateByPaymentRequestResult(orderId, PgPaymentRequestResult.rejectedWithoutTransaction());
+            updateByPaymentRequestResult(orderId, PgPaymentRequestResult.rejectedWithoutTransaction());
 
             // assert
             assertThat(stockOf(product)).isEqualTo(5);
@@ -376,7 +376,7 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             orderFacade.confirm(command(user, orderId, KEY));
 
             // act
-            PaymentAttemptInfo info = applyPaymentRequestResult(orderId, PgPaymentRequestResult.unknown());
+            PaymentAttemptInfo info = updateByPaymentRequestResult(orderId, PgPaymentRequestResult.unknown());
 
             // assert
             assertThat(info.attemptStatus()).isEqualTo(PaymentAttemptStatus.PENDING);
@@ -395,7 +395,7 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
 
             // act
             PaymentAttemptInfo info =
-                applyPaymentRequestResult(orderId, PgPaymentRequestResult.accepted(lateTransaction));
+                updateByPaymentRequestResult(orderId, PgPaymentRequestResult.accepted(lateTransaction));
 
             // assert
             assertThat(info.attemptStatus()).isEqualTo(PaymentAttemptStatus.FAILED);
@@ -415,7 +415,7 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
 
             // act
             PaymentAttemptInfo info =
-                applyPaymentRequestResult(orderId, PgPaymentRequestResult.rejectedWithoutTransaction());
+                updateByPaymentRequestResult(orderId, PgPaymentRequestResult.rejectedWithoutTransaction());
 
             // assert
             assertThat(info.attemptStatus()).isEqualTo(PaymentAttemptStatus.PENDING);
@@ -439,7 +439,7 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
 
             // act: 이 확정 거절은 결과 미확인 시도를 FAILED 로 종결하는 경로를 쓴다(조회로 FAILED 를 확인했을 때와 같은 반환).
             PaymentAttemptInfo info =
-                applyPaymentRequestResult(orderId, PgPaymentRequestResult.rejectedWithoutTransaction());
+                updateByPaymentRequestResult(orderId, PgPaymentRequestResult.rejectedWithoutTransaction());
 
             // assert
             assertThat(info.orderStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED);
