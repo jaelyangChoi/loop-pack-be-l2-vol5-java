@@ -168,7 +168,7 @@ class ProductQueryLatencyBenchmarkTest {
 
         t = System.nanoTime();
         drain(statement, "select c1_0.product_id,c1_0.like_count from product_like_counts c1_0 "
-            + "where c1_0.product_id in (" + join(productIds) + ") and c1_0.like_count>0");
+            + "where c1_0.product_id in (" + join(productIds) + ")");
         nanos.put("likes", System.nanoTime() - t);
 
         nanos.put("total", System.nanoTime() - start);
