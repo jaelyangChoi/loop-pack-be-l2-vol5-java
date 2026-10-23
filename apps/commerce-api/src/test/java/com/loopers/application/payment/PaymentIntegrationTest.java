@@ -18,7 +18,7 @@ import com.loopers.domain.product.ProductService;
 import com.loopers.domain.user.User;
 import com.loopers.infrastructure.payment.PaymentGatewayImpl;
 import com.loopers.infrastructure.payment.PaymentPgProperties;
-import com.loopers.infrastructure.payment.TestPgClient;
+import com.loopers.infrastructure.payment.PgHttpClient;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import com.loopers.support.pg.FakePgServer;
@@ -535,7 +535,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
     class Restart {
         // 서비스·client 를 새로 만든다. DB 와 PG 의 거래 상태는 그대로다.
         private PaymentGateway restartedGateway() {
-            return new PaymentGatewayImpl(new TestPgClient(pgProperties, new ObjectMapper()));
+            return new PaymentGatewayImpl(new PgHttpClient(pgProperties, new ObjectMapper()));
         }
 
         private PaymentResultCheckFacade restartedFacade() {

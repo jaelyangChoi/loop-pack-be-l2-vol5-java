@@ -13,7 +13,7 @@ import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.Stock;
 import com.loopers.domain.user.User;
 import com.loopers.domain.user.UserRepository;
-import com.loopers.infrastructure.payment.TestPgClient;
+import com.loopers.infrastructure.payment.PgHttpClient;
 import com.loopers.support.pg.FakePgServer;
 import com.loopers.utils.DatabaseCleanUp;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
@@ -93,7 +93,7 @@ public abstract class PaymentFlowTestSupport {
     @BeforeEach
     void resetPg() {
         PG.reset();
-        circuitBreakerRegistry.circuitBreaker(TestPgClient.LOOKUP_RESILIENCE).reset();
+        circuitBreakerRegistry.circuitBreaker(PgHttpClient.LOOKUP_RESILIENCE).reset();
         pg = PG;
     }
 

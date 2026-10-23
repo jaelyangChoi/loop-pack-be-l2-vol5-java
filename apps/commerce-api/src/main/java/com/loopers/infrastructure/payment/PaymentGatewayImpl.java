@@ -10,41 +10,38 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.function.Supplier;
 
-/**
- * {@link PaymentGateway} 의 구현. {@link TestPgClient} 의 HTTP 결과를 포트의 결과 타입으로 옮긴다. 조회하지 못한 실패
- * ({@link PgUnavailableException}, {@link CallNotPermittedException})는 {@code COULD_NOT_CHECK} 로 바꾼다. 거래가 없다는
- * 뜻이 아니므로 {@code KEY_NOT_FOUND}·빈 목록과 섞지 않는다.
- */
+/** {@link PaymentGateway} 의 구현. {@link PgHttpClient} 의 결과를 포트의 결과 타입으로 옮기고, 조회 실패는 {@code COULD_NOT_CHECK} 로 바꾼다. */
 @Slf4j
 @RequiredArgsConstructor
 @Component
 public class PaymentGatewayImpl implements PaymentGateway {
-    private final TestPgClient client;
+    private final PgHttpClient client;
 
     @Override
     public PgPaymentRequestResult requestPayment(PgPaymentRequestCommand request) {
-        return client.create(request);
+        return client.requestPayment(request);
     }
 
     @Override
     public PgPaymentStatusCheckResult checkPaymentStatusByTransactionKey(String transactionKey) {
-        try {
-            return client.getTransaction(transactionKey)
-                .map(transaction -> PgPaymentStatusCheckResult.answered(List.of(transaction)))
-                .orElseGet(PgPaymentStatusCheckResult::keyNotFound);
-        } catch (PgUnavailableException | CallNotPermittedException e) {
-            log.warn("PG 거래 조회 불가 (transactionKey={}): {}", transactionKey, e.getMessage());
-            return PgPaymentStatusCheckResult.couldNotCheck();
-        }
+        return checkOrCouldNotCheck("transactionKey=" + transactionKey, () -> client.getTransactionByKey(transactionKey)
+            .map(transaction -> PgPaymentStatusCheckResult.answered(List.of(transaction)))
+            .orElseGet(PgPaymentStatusCheckResult::keyNotFound));
     }
 
     @Override
     public PgPaymentStatusCheckResult checkPaymentStatusByOrder(String providerOrderId) {
+        return checkOrCouldNotCheck("providerOrderId=" + providerOrderId,
+            () -> PgPaymentStatusCheckResult.answered(client.getTransactionsByOrder(providerOrderId)));
+    }
+
+    private PgPaymentStatusCheckResult checkOrCouldNotCheck(String target, Supplier<PgPaymentStatusCheckResult> check) {
         try {
-            return PgPaymentStatusCheckResult.answered(client.getTransactions(providerOrderId));
-        } catch (PgUnavailableException | CallNotPermittedException e) {
-            log.warn("PG 주문별 거래 조회 불가 (providerOrderId={}): {}", providerOrderId, e.getMessage());
+            return check.get();
+        } catch (PgStatusCheckFailedException | CallNotPermittedException e) {
+            log.warn("PG 결제 상태 조회 불가 ({}): {}", target, e.getMessage());
             return PgPaymentStatusCheckResult.couldNotCheck();
         }
     }

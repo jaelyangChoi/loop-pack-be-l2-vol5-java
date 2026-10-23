@@ -61,7 +61,7 @@ class PaymentResilienceTest {
     private PaymentGateway gateway;
 
     @Autowired
-    private TestPgClient client;
+    private PgHttpClient client;
 
     @Autowired
     private CircuitBreakerRegistry circuitBreakerRegistry;
@@ -71,7 +71,7 @@ class PaymentResilienceTest {
     @BeforeEach
     void setUp() {
         pg.reset();
-        circuitBreaker = circuitBreakerRegistry.circuitBreaker(TestPgClient.LOOKUP_RESILIENCE);
+        circuitBreaker = circuitBreakerRegistry.circuitBreaker(PgHttpClient.LOOKUP_RESILIENCE);
         circuitBreaker.reset();
     }
 

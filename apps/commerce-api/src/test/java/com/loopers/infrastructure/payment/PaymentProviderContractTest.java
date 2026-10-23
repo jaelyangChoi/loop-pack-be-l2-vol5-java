@@ -38,7 +38,7 @@ class PaymentProviderContractTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private FakePgServer pg;
-    private TestPgClient client;
+    private PgHttpClient client;
     private PaymentGatewayImpl gateway;
 
     @BeforeEach
@@ -61,7 +61,7 @@ class PaymentProviderContractTest {
         PaymentPgProperties properties = new PaymentPgProperties(
             pg.baseUrl(), CALLBACK_URL, FakePgServer.USER_ID, Duration.ofSeconds(1), readTimeout, readTimeout
         );
-        client = new TestPgClient(properties, MAPPER);
+        client = new PgHttpClient(properties, MAPPER);
         gateway = new PaymentGatewayImpl(client);
     }
 

@@ -48,7 +48,7 @@ resilience4j:
         enable-exponential-backoff: true # 100ms, 200ms
         exponential-backoff-multiplier: 2
         retry-exceptions:
-          - com.loopers.infrastructure.payment.PgUnavailableException
+          - com.loopers.infrastructure.payment.PgStatusCheckFailedException
         ignore-exceptions:
           - io.github.resilience4j.circuitbreaker.CallNotPermittedException # 회로가 막은 호출을 다시 두드리지 않는다
   circuitbreaker:
@@ -61,7 +61,7 @@ resilience4j:
         wait-duration-in-open-state: 10s
         permitted-number-of-calls-in-half-open-state: 2
         record-exceptions: # 404·빈 목록 같은 정상 응답은 예외가 아니므로 표본의 실패로 세지 않는다
-          - com.loopers.infrastructure.payment.PgUnavailableException
+          - com.loopers.infrastructure.payment.PgStatusCheckFailedException
 
 springdoc:
   use-fqn: true
