@@ -74,7 +74,7 @@ Loopers 에서 제공하는 Spring Boot(Java 21) 멀티 모듈 커머스 템플�
 - 목록 API의 `page`·`size` 검증은 `support.paging.PageRequests`를, 응답은 `interfaces.api.PageResponse<T>`를 씁니다. `@RequestParam`의 `defaultValue`와 Swagger 설명은 리터럴 대신 `PageRequests`의 상수(`DEFAULT_PAGE`, `DEFAULT_SIZE`, `PAGE_PARAM_DESCRIPTION`, `SIZE_PARAM_DESCRIPTION`)를 참조합니다.
 - `supports:jackson`이 null 필드를 직렬화에서 뺍니다(`NON_NULL`). 값이 없는 필드는 `null`이 아니라 키 자체가 없는 응답이 됩니다.
 - 지연 로딩 컬렉션의 N+1은 `modules:jpa`의 `default_batch_fetch_size`로 줄입니다. 쿼리 수가 중요한 목록은 `OrderListQueryCountTest`처럼 SQL 개수를 테스트로 고정합니다.
-- 설계 결정의 이유와 알려진 한계는 `docs/design/week2/commerce-design.md`(6장 결정 기록)에 있습니다.
+- 설계 결정의 이유와 알려진 한계는 `docs/design/week2/commerce-design.ai.md`(6장 결정 기록)에 있습니다.
 
 ### 보안 설정과 요청자 식별 (`config`)
 
@@ -96,7 +96,7 @@ Loopers 에서 제공하는 Spring Boot(Java 21) 멀티 모듈 커머스 템플�
 ## 개발 규칙 (lint · ArchUnit)
 
 - `commerce-api`는 Checkstyle(`config/checkstyle/checkstyle.xml`, `AvoidStarImport`·`UnusedImports`)을 `check`에 연결해 사용합니다. 경고도 허용하지 않습니다(`maxWarnings = 0`).
-- `ArchitectureTest`가 레이어 의존 방향(`interfaces → application → domain`, `infrastructure → domain`)을 검사합니다. domain은 다른 레이어에, application은 interfaces·infrastructure에, interfaces는 infrastructure에 의존할 수 없습니다. 포트는 그것을 쓰는 레이어가 소유하므로 `infrastructure → application`은 application 포트 구현에 한해 허용합니다(검사 규칙은 없음, `docs/design/week2/commerce-design.md` 2-3).
+- `ArchitectureTest`가 레이어 의존 방향(`interfaces → application → domain`, `infrastructure → domain`)을 검사합니다. domain은 다른 레이어에, application은 interfaces·infrastructure에, interfaces는 infrastructure에 의존할 수 없습니다. 포트는 그것을 쓰는 레이어가 소유하므로 `infrastructure → application`은 application 포트 구현에 한해 허용합니다(검사 규칙은 없음, `docs/design/week2/commerce-design.ai.md` 2-3).
 
 ## AI 작업 규칙
 
