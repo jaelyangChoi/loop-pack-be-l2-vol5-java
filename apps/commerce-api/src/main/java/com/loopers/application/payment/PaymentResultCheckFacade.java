@@ -16,11 +16,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.util.function.Supplier;
 
 /**
- * 결제 결과 확인 유스케이스의 조합. <b>메소드에 트랜잭션을 열지 않는다.</b> PG 를 조회하기 전에는 짧은 읽기 전용 트랜잭션으로
- * 확인할 시도를 읽고, 조회한 사실은 별도 트랜잭션으로 반영한다. 한 메소드에 {@code @Transactional} 을 달면 HTTP 호출 동안
- * 연결과 재고 잠금을 쥐게 된다 (D-51).
- *
- * <p>결제를 시작하는 확정 요청은 주문의 유스케이스라 {@code OrderFacade.confirm} 이 맡는다.
+ * PG 에 결제 상태를 물어 결과를 반영하는 유스케이스(고객의 확인, PG 의 알림). 메소드에 트랜잭션을 열지 않고 읽기와 반영
+ * 구간만 {@link TransactionTemplate} 으로 감싼다 (D-51). 결제를 시작하는 확정 요청은 {@code OrderFacade.confirm} 이다.
  */
 @Component
 public class PaymentResultCheckFacade {
@@ -48,11 +45,7 @@ public class PaymentResultCheckFacade {
         this.writeTransaction = new TransactionTemplate(transactionManager);
     }
 
-    /**
-     * 본인 주문의 결제 결과를 PG 에 다시 물어 반영한다. 알림이 오지 않았거나 응답을 잃었을 때의 기본 복구 경로다. 이미 종결된
-     * 시도는 PG 를 부르지 않고 저장된 결과를 돌려준다. 거래 키를 알면 그 거래를, 모르면 PG 용 주문 식별자로 조회한다.
-     * <b>create 는 다시 보내지 않는다.</b> 거래가 보이지 않아도 새 결제를 만들지 않는다.
-     */
+    /** 본인 주문의 결제 결과를 PG 에 다시 물어 반영한다(알림이 없거나 응답을 잃었을 때의 기본 복구 경로). create 는 다시 보내지 않는다. */
     public PaymentCheckInfo checkMyPaymentResult(Long userId, Long orderId) {
         PaymentAttemptInfo target = readOnlyTransaction.execute(status -> findMine(userId, orderId));
         return refresh(target, () -> target.transactionKey() != null
@@ -60,16 +53,13 @@ public class PaymentResultCheckFacade {
             : paymentGateway.checkPaymentStatusByOrder(target.providerOrderId()));
     }
 
-    /**
-     * PG 의 결과 알림을 받는다. 알림은 확인 요청의 신호일 뿐이다. 본문의 상태 문자열은 쓰지 않고, 알림이 가리키는 시도를
-     * 찾은 뒤 알림의 거래 키로 PG 를 조회해 확인한 사실만 반영한다. 시도를 찾지 못하면 {@code NOT_FOUND} 이며 아무 효과도 없다.
-     */
+    /** PG 의 결과 알림을 받는다. 알림은 신호일 뿐이라 본문의 상태는 쓰지 않고, 알림의 거래 키로 PG 를 조회해 확인한 사실만 반영한다. */
     public PaymentCheckInfo checkPaymentResultOnPgCallback(String providerOrderId, String transactionKey) {
         PaymentAttemptInfo target = readOnlyTransaction.execute(status -> findByProviderOrderId(providerOrderId));
         return refresh(target, () -> paymentGateway.checkPaymentStatusByTransactionKey(transactionKey));
     }
 
-    // 이미 종결된 시도는 PG 를 다시 부르지 않는다. 묻지 못하면 저장된 상태를 그대로 돌려주며 아무것도 정하지 않는다.
+    // 종결된 시도는 PG 를 다시 부르지 않는다. 묻지 못하면 저장된 상태를 그대로 돌려주고 아무것도 정하지 않는다.
     private PaymentCheckInfo refresh(PaymentAttemptInfo target, Supplier<PgPaymentStatusCheckResult> askPg) {
         if (target.settled()) {
             return new PaymentCheckInfo(target, false);
@@ -84,8 +74,7 @@ public class PaymentResultCheckFacade {
         return new PaymentCheckInfo(info, false);
     }
 
-    // 본인 주문의 시도를 읽는다. 없는 주문과 다른 사용자의 주문은 구분하지 않고 NOT_FOUND 이고, 결제를 시작하지 않은
-    // 주문은 확인할 시도가 없으므로 CONFLICT 다.
+    // 없는 주문과 타인의 주문은 NOT_FOUND, 결제를 시작하지 않은 주문은 CONFLICT 다.
     private PaymentAttemptInfo findMine(Long userId, Long orderId) {
         Order order = orderService.getMine(orderId, userId);
         PaymentAttempt attempt = paymentAttemptService.findByOrderId(order.getId()).orElseThrow(
@@ -94,7 +83,7 @@ public class PaymentResultCheckFacade {
         return PaymentAttemptInfo.of(order, attempt);
     }
 
-    // PG 알림이 가리키는 시도를 읽는다. 알림은 요청자가 없으므로 소유권 확인 없이 PG 용 주문 식별자로 찾는다.
+    // 알림에는 요청자가 없으므로 소유권 확인 없이 PG 용 주문 식별자로 찾는다.
     private PaymentAttemptInfo findByProviderOrderId(String providerOrderId) {
         PaymentAttempt attempt = paymentAttemptService.findByProviderOrderId(providerOrderId).orElseThrow(
             () -> new CoreException(ErrorType.NOT_FOUND, "결제 시도를 찾을 수 없습니다.")

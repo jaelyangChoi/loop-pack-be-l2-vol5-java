@@ -36,13 +36,8 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * 주문 유스케이스.
- *
- * <p>요청자 id 는 앞단의 식별 필터({@code CustomerIdentityFilter})를 거친, 존재하는 사용자의 id 이며 컨트롤러의
- * {@code @Requester} 파라미터가 {@code null} 이 아님을 보장한다 ({@code LikeFacade} 와 같다).
- *
- * <p>{@link #confirm} 만 메소드에 {@code @Transactional} 을 달지 않는다. PG 호출이 트랜잭션 밖에 있어야 해서, 준비(트랜잭션
- * A)와 결과 반영(트랜잭션 B)을 {@link TransactionTemplate} 으로 각각 감싼다 (D-51).
+ * 주문 유스케이스. 요청자 id 는 식별 필터를 거친 값이라 null 이 아니다. {@link #confirm} 만 메소드에 트랜잭션을 열지 않고
+ * 구간(TX A, TX B)마다 {@link TransactionTemplate} 으로 감싼다 (D-51).
  */
 @Component
 public class OrderFacade {
@@ -74,11 +69,8 @@ public class OrderFacade {
     }
 
     /**
-     * DRAFT 주문을 만든다. 재고를 확보하지 않고 포인트도 차감하지 않는다. 재고는 결제를 시작할 때 확보한다.
-     *
-     * <p>검사 순서: 값 규칙(빈 목록·수량·중복, 400) → 상품 존재(404) → 재고(409) → 합계 범위(400). 값 규칙은 상품을
-     * 조회하기 전에 판단하므로, 잘못된 요청은 DB 를 조회하지 않는다. 재고는 차감하지 않고 확인만 해서, 처음부터 살 수
-     * 없는 주문이 결제 단계까지 가지 않게 한다. 그 뒤 재고가 줄 수 있으므로 확정에서 차감할 때 다시 확인한다.
+     * DRAFT 주문을 만든다. 재고는 차감하지 않고 확인만 한다(차감은 확정 때). 검사 순서: 값 규칙(400) → 상품 존재(404) →
+     * 재고(409) → 합계 범위(400).
      */
     @Transactional
     public OrderInfo create(Long userId, List<OrderItemCommand> items) {
@@ -109,12 +101,8 @@ public class OrderFacade {
     }
 
     /**
-     * 본인의 DRAFT 주문의 확정을 요청한다. 주문은 PG 성공을 확인한 뒤에야 CONFIRMED 가 되므로, 여기서는 결제를 준비하고
-     * PG 에 요청한 결과까지만 반영한다. 발송 권한을 얻은 실행만 PG 에 요청하고, 이미 시도가 있는 주문의 같은 키 요청은 저장된
-     * 상태만 돌려준다. 결과 미확인이면 새 결제를 만들지 않고 미확인 상태를 돌려준다. 호출하는 쪽이 조회·확인 경로로 이어간다.
-     *
-     * <p>메소드에 트랜잭션을 열지 않는다. 준비를 commit 한 뒤에 PG 를 호출하고, 그 결과를 별도 트랜잭션으로 반영한다. 발송
-     * 기록(REQUESTED)을 commit 한 뒤에는 자동으로 create 를 다시 보내지 않는다 (D-48).
+     * 주문 확정을 요청한다. 준비(TX A) → PG 요청(TX 밖) → 결과 반영(TX B) 순서이며, 주문은 PG 성공을 확인한 뒤에야
+     * CONFIRMED 가 된다. 결과 미확인이어도 create 를 다시 보내지 않는다 (D-48).
      */
     public PaymentAttemptInfo confirm(OrderConfirmCommand command) {
         ConfirmPreparation preparation = prepareConfirm(command);
@@ -127,28 +115,21 @@ public class OrderFacade {
         );
     }
 
-    /**
-     * 확정의 트랜잭션 A. PG 를 호출하기 <b>전에</b> 주문·재고·시도를 한 번에 확보하고 commit 한다. PG 호출 동안 DB 연결과
-     * 재고 잠금을 쥐지 않기 위해 PG 호출은 이 트랜잭션 밖에서 한다. 잠금 순서는 주문 → 상품(id 오름차순)이다 (D-27).
-     *
-     * <p>오류 우선순위: 주문 조회(404) → 시도 키·기존 시도(409) → 확정 여부(409) → 상품 삭제(409) → 재고(409). 재고 부족·삭제·
-     * 잘못된 입력이면 전체 rollback 되고 PG 는 호출하지 않는다.
-     */
+    /** TX A. PG 호출 전에 주문 잠금, 재고 차감, 시도 저장을 한 번에 commit 한다. 실패하면 전부 rollback 되고 PG 는 호출하지 않는다 (D-27). */
     public ConfirmPreparation prepareConfirm(OrderConfirmCommand command) {
         return writeTransaction.execute(status -> prepare(command));
     }
 
-    // 발송 권한은 시도를 새로 저장한 실행만 얻는다. 이미 시도가 있는 주문에 같은 키로 다시 오면 저장된 상태만 돌려주고
-    // 발송하지 않는다. 다른 키이거나, 다른 주문에 쓰인 키이면 PAYMENT_ATTEMPT_CONFLICT 다.
+    // 시도를 새로 저장한 실행만 PG 에 보낸다. 이미 시도가 있으면 같은 키는 저장된 상태를, 다른 키는 충돌을 돌려준다.
     private ConfirmPreparation prepare(OrderConfirmCommand command) {
-        // 주문 행 잠금이 같은 주문의 동시 요청을 줄 세운다. 나중 요청은 먼저 요청의 commit 을 보고 저장된 시도를 만난다.
+        // 주문 행 잠금이 같은 주문의 동시 요청을 줄 세운다.
         Order order = orderService.getMineForUpdate(command.orderId(), command.userId());
 
         Optional<PaymentAttempt> existing = paymentAttemptService.findByOrderId(order.getId());
         if (existing.isPresent()) {
             return returnExisting(order, existing.get(), command);
         }
-        // 이 주문에는 시도가 없으므로, 같은 키가 이미 있다면 다른 주문의 것이다.
+        // 이 주문에 시도가 없는데 같은 키가 있으면 다른 주문의 키다.
         if (paymentAttemptService.findByAttemptKey(command.attemptKey()).isPresent()) {
             throw attemptConflict();
         }
@@ -164,8 +145,7 @@ public class OrderFacade {
         );
     }
 
-    // 이미 시도가 있는 주문의 재요청이다. 같은 키면 저장된 상태만 돌려주고 PG 에는 보내지 않는다. 다른 키면 충돌이며,
-    // 새 키를 보내도 두 번째 시도는 만들지 않는다.
+    // 이미 시도가 있는 주문의 재요청. 새 키를 보내도 두 번째 시도는 만들지 않는다.
     private ConfirmPreparation returnExisting(Order order, PaymentAttempt attempt, OrderConfirmCommand command) {
         if (!attempt.getAttemptKey().equals(command.attemptKey())) {
             throw attemptConflict();
@@ -173,8 +153,7 @@ public class OrderFacade {
         return new ConfirmPreparation(PaymentAttemptInfo.of(order, attempt), null);
     }
 
-    // 서로 다른 주문이 같은 키를 동시에 쓰면 둘 다 위의 확인을 통과할 수 있다. 유일 제약이 마지막 방어선이며, 졌을 때는
-    // 앞서 차감한 재고까지 이 트랜잭션과 함께 되돌아간다.
+    // 다른 주문이 같은 키를 동시에 쓰면 유일 제약이 마지막 방어선이다. 이때 차감한 재고도 함께 rollback 된다.
     private PaymentAttempt saveAttempt(Order order, OrderConfirmCommand command) {
         try {
             return paymentAttemptService.request(order.getId(), command.attemptKey(), order.getTotalAmount());

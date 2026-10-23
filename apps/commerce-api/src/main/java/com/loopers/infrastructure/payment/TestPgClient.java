@@ -30,17 +30,10 @@ import java.util.function.Supplier;
 /**
  * 로컬 테스트 PG 의 HTTP 호출. 메서드·경로·헤더·JSON 타입·응답 해석을 이 클래스가 숨긴다.
  *
- * <p>{@link #create} 는 예외를 던지지 않고 모든 결과를 {@link PgPaymentRequestResult} 로 돌려준다. 거래 생성 전 확정 거절 4조건을
- * 모두 만족한 응답만 {@code REJECTED_WITHOUT_TRANSACTION} 이고, 그 밖의 비정상은 한곳에서 {@code UNKNOWN} 으로 합류한다. 결제 생성에는
- * timeout 만 있고 재시도·회로가 없다 (D-48).
- *
- * <p>조회({@link #getTransaction}, {@link #getTransactions})는 조회하지 못하면 {@link PgUnavailableException} 을 던지고,
- * 이 두 메서드에만 {@code @Retry}·{@code @CircuitBreaker} 를 건다. 적용 순서는 기본값이라 Retry 가 바깥이다. 예외를
- * {@code Unavailable} 로 바꾸는 일은 {@link PaymentGatewayImpl} 이 한다. 호출하는 쪽이 다른 빈이라 프록시를 거치지 않는
- * 자기 호출이 생기지 않는다 (설계 5-4). 어느 조회를 쓸지의 분기는 application 이 한다.
- *
- * <p>JDK {@link HttpClient} 는 POST 를 자동 재시도하지 않는다 ({@code jdk.httpclient.enableAllMethodRetry} 기본 꺼짐).
- * 읽기 timeout 은 응답 헤더를 받을 때까지의 시간에 적용된다.
+ * <p>{@link #create} 는 예외 없이 모든 결과를 돌려주고 timeout 만 있다(재시도·회로 없음, D-48). 조회는 못 하면
+ * {@link PgUnavailableException} 을 던지며 이 메서드들에만 {@code @Retry}·{@code @CircuitBreaker} 를 건다. 예외를 결과로
+ * 바꾸는 일은 {@link PaymentGatewayImpl} 이 한다. 호출하는 쪽이 다른 빈이라 프록시를 거치지 않는 자기 호출이 생기지 않는다
+ * (설계 5-4).
  */
 @Slf4j
 @Component
