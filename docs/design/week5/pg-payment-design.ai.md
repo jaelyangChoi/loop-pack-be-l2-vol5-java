@@ -87,14 +87,14 @@ DRAFT ──start──▶ PAYMENT_PENDING ──complete──▶ CONFIRMED
 | `SUCCEEDED`, `FAILED` | 없음 (종결) |
 
 - `PENDING`에서 `UNKNOWN`으로 되돌아가지 않는다. callback이 먼저 종결한 뒤 늦게 돌아온 생성 응답·timeout 처리도 이미 나아간 상태를 되돌리지 못한다.
-- 종결 뒤 상충하는 관찰은 상태를 덮어쓰지 않고 `anomaly`만 기록한다: `MISMATCH`(식별·금액 불일치), `MULTIPLE_TRANSACTIONS`, `TRANSACTION_NOT_FOUND`, `CONFLICTING_RESULT`.
+- 종결 뒤 상충하는 조회 결과는 상태를 덮어쓰지 않고 `anomaly`만 기록한다: `MISMATCH`(식별·금액 불일치), `MULTIPLE_TRANSACTIONS`, `TRANSACTION_NOT_FOUND`, `CONFLICTING_RESULT`.
 - 카드 번호는 저장하지 않는다. 시도에는 금액과 식별 관계만 남긴다.
 
-### 2-3. 관찰 → 상태 매핑
+### 2-3. PG 응답 → 상태 매핑
 
-**create 응답** (adapter가 매핑 단계 한곳에서 판정한다)
+**결제 요청 응답** (adapter가 매핑 단계 한곳에서 판정한다)
 
-| 관찰 | 시도 | 주문 | 재고 |
+| PG 응답 | 시도 | 주문 | 재고 |
 |---|---|---|---|
 | 202 + 본문(`PENDING`, orderId·금액 일치, transactionKey 있음) | `PENDING` + 키 기록 | `PAYMENT_PENDING` | 유지 |
 | 422 + `code=TEST_PG_REJECTED_BEFORE_CREATE` + `transactionCreated=false` + orderId·amount 일치 | `FAILED` | `PAYMENT_FAILED` | 반환 1회 |
@@ -104,7 +104,7 @@ DRAFT ──start──▶ PAYMENT_PENDING ──complete──▶ CONFIRMED
 
 **조회 결과** (reconcile·callback)
 
-| 관찰 | 처리 |
+| 조회 결과 | 처리 |
 |---|---|
 | 1건, 식별·금액 일치, `SUCCESS` | 시도 `SUCCEEDED`, 주문 `CONFIRMED`, 재고 소비 |
 | 1건, 식별·금액 일치, `FAILED` | 시도 `FAILED`, 주문 `PAYMENT_FAILED`, 재고 반환 1회 |
@@ -134,10 +134,10 @@ TX A  OrderFacade.prepareConfirm                 ← 로컬 TX (TransactionTempl
 HTTP  PaymentGateway.requestPayment              ← TX 밖 (잠금·커넥션 보유 없음)
   POST /api/v1/payments   (자동 재시도 없음)
 
-TX B  PaymentStatusUpdater.updateByStatusCheckResult ← 로컬 TX (호출하는 Facade가 TransactionTemplate으로 감쌈)
+TX B  PaymentStatusUpdater.updateByPaymentRequestResult ← 로컬 TX (호출하는 Facade가 TransactionTemplate으로 감쌈)
   주문 FOR UPDATE → 시도 조회
   → 식별·금액 확인 → 멱등 가드
-  → 관찰에 따라 시도·주문·재고 전이
+  → 조회 결과에 따라 시도·주문·재고 전이
   commit
 ```
 
@@ -149,7 +149,7 @@ TX B  PaymentStatusUpdater.updateByStatusCheckResult ← 로컬 TX (호출하는
 
 - TX A에서 `PaymentAttempt`를 insert한 실행만 발송 권한을 얻는다. 같은 주문에 동시에 confirm이 들어와도 주문 행 잠금 때문에 한쪽이 먼저 TX A를 끝내고, 나중 실행은 저장된 시도를 보고 **발송 없이** 저장된 상태를 반환한다.
 - `order_id`, `attempt_key`, `provider_order_id` 유일 제약은 주문 잠금이 뚫렸을 때의 마지막 방어선이다.
-- `REQUESTED`를 기록한 뒤 프로세스가 멈추면 실제 발송 여부를 로컬 기록만으로 알 수 없다. 재시작 뒤 이 시도는 **조회 대상으로만** 남고, 거래가 0건이어도 create를 다시 보내지 않는다 (D-48).
+- `REQUESTED`를 기록한 뒤 프로세스가 멈추면 실제 발송 여부를 로컬 기록만으로 알 수 없다. 재시작 뒤 이 시도는 **조회 대상으로만** 남고, 거래가 0건이어도 결제 요청을 다시 보내지 않는다 (D-48).
 
 ### 3-3. confirm 요청 규칙
 
@@ -177,19 +177,19 @@ callback  ──┴─▶ PaymentResultCheckFacade (TX 없음, 오케스트레�
                       └─ PaymentStatusUpdater.updateByStatusCheckResult(...)   ← 유일한 상태 쓰기 지점
 ```
 
-- **confirm**: TX A → create → `apply`(create 결과 반영). `UNKNOWN`이어도 같은 요청 안에서 조회하지 않고 202를 돌려준다 (D-48).
-- **reconcile** (`POST /orders/{id}/payment/reconcile`): 본인 주문의 미종결 시도를 조회해 `apply`한다. 콜백과 무관하게 고객이 부르는 **기본 복구 경로**다.
-- **callback** (`POST /api/v1/payments/callback`): 본문의 `providerOrderId`로 시도를 찾고, 본문의 `transactionKey`로 **권위 조회**를 한 뒤 `apply`한다. 본문의 `status`는 쓰지 않는다. 시도를 못 찾으면 404이고 아무 효과도 없다.
+- **confirm**: TX A → 결제 요청 → `updateByPaymentRequestResult`(결제 요청 결과 반영). `UNKNOWN`이어도 같은 요청 안에서 조회하지 않고 202를 돌려준다 (D-48).
+- **reconcile** (`POST /orders/{id}/payment/reconcile`): 본인 주문의 미종결 시도를 조회해 `updateByStatusCheckResult`로 반영한다. 콜백과 무관하게 고객이 부르는 **기본 복구 경로**다.
+- **callback** (`POST /api/v1/payments/callback`): 본문의 `providerOrderId`로 시도를 찾고, 본문의 `transactionKey`로 **권위 조회**를 한 뒤 `updateByStatusCheckResult`로 반영한다. 본문의 `status`는 쓰지 않는다. 시도를 못 찾으면 404이고 아무 효과도 없다.
 - `GET /orders/{id}`는 **PG를 호출하지 않는** 순수 조회다. 저장된 주문·결제 상태만 보여 준다.
 - 콜백은 confirm을 처리하던 스레드의 연속이 아니라 완전히 새로운 HTTP 요청이다. 두 흐름을 잇는 것은 DB의 시도 레코드뿐이다.
 
-### 3-5. 결과 적용 (`apply`)
+### 3-5. 결과 적용 (`updateByStatusCheckResult`)
 
 ```
-apply(orderId, observation):
+updateByStatusCheckResult(orderId, checkResult):
   TX 시작
   주문 FOR UPDATE → 시도 조회
-  시도와 관찰의 식별(providerOrderId, transactionKey)·금액 확인 → 불일치면 anomaly 기록 후 종료
+  시도와 조회 결과의 식별(providerOrderId, transactionKey)·금액 확인 → 불일치면 anomaly 기록 후 종료
   이미 같은 종결 결과이면 아무 효과도 추가하지 않고 종료
   다른 종결 결과와 충돌하면 덮어쓰지 않고 CONFLICTING_RESULT 기록 후 종료
   SUCCESS → 시도 SUCCEEDED, 주문 CONFIRMED(결제액=주문 합계)
@@ -236,8 +236,8 @@ checkPaymentStatusByOrder(providerOrderId)  → outcome: ANSWERED(거래 0건 �
 
 - `COULD_NOT_CHECK`는 timeout·5xx·회로 OPEN을 포함한다. 결제 결과가 아니라 "확인하지 못함"이다.
 - HTTP client는 `RestClient` + `JdkClientHttpRequestFactory`다. Feign·WebClient는 새로 들이지 않는다.
-- timeout은 request factory에 건다: connect 1초, create read 3초, 조회 read 1초. 가정이 아니라 설정 객체에서 확인하는 테스트를 둔다.
-- JDK `HttpClient`는 POST를 자동 재시도하지 않는다. 그래도 **fixture의 create 횟수로** 숨은 재시도가 없음을 확인한다.
+- timeout은 request factory에 건다: connect 1초, 결제 요청 read 3초, 조회 read 1초. 가정이 아니라 설정 객체에서 확인하는 테스트를 둔다.
+- JDK `HttpClient`는 POST를 자동 재시도하지 않는다. 그래도 **fixture의 결제 요청 횟수로** 숨은 재시도가 없음을 확인한다.
 - 조회 query는 URI builder로 만들어 인코딩한다.
 - `RestClient`는 4xx에 예외를 던지는 것이 기본이다. 조회의 404는 업무 결과(`KEY_NOT_FOUND`)이므로 annotation이 붙은 메서드 **안에서** 결과로 바꿔 회로 실패로 세지 않는다.
 
@@ -245,7 +245,7 @@ checkPaymentStatusByOrder(providerOrderId)  → outcome: ANSWERED(거래 0건 �
 
 별도 PG 프로세스를 만들지 않는다. 테스트 소스에 JDK `HttpServer`로 작은 fixture를 둔다.
 
-- `127.0.0.1` 임의 포트에 뜬다. 거래 저장소, create·조회 호출 횟수, 받은 요청(메서드·경로·헤더·본문)을 관찰할 수 있다.
+- `127.0.0.1` 임의 포트에 뜬다. 거래 저장소, 결제 요청·조회 호출 횟수, 받은 요청(메서드·경로·헤더·본문)을 관찰할 수 있다.
 - 시나리오를 한 줄로 고정하는 모드를 가진다: 정상 `PENDING` 후 `SUCCESS`/`FAILED` 전이, 거래 생성 뒤 응답 유실, 생성 전 확정 거절, 지연, 5xx, 거래 키 404, 조회 0건·복수 거래·금액 불일치.
 - 무작위 지연이나 성공 확률은 넣지 않는다. 테스트가 끝나면 서버를 반드시 정리한다.
 
@@ -257,10 +257,10 @@ checkPaymentStatusByOrder(providerOrderId)  → outcome: ANSWERED(거래 0건 �
 
 | 호출 | timeout | Retry | CircuitBreaker |
 |---|---|---|---|
-| create (비멱등) | 있음 | **없음** | **없음** |
+| 결제 요청 (비멱등) | 있음 | **없음** | **없음** |
 | 거래 조회 2종 | 있음 | 있음 | 있음 |
 
-create는 다시 실행하면 새 거래가 생길 수 있다. HALF_OPEN 탐색 호출이 실제 거래를 또 만들 위험도 있어 회로도 걸지 않는다. 조회는 같은 거래의 현재 상태를 읽을 뿐이므로 횟수·간격·예산을 제한해 재조회할 수 있다.
+결제 요청은 다시 실행하면 새 거래가 생길 수 있다. HALF_OPEN 탐색 호출이 실제 거래를 또 만들 위험도 있어 회로도 걸지 않는다. 조회는 같은 거래의 현재 상태를 읽을 뿐이므로 횟수·간격·예산을 제한해 재조회할 수 있다.
 
 ### 5-2. 구성 (`resilience4j-spring-boot3` + `spring-boot-starter-aop`, annotation 방식)
 
@@ -335,16 +335,16 @@ create는 다시 실행하면 새 거래가 생길 수 있다. HALF_OPEN 탐색 
 
 | 장면 | 상태와 효과 |
 |---|---|
-| **A. 생성 후 응답 유실** | PG에 거래 1건 생성, 우리는 read timeout. 시도 `UNKNOWN`, 주문 `PAYMENT_PENDING`, 재고 확보 유지, **create 추가 0회**. 이후 reconcile이 `providerOrderId`로 조회해 거래 1건을 찾고(키 기록) 종결한다 |
+| **A. 생성 후 응답 유실** | PG에 거래 1건 생성, 우리는 read timeout. 시도 `UNKNOWN`, 주문 `PAYMENT_PENDING`, 재고 확보 유지, **결제 요청 추가 0회**. 이후 reconcile이 `providerOrderId`로 조회해 거래 1건을 찾고(키 기록) 종결한다 |
 | **B. 생성 전 확정 거절** | 거래 0건. 시도 `FAILED`, 주문 `PAYMENT_FAILED`, 재고 반환 1회. 같은 거절을 다시 적용해도 반환은 늘지 않는다 |
-| **C. 성공 뒤 내부 저장 실패** | PG는 `SUCCESS`, TX B가 DB 오류로 rollback. 시도·주문·재고는 변경 전 그대로다. 같은 거래를 다시 조회해 한 번 확정한다. create 추가 0회 |
+| **C. 성공 뒤 내부 저장 실패** | PG는 `SUCCESS`, TX B가 DB 오류로 rollback. 시도·주문·재고는 변경 전 그대로다. 같은 거래를 다시 조회해 한 번 확정한다. 결제 요청 추가 0회 |
 | **D. 중복 callback** | 첫 callback이 종결한다. 이후는 "이미 같은 종결 결과"라 효과 없음. 재고 증가/감소 0 |
-| **E. callback-first vs lookup-first** | 둘 다 같은 `apply`를 거친다. 먼저 적용한 쪽이 이기고 나중은 변화 없음. 최종 상태·transactionKey 동일 |
+| **E. callback-first vs lookup-first** | 둘 다 같은 `updateByStatusCheckResult`를 거친다. 먼저 적용한 쪽이 이기고 나중은 변화 없음. 최종 상태·transactionKey 동일 |
 | **F. 동시 callback + reconcile** | 둘 다 주문 `FOR UPDATE`에서 직렬화된다. 한쪽만 전이하고 반환·확정은 한 번 |
-| **G. 늦게 도착한 create 응답/timeout 처리** | callback이 먼저 `SUCCEEDED`로 종결한 뒤 PENDING·UNKNOWN 기록이 오면 종결 상태를 되돌리지 않는다 |
+| **G. 늦게 도착한 결제 요청 응답/timeout 처리** | callback이 먼저 `SUCCEEDED`로 종결한 뒤 PENDING·UNKNOWN 기록이 오면 종결 상태를 되돌리지 않는다 |
 | **H. 위조 callback** | 본문이 `SUCCESS`라도 권위 조회가 `PENDING`이거나 거래가 없으면 확정하지 않는다. 다른 주문의 `transactionKey`면 `MISMATCH` 기록 |
-| **I. 발송 기록 뒤 재시작** | `REQUESTED`가 DB에 남는다. 새 서비스 인스턴스가 올라와도 create를 다시 보내지 않고 조회로만 복구한다. 실제로 한 번도 안 보낸 시도는 영구 미완료일 수 있다 (한계) |
-| **J. 동시 같은 시도 confirm** | 시도·재고 확보 각 1회, 실제 create 1회. 나머지는 저장 상태 반환 |
+| **I. 발송 기록 뒤 재시작** | `REQUESTED`가 DB에 남는다. 새 서비스 인스턴스가 올라와도 결제 요청을 다시 보내지 않고 조회로만 복구한다. 실제로 한 번도 안 보낸 시도는 영구 미완료일 수 있다 (한계) |
+| **J. 동시 같은 시도 confirm** | 시도·재고 확보 각 1회, 실제 결제 요청 1회. 나머지는 저장 상태 반환 |
 | **K. 다른 키·다른 요청** | 같은 키의 다른 주문, 같은 주문의 새 키는 409. 두 번째 PG 시도·재고 차감은 만들지 않는다 |
 | **L. 조회 0건 / 복수 거래 / 금액 불일치** | 임의 성공·실패·재결제 없음. `anomaly` 기록, 상태·재고 유지 |
 | **M. 관리자 재고 설정 중 결제 대기** | 설정값은 **예약을 제외한 가용 수량**이다. 2개 대기 중 10으로 설정 후 실패하면 12가 된다 (대기분은 처음부터 10에 없었다). PG 성공 때 다시 차감하지 않는다 |
@@ -374,7 +374,7 @@ create는 다시 실행하면 새 거래가 생길 수 있다. HALF_OPEN 탐색 
 
 ### 8-1. 원칙
 
-- **상태값이 아니라 효과 횟수**로 검증한다: 외부 거래 수, create 횟수, 조회 횟수, 가용 재고, 포인트 잔액 변화.
+- **상태값이 아니라 효과 횟수**로 검증한다: 외부 거래 수, 결제 요청 횟수, 조회 횟수, 가용 재고, 포인트 잔액 변화.
 - 형식 확인(실제 HTTP 계약)과 업무 확인(순서·효과)을 분리한다. 같은 조건을 여러 계층에 반복하지 않는다.
 - 실제 DB는 기존 MySQL Testcontainers fixture를 쓴다. callback도 실제 controller를 거친다.
 - 대기는 유한하게 제한한다. 테스트 0건·skip·연결 실패를 성공으로 세지 않는다. fixture 서버와 worker는 정리한다.
@@ -386,10 +386,10 @@ create는 다시 실행하면 새 거래가 생길 수 있다. HALF_OPEN 탐색 
 | 정상 PG 주문 | 거래 1, 주문 `CONFIRMED`, 재고 소비, 포인트 변화 0 | `PaymentIntegrationTest` |
 | 생성 수락 PENDING | 주문 미확정, 재고 유지, 조회 SUCCESS 뒤에만 확정 | `PaymentIntegrationTest` |
 | 효과 전 확정 거절 | 거래 0, 주문 실패, 반환 1 | `PaymentIntegrationTest`, `PaymentProviderContractTest` |
-| 생성 뒤 응답 유실 | 거래 1·`UNKNOWN`, create 추가 0, 조회로 종결 | `PaymentIntegrationTest` |
-| 같은 시도의 동시 요청 | 시도·확보 각 1, create 1, 다른 키·불일치는 효과 없이 거절 | `PaymentConcurrencyTest` (`ConcurrentRequests`) |
+| 생성 뒤 응답 유실 | 거래 1·`UNKNOWN`, 결제 요청 추가 0, 조회로 종결 | `PaymentIntegrationTest` |
+| 같은 시도의 동시 요청 | 시도·확보 각 1, 결제 요청 1, 다른 키·불일치는 효과 없이 거절 | `PaymentConcurrencyTest` (`ConcurrentRequests`) |
 | callback-first·lookup-first·동시 적용 | 같은 `transactionKey`·최종 상태, 재고 5→3→5(7 금지) | `PaymentConcurrencyTest` |
-| 성공 뒤 내부 저장 실패 | rollback, 같은 거래 재조회로 한 번 확정, create 추가 0 | `PaymentIntegrationTest` (`FailingStatementInspector`) |
+| 성공 뒤 내부 저장 실패 | rollback, 같은 거래 재조회로 한 번 확정, 결제 요청 추가 0 | `PaymentIntegrationTest` (`FailingStatementInspector`) |
 | 발송 기록 뒤 재시작 | 시도 유지, 자동 재발송 0 (서비스·client 재생성, DB·fixture 유지) | `PaymentRestartTest` |
 | 조회 0건·복수 거래·불일치 | 임의 성공·실패·재결제 없음, anomaly 보존 | `PaymentIntegrationTest` |
 | timeout·회로 OPEN·복구 | 호출 수·대기 제한, 상태 유지, 회복 뒤 조회 재개 | `PaymentResilienceTest` |
@@ -438,25 +438,25 @@ create는 다시 실행하면 새 거래가 생길 수 있다. HALF_OPEN 탐색 
 - **비용**: 테이블 하나와 `REQUESTED` 상태(발송 여부 불확실)가 생긴다.
 - **기각한 대안**: 주문에 컬럼으로 흡수(식별자 4종과 anomaly를 주문이 떠안음), 메모리 잠금(재시작·다중 인스턴스에서 무효).
 
-### D-48. create는 자동 재시도하지 않고, 확정 거절이 아니면 `UNKNOWN`으로 두며, confirm 안에서 조회하지 않는다
+### D-48. 결제 요청은 자동 재시도하지 않고, 확정 거절이 아니면 `UNKNOWN`으로 두며, confirm 안에서 조회하지 않는다
 
 - **상황**: 테스트 PG는 멱등 키를 받지 않고 같은 orderId의 새 POST를 중복 제거하지 않는다. timeout은 "내 대기가 끝났다"만 알려 주고 거래가 생겼는지는 알려 주지 않는다.
-- **결정**: create에는 timeout만 걸고 Retry·CircuitBreaker·숨은 재시도를 두지 않는다. 효과 0건 확정 거절(422 + 정확한 code + `transactionCreated:false` + orderId·amount 일치)만 `FAILED`로 종결하고, 나머지 모든 비정상 응답은 `UNKNOWN`으로 합류시킨다. `UNKNOWN`·`REQUESTED` 시도는 재시작 뒤에도 조회 대상으로만 남기며 create를 다시 보내지 않는다. confirm은 `UNKNOWN`이어도 같은 요청 안에서 조회하지 않고 202를 즉시 반환한다. 종결은 callback·reconcile이 한다.
+- **결정**: 결제 요청에는 timeout만 걸고 Retry·CircuitBreaker·숨은 재시도를 두지 않는다. 효과 0건 확정 거절(422 + 정확한 code + `transactionCreated:false` + orderId·amount 일치)만 `FAILED`로 종결하고, 나머지 모든 비정상 응답은 `UNKNOWN`으로 합류시킨다. `UNKNOWN`·`REQUESTED` 시도는 재시작 뒤에도 조회 대상으로만 남기며 결제 요청을 다시 보내지 않는다. confirm은 `UNKNOWN`이어도 같은 요청 안에서 조회하지 않고 202를 즉시 반환한다. 종결은 callback·reconcile이 한다.
 - **근거**: 이중 결제는 되돌리기 어렵고 미완료는 나중에 조회로 바로잡을 수 있다. 직후 조회는 대부분 `PENDING`만 얻고 confirm 응답 시간을 늘린다.
 - **비용**: 응답을 잃고 한 번도 보내지 않은 시도는 자동으로 종결되지 않을 수 있다. 재고 확보가 길게 점유된다 (10장).
-- **기각한 대안**: timeout 즉시 실패 처리·create 재시도(이중 결제), `UNKNOWN` 직후 즉시 1회 조회(응답 지연, 경로 증가).
+- **기각한 대안**: timeout 즉시 실패 처리·결제 요청 재시도(이중 결제), `UNKNOWN` 직후 즉시 1회 조회(응답 지연, 경로 증가).
 
 ### D-49. 결과 적용은 한 경계로 모으고 callback은 확인 요청의 신호로만 쓴다
 
 - **상황**: callback은 유실·중복·지연·순서 변경이 가능하고, 본문만 믿으면 위조된 요청이 결제를 완료시킬 수 있다.
-- **결정**: confirm·reconcile·callback은 모두 `PaymentStatusUpdater.updateByStatusCheckResult`를 거친다. callback은 본문의 `status`를 쓰지 않고 `transactionKey`로 adapter 권위 조회를 한 뒤, 계정·`providerOrderId`·`transactionKey`·저장 금액을 확인하고 적용한다. 주문 행 잠금 아래에서 단방향 전이만 허용하며, 종결 뒤 상충은 덮어쓰지 않고 `anomaly`로 남긴다.
+- **결정**: confirm·reconcile·callback의 결과는 모두 `PaymentStatusUpdater` 한 클래스에서 상태에 반영한다(결제 요청 결과는 `updateByPaymentRequestResult`, 조회 결과는 `updateByStatusCheckResult`). callback은 본문의 `status`를 쓰지 않고 `transactionKey`로 adapter 권위 조회를 한 뒤, 계정·`providerOrderId`·`transactionKey`·저장 금액을 확인하고 적용한다. 주문 행 잠금 아래에서 단방향 전이만 허용하며, 종결 뒤 상충은 덮어쓰지 않고 `anomaly`로 남긴다.
 - **근거**: 여러 입구가 각자 상태를 쓰면 순서에 따라 결과가 갈린다. 단일 경계와 전이 조건이 callback-first·lookup-first의 수렴을 보장한다.
 - **비용**: callback마다 PG 조회가 한 번 더 나간다. 서명 검증은 하지 않는다 (10장).
 - **기각한 대안**: callback 본문을 신뢰(위조에 취약), 입구마다 상태 직접 변경(중복 확정·반환 위험).
 
 ### D-50. 회복 도구는 Resilience4j annotation을 조회 경로에만, 기본 순서(Retry 바깥)로 적용한다
 
-- **상황**: 조회는 재시도해도 되지만 create는 안 된다. Retry와 CB를 겹치면 어느 호출을 표본으로 세는지 달라진다.
+- **상황**: 조회는 재시도해도 되지만 결제 요청은 안 된다. Retry와 CB를 겹치면 어느 호출을 표본으로 세는지 달라진다.
 - **결정**: `resilience4j-spring-boot3` + `starter-aop`, `@Retry`/`@CircuitBreaker`를 조회 메서드에만 둔다. 기본 순서를 유지해 실제 호출마다 회로 표본으로 센다. `CallNotPermittedException`은 재시도하지 않는다. `fallbackMethod`는 쓰지 않고, 호출하는 `PaymentGatewayImpl`이 실패 예외를 `COULD_NOT_CHECK`로 바꾼다. 순서·프록시 적용은 실제 호출 수와 회로 지표 테스트로 고정한다. 수치는 5-2.
 - **근거**: 보편적인 Spring 사용 방식이고, 회로의 목적(외부 보호)에 맞게 실제 호출 기준으로 센다.
 - **비용**: 순서가 코드에 드러나지 않고, self-invocation 실수가 조용히 일어날 수 있다. 테스트와 분기 위치 규칙(5-4)으로 막는다. 호출하는 쪽과 변환하는 쪽을 나누느라 클래스가 둘이 된다.
@@ -468,7 +468,7 @@ create는 다시 실행하면 새 거래가 생길 수 있다. HALF_OPEN 탐색 
 - **결정**: 결제를 시작하는 `OrderFacade.confirm`과 결과를 확인하는 `PaymentResultCheckFacade.checkMyPaymentResult`·`checkPaymentResultOnPgCallback`은 메소드에 트랜잭션을 열지 않고, 필요한 구간(TX A, TX B, PG 조회 전 읽기)만 `TransactionTemplate`으로 감싼다. `PaymentStatusUpdater`는 `@Transactional` 없이 반영 로직만 가지며 호출하는 Facade가 트랜잭션을 연다. 도메인 `Service`에는 여전히 `@Transactional`을 붙이지 않는다. `ProductFacade`가 이미 같은 방식으로 읽기 구간만 감싼다.
 - **근거**: PG 호출 동안 DB 트랜잭션·재고 잠금을 잡지 않는다는 요구는 경계를 나누는 것으로만 지킬 수 있다. 구간이 Facade 코드에 그대로 보여 흐름(TX A → PG → TX B)을 한 곳에서 읽을 수 있고, 트랜잭션 전용 빈을 따로 두지 않아도 된다. `/confirm`은 주문의 확정 요청이므로 `OrderFacade`에 둔다.
 - **비용**: 구조가 경계를 강제하지 않는다. `TransactionTemplate` 구간 밖에서 쓰기를 하거나 구간 안에서 PG를 호출하는 실수를 막으려면 `PaymentTransactionTest`가 필요하다. "트랜잭션은 Facade의 `@Transactional`"이라는 단순 규칙에 예외가 생긴다.
-- **기각한 대안**: Facade 한 메소드에 `@Transactional`(HTTP가 잠금·커넥션을 쥠), 트랜잭션 전용 빈(`PaymentStarter`·`Applier`에 `@Transactional`: 경계는 구조가 강제하지만 클래스가 늘고 흐름이 여러 파일로 흩어짐).
+- **기각한 대안**: Facade 한 메소드에 `@Transactional`(HTTP가 잠금·커넥션을 쥠), 트랜잭션 전용 빈(준비·반영 컴포넌트에 `@Transactional`: 경계는 구조가 강제하지만 클래스가 늘고 흐름이 여러 파일로 흩어짐).
 
 ---
 
@@ -477,7 +477,7 @@ create는 다시 실행하면 새 거래가 생길 수 있다. HALF_OPEN 탐색 
 | 항목 | 상태 |
 |---|---|
 | 장기 `UNKNOWN`·`REQUESTED`의 종결 | 시간 경과만으로 실패 처리하지 않는다. 자동 만료·상시 스케줄러는 넣지 않는다. 확인되지 않는 동안 재고가 점유되는 비용이 남는다. 운영 개입과 별도 판단을 전제로 한다 |
-| 발송 기록 뒤 실제 미발송 시도 | create를 다시 보내지 않으므로 영구 미완료일 수 있다. 중복 방지와 모든 시도의 자동 완료는 같은 보장이 아니다 |
+| 발송 기록 뒤 실제 미발송 시도 | 결제 요청을 다시 보내지 않으므로 영구 미완료일 수 있다. 중복 방지와 모든 시도의 자동 완료는 같은 보장이 아니다 |
 | 같은 키의 "다른 요청" 비교 | 같은 키 재요청의 일치는 **주문과 키**로만 확인한다. 금액은 요청이 아니라 저장된 주문 합계로 정하므로 달라질 수 없고, 카드 값은 저장하지 않으므로 비교할 수 없다. 같은 주문·같은 키로 카드 값만 다르게 보내도 저장된 결과를 돌려주고 새로 발송하지 않는다 |
 | callback 서명 검증 | 하지 않는다. 대신 권위 조회로 검증한다 (로컬 실습 한정). 위조 알림은 확정이나 실패를 만들지 못하지만, 다른 주문의 거래 키를 담은 알림은 해당 시도에 `MISMATCH` 기록을 남길 수 있다(상태·재고는 그대로) |
 | 종결 뒤의 재확인 | 이미 종결된 시도는 reconcile·callback 이 PG 를 다시 부르지 않고 저장된 결과를 돌려준다. 그래서 종결 뒤 PG 쪽 결과가 달라져도 상충 기록(`CONFLICTING_RESULT`)은 동시에 도착한 요청 사이에서만 남는다 |
