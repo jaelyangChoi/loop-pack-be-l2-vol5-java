@@ -51,6 +51,8 @@ public final class FakePgServer implements AutoCloseable {
     private volatile CreateBehavior createBehavior = accept();
     private volatile Duration lookupDelay = Duration.ZERO;
     private volatile Reply lookupOverride;
+    private final AtomicInteger lookupFailuresLeft = new AtomicInteger();
+    private volatile int lookupFailureStatus;
 
     private FakePgServer(HttpServer server, ExecutorService executor) {
         this.server = server;
@@ -99,6 +101,12 @@ public final class FakePgServer implements AutoCloseable {
         this.lookupOverride = new Reply(status, "{\"code\":\"FAKE_PG_LOOKUP_FAILURE\"}", false);
     }
 
+    /** 앞으로 들어오는 거래 조회 중 처음 {@code count} 건만 이 상태로 실패시키고, 그다음부터는 정상으로 응답한다. */
+    public void failNextLookups(int count, int status) {
+        this.lookupFailureStatus = status;
+        this.lookupFailuresLeft.set(count);
+    }
+
     /** 거래 조회가 항상 이 상태와 본문으로 응답하게 한다. 해석할 수 없는 본문을 만들 때 쓴다. */
     public void respondToLookupsWith(int status, String body) {
         this.lookupOverride = new Reply(status, body, false);
@@ -112,6 +120,19 @@ public final class FakePgServer implements AutoCloseable {
     public void resetLookupFaults() {
         this.lookupDelay = Duration.ZERO;
         this.lookupOverride = null;
+        this.lookupFailuresLeft.set(0);
+    }
+
+    /** 거래·요청 기록·호출 횟수·시나리오를 처음 상태로 되돌린다. 서버는 그대로 두므로 같은 주소를 계속 쓸 수 있다. */
+    public synchronized void reset() {
+        transactions.clear();
+        requests.clear();
+        sequence.set(0);
+        createCalls.set(0);
+        lookupByKeyCalls.set(0);
+        lookupByOrderCalls.set(0);
+        createBehavior = accept();
+        resetLookupFaults();
     }
 
     /** 거래를 직접 만든다. 같은 주문에 거래를 더하거나 금액이 다른 거래를 만드는 시나리오에 쓴다. */
@@ -280,6 +301,9 @@ public final class FakePgServer implements AutoCloseable {
         Duration delay = lookupDelay;
         if (!delay.isZero()) {
             Thread.sleep(delay.toMillis());
+        }
+        if (lookupFailuresLeft.getAndUpdate(left -> left > 0 ? left - 1 : 0) > 0) {
+            return error(lookupFailureStatus, "FAKE_PG_LOOKUP_FAILURE");
         }
         return lookupOverride;
     }

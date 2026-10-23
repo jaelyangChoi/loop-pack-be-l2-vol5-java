@@ -37,6 +37,32 @@ payment:
     create-read-timeout: 3s # 응답 헤더를 기다리는 시간. 넘으면 결과 미확인(UNKNOWN)이다
     lookup-read-timeout: 1s
 
+# PG 거래 조회에만 적용한다. 결제 생성은 다시 실행하면 거래가 또 생길 수 있어 재시도·회로를 걸지 않는다 (D-48).
+# 적용 순서는 기본값(Retry 가 바깥)이라 재시도 한 번이 회로 표본 한 건으로 센다 (D-50).
+resilience4j:
+  retry:
+    instances:
+      pgLookup:
+        max-attempts: 3 # 최초 1회 + 재시도 2회. 조회 1회 최대 1초 x 3 + 대기 300ms
+        wait-duration: 100ms
+        enable-exponential-backoff: true # 100ms, 200ms
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - com.loopers.infrastructure.payment.PgUnavailableException
+        ignore-exceptions:
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException # 회로가 막은 호출을 다시 두드리지 않는다
+  circuitbreaker:
+    instances:
+      pgLookup:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 2
+        record-exceptions: # 404·빈 목록 같은 정상 응답은 예외가 아니므로 표본의 실패로 세지 않는다
+          - com.loopers.infrastructure.payment.PgUnavailableException
+
 springdoc:
   use-fqn: true
   swagger-ui:

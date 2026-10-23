@@ -222,7 +222,8 @@ apply(orderId, observation):
 | 구분 | 위치 | 내용 |
 |---|---|---|
 | 포트 | `application.payment.PaymentGateway` | 입출력은 application 타입만 쓴다 |
-| 구현 | `infrastructure.payment.TestPgClient` | URL·헤더·JSON·timeout·예외 변환을 숨긴다 |
+| HTTP 호출 | `infrastructure.payment.TestPgClient` | URL·헤더·JSON·timeout을 숨기고 응답을 해석한다. 조회는 하지 못하면 `PgUnavailableException`을 던진다. 조회 메서드에 Retry·CB를 건다 |
+| 포트 구현 | `infrastructure.payment.PaymentGatewayImpl` | `TestPgClient`를 호출하고, 조회 실패 예외(`PgUnavailableException`, 회로가 막은 `CallNotPermittedException`)를 `Unavailable`로 바꾼다 |
 
 ```
 requestPayment(...)             → Accepted(transactionKey) | RejectedNoEffect | Unknown
@@ -268,7 +269,7 @@ create는 다시 실행하면 새 거래가 생길 수 있다. HALF_OPEN 탐색 
 |---|---|---|
 | `maxAttempts` | 3 | 최초 1회 + 재시도 2회 (라이브러리 계약을 테스트로 확인한다) |
 | 대기 | 100ms → 200ms 지수 | 조회 1회 최대 1초 × 3 + 300ms ≈ 3.3초가 전체 예산 |
-| 재시도 대상 | 연결·timeout(`ResourceAccessException`), 5xx | 일시적 실패 |
+| 재시도 대상 | `PgUnavailableException` (연결·timeout, 5xx, 해석할 수 없는 응답) | 일시적 실패. 404 외의 4xx(예: 401)도 같은 예외라 재시도되는 단순화를 받아들인다. 설정 실수일 때 호출이 3회로 늘 뿐이다 |
 | 재시도 제외 | `CallNotPermittedException` | 회로가 막은 호출을 다시 두드리지 않는다 |
 
 **CircuitBreaker `pgLookup`**
@@ -278,9 +279,9 @@ create는 다시 실행하면 새 거래가 생길 수 있다. HALF_OPEN 탐색 
 | 윈도우 | COUNT_BASED 10 |
 | `minimumNumberOfCalls` | 5 |
 | `failureRateThreshold` | 50% |
-| `waitDurationInOpenState` | 10초 (test 프로필은 짧게 덮어쓴다) |
+| `waitDurationInOpenState` | 10초 (`PaymentResilienceTest`는 400ms로 덮어쓴다) |
 | `permittedNumberOfCallsInHalfOpenState` | 2 |
-| 실패로 세는 것 | 연결·timeout, 5xx |
+| 실패로 세는 것 | `PgUnavailableException` (연결·timeout, 5xx, 해석할 수 없는 응답) |
 | 세지 않는 것 | 404, 빈 목록 등 정상 응답으로 돌아온 업무 결과 |
 
 회로의 표본 크기는 동시 요청 제한이 아니다. 동시 호출을 제한하는 bulkhead와 역할이 다르고, 이번 범위에는 넣지 않는다. 회로도 개별 호출의 timeout을 대신하지 않는다.
@@ -298,18 +299,23 @@ create는 다시 실행하면 새 거래가 생길 수 있다. HALF_OPEN 탐색 
 
 외부 시스템 보호가 회로의 목적이므로 실제 호출 기준으로 세는 기본 순서를 택한다 (D-50).
 
-**테스트로 고정한다** (`PaymentResilienceTest`)
+**테스트로 고정한다** (`PaymentResilienceTest`, 기준은 fixture가 받은 실제 호출 수와 회로가 센 표본)
 
-- 항상 500을 주는 fixture에 조회 1회 → 실제 호출 3회, 회로가 센 실패 3건, 상태 OPEN. 순서가 뒤집히면 실패가 1건이 되어 깨진다.
-- OPEN 동안 조회 1회 → 실제 호출 0회 증가, "확인 불가" 반환. (`CallNotPermittedException`이 재시도되지 않음)
-- 대기 후 HALF_OPEN → 허용 호출 수만큼만 실제 호출, 성공하면 CLOSED, 실패하면 다시 OPEN.
-- annotation이 프록시를 거치지 않으면 회로가 센 호출이 0건이라 같은 테스트가 실패한다. self-invocation 실수도 여기서 잡힌다.
+- 항상 500을 주는 fixture에 조회 1회 → 실제 호출 3회, 회로가 센 실패 3건 (표본 최소 5건에 못 미쳐 CLOSED). CB가 바깥이면 실패가 1건이 되어 깨진다.
+- 같은 조회를 한 번 더 → 5번째 실제 호출의 실패에서 회로가 OPEN 되고, 여섯 번째 시도는 회로가 막아 **실제 호출 5회에서 멈춘다**.
+- OPEN 동안 조회 → 실제 호출 증가 0, 조회 불가를 돌려준다. 막힌 호출은 재시도하지 않는다(막힌 시도 1건).
+- 대기 후 HALF_OPEN → 회복했으면 탐색 호출 2건이 성공해 CLOSED, 여전히 실패하면 **실제 호출 2건만** 나가고 다시 OPEN. 재시도가 탐색 호출을 늘리지 못한다.
+- 404와 빈 목록은 몇 번을 받아도 회로의 실패로 세지 않는다.
+- 결제 생성은 실패를 반복해도 요청 수만큼만 PG에 나가고(재시도 0), 조회 회로의 표본에 들지 않으며, 조회 회로가 OPEN이어도 막히지 않는다.
+- 조회를 하는 `TestPgClient`가 AOP 프록시이고, 프록시를 거치면 회로가 호출을 센다. 프록시를 거치지 않으면 센 호출이 0건이라 위 검사가 모두 깨진다. self-invocation 실수도 여기서 잡힌다.
 
-### 5-4. fallback과 self-invocation
+**순서 변이 검증**: `circuitBreakerAspectOrder=1`, `retryAspectOrder=2`로 순서를 일부러 뒤집으면 이 클래스 14건 중 10건이 실패한다. 순서를 지정하는 효과가 실제로 테스트에 잡힌다. (JDK `HttpClient`는 GET을 연결 만료 때 한 번 자동 재시도할 수 있지만, 이 테스트의 500 응답은 정상 응답이라 해당하지 않는다.)
 
-- **fallback은 안쪽 CB가 아니라 바깥 `@Retry`에 둔다.** 안쪽 CB에 두면 예외가 재시도 전에 fallback 값으로 바뀌어 재시도가 사라진다.
-- fallback은 `Unavailable`을 돌려줄 뿐이다. **결제 결과를 정하지 않는다.** 실패 확정, 성공 응답, 금액 0, 포인트 대체 결제, 예약 임의 반환을 하지 않는다. 회로가 OPEN이어도 기존 `UNKNOWN`·`PENDING`을 미발송으로 되돌리지 않는다.
-- annotation은 프록시를 거칠 때만 동작한다. 어느 조회를 쓸지의 분기(거래 키 유무)는 adapter 안이 아니라 application(`PaymentFacade`)에 둔다. adapter 안에서 `this.find...`를 부르면 Retry·CB가 조용히 빠진다.
+### 5-4. 실패의 변환과 self-invocation
+
+- **`fallbackMethod`를 쓰지 않는다.** annotation을 건 `TestPgClient`는 조회하지 못하면 예외를 그대로 던지고(그래야 Retry가 재시도하고 CB가 센다), 그 예외를 `Unavailable`로 바꾸는 일은 `TestPgClient`를 호출하는 **다른 빈** `PaymentGatewayImpl`이 한다. Retry·CB 바깥에서 변환하므로 fallback이 재시도를 가로채는 일이 없다.
+- 변환은 `Unavailable`을 돌려줄 뿐이다. **결제 결과를 정하지 않는다.** 실패 확정, 성공 응답, 금액 0, 포인트 대체 결제, 예약 임의 반환을 하지 않는다. 회로가 OPEN이어도 기존 `UNKNOWN`·`PENDING`을 미발송으로 되돌리지 않는다.
+- annotation은 프록시를 거칠 때만 동작한다. 호출하는 쪽(`PaymentGatewayImpl`)이 다른 빈이므로 자기 호출이 구조적으로 생기지 않는다. 어느 조회를 쓸지의 분기(거래 키 유무)도 adapter 안이 아니라 application(`PaymentFacade`)에 둔다. `TestPgClient` 안에서 `this.getTransaction...`을 부르면 Retry·CB가 조용히 빠진다.
 
 ### 5-5. 조회를 시작시키는 트리거
 
@@ -448,9 +454,9 @@ create는 다시 실행하면 새 거래가 생길 수 있다. HALF_OPEN 탐색 
 ### D-50. 회복 도구는 Resilience4j annotation을 조회 경로에만, 기본 순서(Retry 바깥)로 적용한다
 
 - **상황**: 조회는 재시도해도 되지만 create는 안 된다. Retry와 CB를 겹치면 어느 호출을 표본으로 세는지 달라진다.
-- **결정**: `resilience4j-spring-boot3` + `starter-aop`, `@Retry`/`@CircuitBreaker`를 조회 메서드에만 둔다. 기본 순서를 유지해 실제 호출마다 회로 표본으로 센다. `CallNotPermittedException`은 재시도하지 않는다. fallback은 바깥 `@Retry`에 두고 `Unavailable`만 반환한다. 순서·프록시 적용은 실제 호출 수와 회로 지표 테스트로 고정한다. 수치는 5-2.
+- **결정**: `resilience4j-spring-boot3` + `starter-aop`, `@Retry`/`@CircuitBreaker`를 조회 메서드에만 둔다. 기본 순서를 유지해 실제 호출마다 회로 표본으로 센다. `CallNotPermittedException`은 재시도하지 않는다. `fallbackMethod`는 쓰지 않고, 호출하는 `PaymentGatewayImpl`이 실패 예외를 `Unavailable`로 바꾼다. 순서·프록시 적용은 실제 호출 수와 회로 지표 테스트로 고정한다. 수치는 5-2.
 - **근거**: 보편적인 Spring 사용 방식이고, 회로의 목적(외부 보호)에 맞게 실제 호출 기준으로 센다.
-- **비용**: 순서가 코드에 드러나지 않고, self-invocation 실수가 조용히 일어날 수 있다. 테스트와 분기 위치 규칙(5-4)으로 막는다.
+- **비용**: 순서가 코드에 드러나지 않고, self-invocation 실수가 조용히 일어날 수 있다. 테스트와 분기 위치 규칙(5-4)으로 막는다. 호출하는 쪽과 변환하는 쪽을 나누느라 클래스가 둘이 된다.
 - **기각한 대안**: 함수형 decorator(순서는 보이지만 Spring에서 덜 보편적), CB 바깥 순서(회로가 늦게 열리고 HALF_OPEN 탐색이 불어남).
 
 ### D-51. 트랜잭션 경계는 Facade가 아니라 application의 전용 컴포넌트에 둔다

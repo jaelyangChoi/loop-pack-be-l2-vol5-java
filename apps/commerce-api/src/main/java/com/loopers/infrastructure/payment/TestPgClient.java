@@ -7,6 +7,8 @@ import com.loopers.application.payment.PaymentGateway.CreateResult;
 import com.loopers.application.payment.PaymentGateway.PaymentRequest;
 import com.loopers.application.payment.PaymentGateway.PgStatus;
 import com.loopers.application.payment.PaymentGateway.PgTransaction;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import jakarta.annotation.PreDestroy;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -31,15 +33,19 @@ import java.util.function.Supplier;
  * 모두 만족한 응답만 {@code RejectedNoEffect} 이고, 그 밖의 비정상은 한곳에서 {@code Unknown} 으로 합류한다. 결제 생성에는
  * timeout 만 있고 재시도·회로가 없다 (D-48).
  *
- * <p>조회({@link #getTransaction}, {@link #getTransactions})는 조회하지 못하면 {@link PgUnavailableException} 을 던진다.
- * 재시도·회로는 이 메서드들에 붙이고, 그 예외를 {@code Unavailable} 로 바꾸는 일은 {@link PaymentGatewayImpl} 이 한다.
- * 호출하는 쪽이 다른 빈이라 프록시를 거치지 않는 자기 호출이 생기지 않는다 (설계 5-4).
+ * <p>조회({@link #getTransaction}, {@link #getTransactions})는 조회하지 못하면 {@link PgUnavailableException} 을 던지고,
+ * 이 두 메서드에만 {@code @Retry}·{@code @CircuitBreaker} 를 건다. 적용 순서는 기본값이라 Retry 가 바깥이다. 예외를
+ * {@code Unavailable} 로 바꾸는 일은 {@link PaymentGatewayImpl} 이 한다. 호출하는 쪽이 다른 빈이라 프록시를 거치지 않는
+ * 자기 호출이 생기지 않는다 (설계 5-4). 어느 조회를 쓸지의 분기는 application 이 한다.
  *
  * <p>JDK {@link HttpClient} 는 POST 를 자동 재시도하지 않는다 ({@code jdk.httpclient.enableAllMethodRetry} 기본 꺼짐).
  * 읽기 timeout 은 응답 헤더를 받을 때까지의 시간에 적용된다.
  */
 @Component
 public class TestPgClient {
+
+    /** 조회의 Retry·CircuitBreaker 인스턴스 이름. 설정은 {@code resilience4j.*.instances.pgLookup} 이다. */
+    public static final String LOOKUP_RESILIENCE = "pgLookup";
 
     private static final String PAYMENTS_PATH = "/api/v1/payments";
     private static final String REJECTED_CODE = "TEST_PG_REJECTED_BEFORE_CREATE";
@@ -95,6 +101,8 @@ public class TestPgClient {
     }
 
     /** 거래 키로 한 건을 조회한다. PG 가 모르는 키(404)이면 비어 있다. 조회하지 못하면 예외를 던진다. */
+    @Retry(name = LOOKUP_RESILIENCE)
+    @CircuitBreaker(name = LOOKUP_RESILIENCE)
     public Optional<PgTransaction> getTransaction(String transactionKey) {
         RawResponse response = lookup(() -> lookupClient.get()
             .uri(PAYMENTS_PATH + "/{transactionKey}", transactionKey)
@@ -110,6 +118,8 @@ public class TestPgClient {
     }
 
     /** 주문 식별자로 거래 목록을 조회한다. 거래가 없으면 빈 목록이다. 조회하지 못하면 예외를 던진다. */
+    @Retry(name = LOOKUP_RESILIENCE)
+    @CircuitBreaker(name = LOOKUP_RESILIENCE)
     public List<PgTransaction> getTransactions(String providerOrderId) {
         RawResponse response = lookup(() -> lookupClient.get()
             .uri(uriBuilder -> uriBuilder.path(PAYMENTS_PATH).queryParam("orderId", "{orderId}").build(providerOrderId))
