@@ -65,13 +65,13 @@ public class AdminOrderDto {
         }
     }
 
-    public record PaymentResponse(long paidAmount, long balanceAfter) {
+    public record PaymentResponse(long paidAmount) {
         // 확정 전(DRAFT)에는 결제 결과가 없으므로 null 을 받으면 null 을 돌려준다. null 필드는 응답에서 생략된다.
         public static PaymentResponse from(PaymentInfo info) {
             if (info == null) {
                 return null;
             }
-            return new PaymentResponse(info.paidAmount(), info.balanceAfter());
+            return new PaymentResponse(info.paidAmount());
         }
     }
 }

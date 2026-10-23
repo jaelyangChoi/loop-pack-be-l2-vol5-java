@@ -130,7 +130,7 @@ class AdminOrderFacadeTest {
             assertThat(info.userId()).isEqualTo(buyer.getId());
             assertThat(info.status()).isEqualTo(OrderStatus.CONFIRMED);
             assertThat(info.items()).containsExactly(new OrderItemInfo(shirt.getId(), "티셔츠", 2, 3_000L, 6_000L));
-            assertThat(info.payment()).isEqualTo(new PaymentInfo(6_000L, 4_000L));
+            assertThat(info.payment()).isEqualTo(new PaymentInfo(6_000L));
             assertThat(info.orderedAt()).isNotNull();
             assertThat(exception.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
         }

@@ -11,7 +11,9 @@ import com.loopers.domain.user.User;
 import com.loopers.domain.user.UserRepository;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
+import com.loopers.support.fixture.ExposedProducts;
 import com.loopers.utils.DatabaseCleanUp;
+import com.loopers.utils.RedisCleanUp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -29,6 +31,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @SpringBootTest
 class ProductFacadeTest {
+
+    @Autowired
+    private ExposedProducts exposedProducts;
 
     @Autowired
     private ProductFacade productFacade;
@@ -51,9 +56,14 @@ class ProductFacadeTest {
     @Autowired
     private DatabaseCleanUp databaseCleanUp;
 
+    @Autowired
+    private RedisCleanUp redisCleanUp;
+
     @AfterEach
     void tearDown() {
         databaseCleanUp.truncateAllTables();
+        // 테이블을 비우면 id 가 다시 1부터 쓰이므로, 이전 테스트의 목록 캐시가 새 데이터로 hit 되지 않게 함께 비운다.
+        redisCleanUp.truncateAll();
     }
 
     private User saveUser() {
@@ -65,7 +75,7 @@ class ProductFacadeTest {
     }
 
     private Product saveProduct(Brand brand, String name, long price) {
-        return productRepository.save(Product.create(brand.getId(), name, new Money(price), new Stock(10)));
+        return exposedProducts.save(Product.create(brand.getId(), name, new Money(price), new Stock(10)));
     }
 
     private Product saveDeletedProduct(Brand brand, String name) {
@@ -172,8 +182,8 @@ class ProductFacadeTest {
                 .containsExactly(expensiveMid.getId(), midNew.getId(), cheapOld.getId());
         }
 
-        private List<Long> ids(Page<ProductDetailInfo> page) {
-            return page.getContent().stream().map(info -> info.product().id()).toList();
+        private List<Long> ids(Page<ProductListItemInfo> page) {
+            return page.getContent().stream().map(info -> info.id()).toList();
         }
 
         @DisplayName("항목마다 자기 브랜드 정보와 좋아요 수를 담는다.")
@@ -192,14 +202,14 @@ class ProductFacadeTest {
             likeFacade.like(me.getId(), bag.getId());
 
             // act
-            Page<ProductDetailInfo> page = productFacade.getList(null, "latest", 0, 20);
+            Page<ProductListItemInfo> page = productFacade.getList(null, "latest", 0, 20);
 
             // assert: 최신순이라 cap, bag, shoes
             assertThat(page.getContent()).extracting(info -> info.brand().name())
                 .containsExactly("제로스", "제로스", "루퍼스");
-            assertThat(page.getContent()).extracting(ProductDetailInfo::likeCount)
+            assertThat(page.getContent()).extracting(ProductListItemInfo::likeCount)
                 .containsExactly(0L, 1L, 2L);
-            assertThat(page.getContent()).extracting(info -> info.product().id())
+            assertThat(page.getContent()).extracting(info -> info.id())
                 .containsExactly(cap.getId(), bag.getId(), shoes.getId());
         }
 
@@ -212,10 +222,10 @@ class ProductFacadeTest {
             saveDeletedProduct(brand, "삭제됨");
 
             // act
-            Page<ProductDetailInfo> page = productFacade.getList(null, "latest", 0, 20);
+            Page<ProductListItemInfo> page = productFacade.getList(null, "latest", 0, 20);
 
             // assert
-            assertThat(page.getContent()).extracting(info -> info.product().id()).containsExactly(active.getId());
+            assertThat(page.getContent()).extracting(info -> info.id()).containsExactly(active.getId());
         }
 
         @DisplayName("브랜드를 지정하면 그 브랜드의 상품만 반환한다. 존재하지 않는 브랜드이면 빈 목록이다.")
@@ -228,11 +238,11 @@ class ProductFacadeTest {
             saveProduct(zeros, "가방", 30_000);
 
             // act
-            Page<ProductDetailInfo> filtered = productFacade.getList(loopers.getId(), "latest", 0, 20);
-            Page<ProductDetailInfo> unknown = productFacade.getList(999L, "latest", 0, 20);
+            Page<ProductListItemInfo> filtered = productFacade.getList(loopers.getId(), "latest", 0, 20);
+            Page<ProductListItemInfo> unknown = productFacade.getList(999L, "latest", 0, 20);
 
             // assert
-            assertThat(filtered.getContent()).extracting(info -> info.product().id()).containsExactly(shoes.getId());
+            assertThat(filtered.getContent()).extracting(info -> info.id()).containsExactly(shoes.getId());
             assertThat(unknown.getContent()).isEmpty();
             assertThat(unknown.getTotalElements()).isZero();
         }
@@ -241,7 +251,7 @@ class ProductFacadeTest {
         @Test
         void returnsEmptyPage_whenNoProducts() {
             // act
-            Page<ProductDetailInfo> page = productFacade.getList(null, "likes_desc", 0, 20);
+            Page<ProductListItemInfo> page = productFacade.getList(null, "likes_desc", 0, 20);
 
             // assert
             assertThat(page.getContent()).isEmpty();
@@ -258,7 +268,7 @@ class ProductFacadeTest {
             saveProduct(brand, "셋", 1_000);
 
             // act
-            Page<ProductDetailInfo> secondPage = productFacade.getList(null, "latest", 1, 2);
+            Page<ProductListItemInfo> secondPage = productFacade.getList(null, "latest", 1, 2);
 
             // assert
             assertThat(secondPage.getContent()).hasSize(1);
@@ -315,6 +325,26 @@ class ProductFacadeTest {
             // act & assert
             assertThat(errorTypeOf(() -> productFacade.getList(null, "latest", 0, 20)))
                 .isEqualTo(ErrorType.INTERNAL_ERROR);
+        }
+    }
+
+    @DisplayName("데이터가 깨져 노출 상품의 좋아요 집계 행이 없을 때,")
+    @Nested
+    class MissingLikeCount {
+
+        @DisplayName("목록 조회는 0으로 채우지 않고 INTERNAL_ERROR 로 거절하며, 메시지에 상품 id 를 담는다.")
+        @Test
+        void throwsInternalError_onList() {
+            // arrange: 생성 유스케이스를 거치지 않아 집계 행이 없는 노출 상품
+            Brand brand = saveBrand("루퍼스");
+            Product product = productRepository.save(Product.create(brand.getId(), "러닝화", new Money(89_000), new Stock(10)));
+
+            // act
+            CoreException exception = assertThrows(CoreException.class, () -> productFacade.getList(null, "latest", 0, 20));
+
+            // assert
+            assertThat(exception.getErrorType()).isEqualTo(ErrorType.INTERNAL_ERROR);
+            assertThat(exception.getCustomMessage()).contains(String.valueOf(product.getId()));
         }
     }
 }
