@@ -5,8 +5,13 @@ import com.loopers.application.order.OrderItemCommand;
 import com.loopers.application.order.OrderItemInfo;
 import com.loopers.application.order.OrderSummaryInfo;
 import com.loopers.application.order.PaymentInfo;
+import com.loopers.application.payment.PaymentAttemptInfo;
+import com.loopers.application.payment.PaymentStartCommand;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -25,6 +30,40 @@ public class OrderDto {
             return new OrderItemCommand(productId, quantity);
         }
     }
+
+    // 결제 시작 요청. 금액은 받지 않는다(저장된 주문 합계로 정한다). 카드 값은 합성 값이며 저장하지 않고 문자열 표현에 드러내지 않는다.
+    // 값 규칙은 형식만 본다. 같은 시도의 중복·충돌은 application 이 판단한다.
+    public record ConfirmRequest(
+        @NotBlank @Size(max = 64) String paymentAttemptKey,
+        @NotBlank String cardType,
+        @NotBlank @Pattern(regexp = "\\d{4}-\\d{4}-\\d{4}-\\d{4}") String cardNo
+    ) {
+        public PaymentStartCommand toCommand(Long userId, Long orderId) {
+            return new PaymentStartCommand(userId, orderId, paymentAttemptKey, cardType, cardNo);
+        }
+
+        @Override
+        public String toString() {
+            return "ConfirmRequest[paymentAttemptKey=" + paymentAttemptKey + ", cardType=" + cardType + ", cardNo=****]";
+        }
+    }
+
+    // 결제 시작·확인의 응답. 처리 중이거나 결과 미확인이면 202, PG 결과로 종결한 시도면 200 이다. 주문 상태와 시도 상태를
+    // 함께 담고, 최종 결과를 알려면 links.order 로 조회한다.
+    public record PaymentStartResponse(Long orderId, String orderStatus, AttemptResponse payment, LinksResponse links) {
+        public static PaymentStartResponse from(PaymentAttemptInfo info) {
+            return new PaymentStartResponse(
+                info.orderId(),
+                info.orderStatus().name(),
+                new AttemptResponse(info.attemptStatus().name(), info.amount()),
+                new LinksResponse("/api/v1/orders/" + info.orderId())
+            );
+        }
+    }
+
+    public record AttemptResponse(String status, long amount) {}
+
+    public record LinksResponse(String order) {}
 
     // payment 는 확정된 주문에만 있고, 확정 전(DRAFT)에는 null 이다. orderedAt 은 주문을 만든 시각이다.
     public record OrderResponse(

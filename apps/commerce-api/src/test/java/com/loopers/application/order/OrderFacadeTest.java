@@ -8,6 +8,7 @@ import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.Stock;
 import com.loopers.domain.user.User;
 import com.loopers.domain.user.UserRepository;
+import com.loopers.support.fixture.ConfirmedOrders;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import com.loopers.utils.DatabaseCleanUp;
@@ -15,8 +16,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
@@ -325,226 +324,6 @@ class OrderFacadeTest {
 
     }
 
-    @DisplayName("주문을 확정할 때,")
-    @Nested
-    class Confirm {
-        private User saveUserWithBalance(long amount) {
-            User user = User.create();
-            user.chargePoint(new Money(amount));
-            return userRepository.save(user);
-        }
-
-        private Long placeOrder(User user, OrderItemCommand... items) {
-            return orderFacade.create(user.getId(), List.of(items)).id();
-        }
-
-        // 저장소에서 다시 읽어 확인한다. 삭제된 상품도 읽을 수 있도록 SQL 로 조회한다.
-        private int stockOf(Product product) {
-            return jdbcTemplate.queryForObject("select stock from products where id = ?", Integer.class, product.getId());
-        }
-
-        private long balanceOf(User user) {
-            return userRepository.find(user.getId()).orElseThrow().getPointBalance().balance().amount();
-        }
-
-        private String statusOf(Long orderId) {
-            return jdbcTemplate.queryForObject("select status from orders where id = ?", String.class, orderId);
-        }
-
-        private void assertUntouched(Long orderId, User user, long balance, Map<Product, Integer> stocks) {
-            assertThat(statusOf(orderId)).isEqualTo("DRAFT");
-            assertThat(balanceOf(user)).isEqualTo(balance);
-            stocks.forEach((product, stock) -> assertThat(stockOf(product)).as(product.getName()).isEqualTo(stock));
-        }
-
-        @DisplayName("재고를 차감하고 포인트를 결제해 CONFIRMED 가 되며, 결제액이 저장되고 포인트 잔액은 주문에 저장하지 않는다.")
-        @Test
-        void confirmsOrder_deductsStockAndPoint() {
-            // arrange: 4-1 시나리오. 잔액 10,000 → 3,000×1 + 2,000×2 = 7,000 결제 → 잔액 3,000
-            User user = saveUserWithBalance(10_000);
-            Product shirt = saveProduct("티셔츠", 3_000, 10);
-            Product socks = saveProduct("양말", 2_000, 10);
-            Long orderId = placeOrder(user, new OrderItemCommand(shirt.getId(), 1), new OrderItemCommand(socks.getId(), 2));
-
-            // act
-            OrderInfo info = orderFacade.confirm(user.getId(), orderId);
-
-            // assert
-            assertThat(info.status()).isEqualTo(OrderStatus.CONFIRMED);
-            assertThat(info.totalAmount()).isEqualTo(7_000L);
-            assertThat(info.payment()).isEqualTo(new PaymentInfo(7_000L));
-            assertThat(info.items()).hasSize(2);
-            assertThat(stockOf(shirt)).isEqualTo(9);
-            assertThat(stockOf(socks)).isEqualTo(8);
-            assertThat(balanceOf(user)).isEqualTo(3_000L);
-            Map<String, Object> saved = jdbcTemplate.queryForMap(
-                "select status, paid_amount from orders where id = ?", orderId
-            );
-            assertThat(saved.get("status")).isEqualTo("CONFIRMED");
-            assertThat(((Number) saved.get("paid_amount")).longValue()).isEqualTo(7_000L);
-        }
-
-        @DisplayName("재고가 수량과 정확히 같고 잔액이 합계와 정확히 같아도 확정되며, 재고와 잔액은 0이 된다.")
-        @Test
-        void confirmsOrder_whenStockAndBalanceAreExactlyEnough() {
-            // arrange
-            User user = saveUserWithBalance(6_000);
-            Product shirt = saveProduct("티셔츠", 3_000, 2);
-            Long orderId = placeOrder(user, new OrderItemCommand(shirt.getId(), 2));
-
-            // act
-            OrderInfo info = orderFacade.confirm(user.getId(), orderId);
-
-            // assert
-            assertThat(info.payment()).isEqualTo(new PaymentInfo(6_000L));
-            assertThat(stockOf(shirt)).isZero();
-            assertThat(balanceOf(user)).isZero();
-        }
-
-        @DisplayName("주문 뒤 관리자가 가격을 바꿔도 결제액은 주문 당시 합계다.")
-        @Test
-        void paysOrderTotal_evenWhenPriceChangesAfterOrder() {
-            // arrange
-            User user = saveUserWithBalance(10_000);
-            Product shirt = saveProduct("티셔츠", 3_000, 10);
-            Long orderId = placeOrder(user, new OrderItemCommand(shirt.getId(), 2));
-            adminProductFacade.update(shirt.getId(), "티셔츠", 500_000);
-
-            // act
-            OrderInfo info = orderFacade.confirm(user.getId(), orderId);
-
-            // assert
-            assertThat(info.payment()).isEqualTo(new PaymentInfo(6_000L));
-            assertThat(balanceOf(user)).isEqualTo(4_000L);
-        }
-
-        @DisplayName("없는 주문과 다른 사용자의 주문은 NOT_FOUND 이고, 아무것도 바꾸지 않는다.")
-        @Test
-        void throwsNotFound_whenOrderIsMissingOrBelongsToOtherUser() {
-            // arrange
-            User owner = saveUserWithBalance(10_000);
-            User other = saveUserWithBalance(10_000);
-            Product shirt = saveProduct("티셔츠", 3_000, 10);
-            Long orderId = placeOrder(owner, new OrderItemCommand(shirt.getId(), 1));
-
-            // act
-            CoreException missing = rejected(() -> orderFacade.confirm(owner.getId(), 999_999L));
-            CoreException otherUsers = rejected(() -> orderFacade.confirm(other.getId(), orderId));
-
-            // assert
-            assertThat(missing.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
-            assertThat(otherUsers.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
-            assertThat(otherUsers.getMessage()).isEqualTo(missing.getMessage());
-            assertUntouched(orderId, owner, 10_000, Map.of(shirt, 10));
-            assertThat(balanceOf(other)).isEqualTo(10_000L);
-        }
-
-        @DisplayName("이미 확정된 주문은 ORDER_ALREADY_CONFIRMED 이고, 재고와 잔액을 다시 건드리지 않는다. 재고가 0이 돼도 이 오류가 먼저다.")
-        @Test
-        void throwsAlreadyConfirmed_withoutChangingAnything() {
-            // arrange
-            User user = saveUserWithBalance(10_000);
-            Product shirt = saveProduct("티셔츠", 3_000, 2);
-            Long orderId = placeOrder(user, new OrderItemCommand(shirt.getId(), 2));
-            orderFacade.confirm(user.getId(), orderId);
-
-            // act: 확정으로 재고가 0이 되었고 잔액도 줄었다.
-            CoreException exception = rejected(() -> orderFacade.confirm(user.getId(), orderId));
-
-            // assert
-            assertThat(exception.getErrorType()).isEqualTo(ErrorType.ORDER_ALREADY_CONFIRMED);
-            assertThat(statusOf(orderId)).isEqualTo("CONFIRMED");
-            assertThat(stockOf(shirt)).isZero();
-            assertThat(balanceOf(user)).isEqualTo(4_000L);
-        }
-
-        @DisplayName("주문한 상품이 삭제됐으면 PRODUCT_UNAVAILABLE 이고, 메시지에 삭제된 상품의 주문 당시 이름을 모두 담으며, 아무것도 바꾸지 않는다.")
-        @Test
-        void throwsProductUnavailable_withDeletedProductNames() {
-            // arrange
-            User user = saveUserWithBalance(10_000);
-            Product shirt = saveProduct("티셔츠", 3_000, 10);
-            Product socks = saveProduct("양말", 2_000, 10);
-            Product hat = saveProduct("모자", 5_000, 10);
-            Long orderId = placeOrder(
-                user,
-                new OrderItemCommand(shirt.getId(), 1),
-                new OrderItemCommand(socks.getId(), 1),
-                new OrderItemCommand(hat.getId(), 1)
-            );
-            adminProductFacade.delete(shirt.getId());
-            adminProductFacade.delete(hat.getId());
-
-            // act
-            CoreException exception = rejected(() -> orderFacade.confirm(user.getId(), orderId));
-
-            // assert
-            assertThat(exception.getErrorType()).isEqualTo(ErrorType.PRODUCT_UNAVAILABLE);
-            assertThat(exception.getMessage()).contains("(티셔츠, 모자)").doesNotContain("양말");
-            assertUntouched(orderId, user, 10_000, Map.of(shirt, 10, socks, 10, hat, 10));
-        }
-
-        @DisplayName("품목 중 뒤쪽 재고가 부족하거나 0이 되었으면 OUT_OF_STOCK 이고, 앞 품목에서 이미 차감한 재고도 원래대로 돌아간다.")
-        @ParameterizedTest
-        @ValueSource(ints = {0, 1})
-        void rollsBackEarlierStock_whenLaterItemIsOutOfStock(int remainingStock) {
-            // arrange: 생성 때는 충분했지만, 확정 전에 관리자가 모자 재고를 줄였다.
-            User user = saveUserWithBalance(10_000);
-            Product shirt = saveProduct("티셔츠", 3_000, 10);
-            Product hat = saveProduct("모자", 5_000, 5);
-            Long orderId = placeOrder(user, new OrderItemCommand(shirt.getId(), 2), new OrderItemCommand(hat.getId(), 2));
-            adminProductFacade.changeStock(hat.getId(), remainingStock);
-
-            // act
-            CoreException exception = rejected(() -> orderFacade.confirm(user.getId(), orderId));
-
-            // assert
-            assertThat(exception.getErrorType()).isEqualTo(ErrorType.OUT_OF_STOCK);
-            assertUntouched(orderId, user, 10_000, Map.of(shirt, 10, hat, remainingStock));
-        }
-
-        @DisplayName("잔액이 부족하면 INSUFFICIENT_POINT 이고, 이미 차감했던 재고도 모두 원래대로 돌아가며 주문은 DRAFT 로 남는다.")
-        @Test
-        void rollsBackStock_whenBalanceIsInsufficient() {
-            // arrange: 재고는 충분하지만 잔액 1,000 으로 합계 7,000 을 결제할 수 없다.
-            User user = saveUserWithBalance(1_000);
-            Product shirt = saveProduct("티셔츠", 3_000, 10);
-            Product socks = saveProduct("양말", 2_000, 10);
-            Long orderId = placeOrder(user, new OrderItemCommand(shirt.getId(), 1), new OrderItemCommand(socks.getId(), 2));
-
-            // act
-            CoreException exception = rejected(() -> orderFacade.confirm(user.getId(), orderId));
-
-            // assert
-            assertThat(exception.getErrorType()).isEqualTo(ErrorType.INSUFFICIENT_POINT);
-            assertUntouched(orderId, user, 1_000, Map.of(shirt, 10, socks, 10));
-            assertThat(jdbcTemplate.queryForObject(
-                "select paid_amount from orders where id = ?", Long.class, orderId
-            )).isNull();
-        }
-
-        @DisplayName("오류 우선순위: 삭제된 상품이 있으면 재고 부족보다 PRODUCT_UNAVAILABLE 이 먼저이고, 재고 부족은 잔액 부족보다 먼저다.")
-        @Test
-        void followsErrorPriority() {
-            // arrange: 잔액도 부족(1,000)하다.
-            User user = saveUserWithBalance(1_000);
-            Product shirt = saveProduct("티셔츠", 3_000, 10);
-            Product hat = saveProduct("모자", 5_000, 5);
-            Long orderId = placeOrder(user, new OrderItemCommand(shirt.getId(), 2), new OrderItemCommand(hat.getId(), 2));
-            adminProductFacade.changeStock(hat.getId(), 1);
-
-            // act & assert: 재고 부족 + 잔액 부족 → OUT_OF_STOCK
-            assertThat(rejected(() -> orderFacade.confirm(user.getId(), orderId)).getErrorType())
-                .as("재고 부족 + 잔액 부족").isEqualTo(ErrorType.OUT_OF_STOCK);
-
-            // 삭제된 상품 + 재고 부족 → PRODUCT_UNAVAILABLE
-            adminProductFacade.delete(shirt.getId());
-            assertThat(rejected(() -> orderFacade.confirm(user.getId(), orderId)).getErrorType())
-                .as("삭제된 상품 + 재고 부족").isEqualTo(ErrorType.PRODUCT_UNAVAILABLE);
-        }
-
-    }
-
     @DisplayName("내 주문을 조회할 때,")
     @Nested
     class Query {
@@ -558,16 +337,17 @@ class OrderFacadeTest {
             return orderFacade.create(user.getId(), List.of(items)).id();
         }
 
-        @DisplayName("생성·확정한 주문의 응답에는 주문 시각이 담긴다.")
+        @DisplayName("생성한 주문의 응답에는 주문 시각이 담기고, 확정돼도 같은 주문 시각으로 조회된다.")
         @Test
-        void includesOrderedAt_inCreateAndConfirmResult() {
+        void includesOrderedAt_andKeepsItAfterConfirmation() {
             // arrange
             User user = saveUserWithBalance(10_000);
             Product shirt = saveProduct("티셔츠", 3_000, 10);
 
             // act
             OrderInfo created = orderFacade.create(user.getId(), List.of(new OrderItemCommand(shirt.getId(), 1)));
-            OrderInfo confirmed = orderFacade.confirm(user.getId(), created.id());
+            ConfirmedOrders.confirm(jdbcTemplate, created.id());
+            OrderInfo confirmed = orderFacade.getMine(user.getId(), created.id());
 
             // assert
             assertThat(created.orderedAt()).isNotNull();
@@ -585,7 +365,7 @@ class OrderFacadeTest {
             Long draftId = placeOrder(me, new OrderItemCommand(shirt.getId(), 1));
             placeOrder(other, new OrderItemCommand(shirt.getId(), 1));
             Long confirmedId = placeOrder(me, new OrderItemCommand(shirt.getId(), 1), new OrderItemCommand(socks.getId(), 2));
-            orderFacade.confirm(me.getId(), confirmedId);
+            ConfirmedOrders.confirm(jdbcTemplate, confirmedId);
 
             // act
             Page<OrderSummaryInfo> page = orderFacade.getMyList(me.getId(), 0, 20);
@@ -646,7 +426,7 @@ class OrderFacadeTest {
             User other = saveUserWithBalance(10_000);
             Product shirt = saveProduct("티셔츠", 3_000, 10);
             Long orderId = placeOrder(me, new OrderItemCommand(shirt.getId(), 2));
-            orderFacade.confirm(me.getId(), orderId);
+            ConfirmedOrders.confirm(jdbcTemplate, orderId);
 
             // act
             OrderInfo info = orderFacade.getMine(me.getId(), orderId);

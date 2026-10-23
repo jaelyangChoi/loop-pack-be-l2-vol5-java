@@ -1,5 +1,6 @@
 package com.loopers.application.payment;
 
+import com.loopers.application.point.PointFacade;
 import com.loopers.domain.product.Product;
 import com.loopers.domain.user.User;
 import com.loopers.support.concurrent.ConcurrentRequests;
@@ -7,6 +8,7 @@ import com.loopers.support.concurrent.ConcurrentRequests.Results;
 import com.loopers.support.error.ErrorType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.RepeatedTest;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,6 +27,9 @@ class PaymentStartConcurrencyTest extends PaymentFlowTestSupport {
 
     private static final int REPETITIONS = 5;
     private static final String KEY = "attempt-1";
+
+    @Autowired
+    private PointFacade pointFacade;
 
     private List<Runnable> requests(int count, IntFunction<Runnable> request) {
         List<Runnable> requests = new ArrayList<>();
@@ -143,5 +148,90 @@ class PaymentStartConcurrencyTest extends PaymentFlowTestSupport {
         long draftOrders = jdbcTemplate.queryForObject("select count(*) from orders where status = 'DRAFT'", Long.class);
         assertThat(pendingOrders).isEqualTo(1);
         assertThat(draftOrders).isEqualTo(1);
+    }
+
+    @DisplayName("재고 5에 서로 다른 주문 8개를 동시에 결제하면, 5개만 재고를 확보하고 3개는 재고 부족으로 거절되며 PG 요청은 5건뿐이다.")
+    @RepeatedTest(REPETITIONS)
+    void securesOnlyAsManyOrdersAsStock_whenStartingConcurrently() {
+        // arrange: 구매자별로 충분한 잔액을 둔다. 재고 부족이 아니면 거절될 이유가 없다.
+        int initialStock = 5;
+        int requestCount = 8;
+        Product product = saveProduct("러닝화", 1_000, initialStock);
+        List<User> buyers = new ArrayList<>();
+        List<Long> orderIds = new ArrayList<>();
+        for (int i = 0; i < requestCount; i++) {
+            User buyer = saveUser(10_000);
+            buyers.add(buyer);
+            orderIds.add(placeOrder(buyer, product, 1));
+        }
+
+        // act
+        Results results = ConcurrentRequests.run(
+            requests(requestCount, i -> () -> paymentFacade.start(command(buyers.get(i), orderIds.get(i), "attempt-" + i)))
+        );
+
+        // assert: 재고 부족으로 거절된 주문은 PG 에 요청하지 않고 DRAFT 로 남는다.
+        assertAccountedFor(results, requestCount);
+        assertThat(results.successes()).isEqualTo(5);
+        assertThat(results.rejectedWith(ErrorType.OUT_OF_STOCK)).isEqualTo(3);
+        assertThat(stockOf(product)).isZero();
+        assertThat(pg.createCalls()).isEqualTo(5);
+        assertThat(attemptCount()).isEqualTo(5);
+        long pending = jdbcTemplate.queryForObject(
+            "select count(*) from orders where status = 'PAYMENT_PENDING'", Long.class
+        );
+        long draft = jdbcTemplate.queryForObject("select count(*) from orders where status = 'DRAFT'", Long.class);
+        assertThat(pending).isEqualTo(5);
+        assertThat(draft).isEqualTo(3);
+        buyers.forEach(buyer -> assertThat(balanceOf(buyer)).isEqualTo(10_000L));
+    }
+
+    @DisplayName("포인트 잔액이 주문 합계보다 적어도 결제 시작은 포인트와 무관하다. 3개 모두 시작하고 잔액은 그대로다.")
+    @RepeatedTest(REPETITIONS)
+    void startsRegardlessOfPointBalance_whenStartingConcurrently() {
+        // arrange: 잔액 1,000 으로는 4,000 원 주문 하나도 포인트로 결제할 수 없다. 재고는 충분하다.
+        int requestCount = 3;
+        Product product = saveProduct("러닝화", 4_000, 100);
+        User buyer = saveUser(1_000);
+        List<Long> orderIds = new ArrayList<>();
+        for (int i = 0; i < requestCount; i++) {
+            orderIds.add(placeOrder(buyer, product, 1));
+        }
+
+        // act
+        Results results = ConcurrentRequests.run(
+            requests(requestCount, i -> () -> paymentFacade.start(command(buyer, orderIds.get(i), "attempt-" + i)))
+        );
+
+        // assert
+        assertAccountedFor(results, requestCount);
+        assertThat(results.successes()).isEqualTo(requestCount);
+        assertThat(results.rejections()).isZero();
+        assertThat(balanceOf(buyer)).isEqualTo(1_000L);
+        assertThat(stockOf(product)).isEqualTo(97);
+        assertThat(pg.createCalls()).isEqualTo(requestCount);
+    }
+
+    @DisplayName("포인트 충전과 결제 시작을 동시에 하면 서로 영향이 없다. 충전은 유실되지 않고 결제 시작은 포인트를 차감하지 않는다.")
+    @RepeatedTest(REPETITIONS)
+    void keepsCharge_andDoesNotDeductPoint_whenChargingAndStartingConcurrently() {
+        // arrange
+        long initialBalance = 10_000;
+        long chargeAmount = 2_000;
+        Product product = saveProduct("러닝화", 7_000, 10);
+        User buyer = saveUser(initialBalance);
+        Long orderId = placeOrder(buyer, product, 1);
+
+        // act
+        Results results = ConcurrentRequests.run(List.of(
+            () -> paymentFacade.start(command(buyer, orderId, KEY)),
+            () -> pointFacade.charge(buyer.getId(), chargeAmount)
+        ));
+
+        // assert
+        assertAccountedFor(results, 2);
+        assertThat(results.successes()).isEqualTo(2);
+        assertThat(balanceOf(buyer)).isEqualTo(initialBalance + chargeAmount);
+        assertThat(orderStatusOf(orderId)).isEqualTo("PAYMENT_PENDING");
     }
 }

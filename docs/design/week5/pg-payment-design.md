@@ -354,7 +354,7 @@ create는 다시 실행하면 새 거래가 생길 수 있다. HALF_OPEN 탐색 
 
 | 기능 | method · path | 성공 | 대표 오류 |
 |---|---|---|---|
-| 결제 시작 | `POST /api/v1/orders/{orderId}/confirm` (본문: `paymentAttemptKey`, `cardType`, `cardNo`) | 미종결(`PENDING`/`UNKNOWN`) **202**, 같은 시도의 종결 **200**. 본문: `orderId`, `orderStatus`, `payment{attemptStatus, amount}`, 조회 경로 | 404, 400, 409 `PAYMENT_ATTEMPT_CONFLICT`, 409 `PRODUCT_UNAVAILABLE`·`OUT_OF_STOCK`·`ORDER_ALREADY_CONFIRMED` |
+| 결제 시작 | `POST /api/v1/orders/{orderId}/confirm` (본문: `paymentAttemptKey`, `cardType`, `cardNo`) | 미종결(`PENDING`/`UNKNOWN`) **202**, 같은 시도의 종결 **200**. 본문: `orderId`, `orderStatus`, `payment{status, amount}`, `links.order`(주문 조회 경로). 카드 값은 응답에 담지 않는다 | 404, 400, 409 `PAYMENT_ATTEMPT_CONFLICT`, 409 `PRODUCT_UNAVAILABLE`·`OUT_OF_STOCK`·`ORDER_ALREADY_CONFIRMED` |
 | 결제 확인 | `POST /api/v1/orders/{orderId}/payment/reconcile` | 미종결 202(`lookupUnavailable` 표시 가능), 종결 200 | 404(없는·타인 주문), 409(시도 없음) |
 | PG 알림 | `POST /api/v1/payments/callback` (본문: `providerOrderId`, `transactionKey`, `status`) | 200 현재 상태 | 404(모르는 `providerOrderId`) |
 | 주문 상세 | `GET /api/v1/orders/{orderId}` | 기존 응답 + `payment{status, paidAmount?}`. PG 호출 없음 | 기존과 동일 |

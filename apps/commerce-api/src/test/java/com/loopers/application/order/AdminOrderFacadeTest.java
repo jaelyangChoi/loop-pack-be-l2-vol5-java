@@ -7,6 +7,7 @@ import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.Stock;
 import com.loopers.domain.user.User;
 import com.loopers.domain.user.UserRepository;
+import com.loopers.support.fixture.ConfirmedOrders;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import com.loopers.utils.DatabaseCleanUp;
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
 
@@ -37,6 +39,9 @@ class AdminOrderFacadeTest {
 
     @Autowired
     private ProductRepository productRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Autowired
     private DatabaseCleanUp databaseCleanUp;
@@ -120,7 +125,7 @@ class AdminOrderFacadeTest {
             User buyer = saveUser();
             Product shirt = saveProduct("티셔츠", 3_000);
             Long orderId = placeOrder(buyer, shirt, 2);
-            orderFacade.confirm(buyer.getId(), orderId);
+            ConfirmedOrders.confirm(jdbcTemplate, orderId);
 
             // act
             OrderInfo info = adminOrderFacade.get(orderId);
