@@ -19,8 +19,8 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * PG 결과를 시도·주문·재고에 반영한다(TX B 의 내용). 트랜잭션은 호출하는 Facade 가 연다 (D-51). 항상 주문 행을 먼저
- * 잠그고(D-27) 시도를 읽으므로 같은 주문의 여러 입구가 줄을 서고, 이미 나아간 상태는 늦은 응답이 되돌리지 못한다.
+ * PG 결과를 시도·주문·재고에 반영한다(TX B 의 내용). 트랜잭션은 호출하는 Facade 가 연다. 항상 주문 행을 먼저
+ * 잠그고 시도를 읽으므로 같은 주문의 여러 입구가 줄을 서고, 이미 나아간 상태는 늦은 응답이 되돌리지 못한다.
  * 상충하는 응답은 상태를 덮어쓰지 않고 이상 징후로만 남긴다.
  */
 @RequiredArgsConstructor

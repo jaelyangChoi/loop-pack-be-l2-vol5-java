@@ -32,7 +32,7 @@ public class OrderService {
 
     /**
      * 본인의 주문을 조회한다. 없는 주문과 다른 사용자의 주문은 같은 {@code NOT_FOUND} 로 거절해,
-     * 순차 id 로 다른 사람의 주문이 존재하는지 알아내지 못하게 한다 (D-11).
+     * 순차 id 로 다른 사람의 주문이 존재하는지 알아내지 못하게 한다.
      */
     public Order getMine(Long orderId, Long userId) {
         return orderRepository.findByIdAndUserId(orderId, userId).orElseThrow(OrderService::notFound);

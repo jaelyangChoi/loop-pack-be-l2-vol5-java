@@ -24,7 +24,7 @@ import java.util.Optional;
 /**
  * 상품 목록 캐시의 Redis 구현. 키 형식·JSON 직렬화·TTL·영역 비우기와 Redis 오류 처리를 여기서 숨긴다.
  *
- * <p>무효화 직후 replica 의 옛 값을 읽지 않도록 master 로 읽고 쓴다(D-41). 잡는 예외는 Redis 접근
+ * <p>무효화 직후 replica 의 옛 값을 읽지 않도록 master 로 읽고 쓴다. 잡는 예외는 Redis 접근
  * ({@link DataAccessException})과 JSON 변환({@link JsonProcessingException})뿐이며, 오류마다 로그와
  * {@value #ERROR_METRIC} 카운터를 남긴다. 정상 miss 는 오류로 세지 않는다.
  */

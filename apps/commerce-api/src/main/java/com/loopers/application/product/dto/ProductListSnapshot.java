@@ -8,7 +8,7 @@ import java.util.List;
  * 상품 목록 캐시에 담는 값. 고객 목록 항목({@link ProductListItemInfo})에서 좋아요 수를 뺀 나머지와 전체 개수다.
  * 페이지 번호·크기는 캐시 키({@link ProductListQuery})에 있으므로 담지 않는다.
  *
- * <p>좋아요 수는 가장 잦은 쓰기라 담지 않는다(D-38). 캐시를 쓸 때마다 카운터 테이블에서 읽어 합친다.
+ * <p>좋아요 수는 가장 잦은 쓰기라 담지 않는다. 캐시를 쓸 때마다 카운터 테이블에서 읽어 합친다.
  */
 public record ProductListSnapshot(List<Item> items, long totalElements) {
 

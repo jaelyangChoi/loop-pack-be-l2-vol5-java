@@ -87,7 +87,7 @@ public class Product extends BaseEntity {
 
     /**
      * 재고를 돌려준다. 수량이 0 이하이거나 합계가 허용 범위를 넘으면 {@code INVALID_INPUT} 이며 기존 재고가 유지된다.
-     * 삭제 여부({@code deletedAt})는 건드리지 않는다. 삭제된 상품도 수량만 돌려받는다 (D-46).
+     * 삭제 여부({@code deletedAt})는 건드리지 않는다. 삭제된 상품도 수량만 돌려받는다.
      */
     public void increaseStock(int quantity) {
         this.stock = stock.increase(quantity);

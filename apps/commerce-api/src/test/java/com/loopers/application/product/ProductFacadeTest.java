@@ -292,7 +292,7 @@ class ProductFacadeTest {
     @DisplayName("데이터가 깨져 상품의 브랜드를 찾을 수 없을 때,")
     @Nested
     class MissingBrand {
-        // 정상 흐름에서는 상품이 있는 브랜드를 삭제할 수 없다. 브랜드 삭제와 상품 등록이 동시에 일어나는 경쟁(D-16)으로만
+        // 정상 흐름에서는 상품이 있는 브랜드를 삭제할 수 없다. 브랜드 삭제와 상품 등록이 동시에 일어나는 경쟁으로만
         // 생길 수 있는 상태라, Facade 의 확인을 거치지 않고 Repository 로 직접 브랜드를 삭제해 만든다.
         private Product saveProductOfDeletedBrand() {
             Brand brand = saveBrand("루퍼스");

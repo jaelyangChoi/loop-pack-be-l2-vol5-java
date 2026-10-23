@@ -42,7 +42,7 @@ public record Stock(int remaining) {
 
     /**
      * 재고를 늘린 새 {@code Stock}을 반환한다. 확정 실패한 결제 대기 주문이 확보했던 수량을 돌려줄 때 쓴다.
-     * 같은 주문의 반환이 두 번 일어나지 않게 하는 것은 호출하는 쪽의 몫이다 (주문 상태 전이, D-46).
+     * 같은 주문의 반환이 두 번 일어나지 않게 하는 것은 호출하는 쪽의 몫이다 (주문 상태 전이).
      */
     public Stock increase(int quantity) {
         if (quantity <= 0) {

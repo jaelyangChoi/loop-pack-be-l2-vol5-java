@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * 결제 시작의 로컬 트랜잭션 A·B 가 각각 함께 commit 되거나 함께 취소되는지 실제 MySQL 로 확인한다. 트랜잭션이 전역 잠금
- * 순서(주문 → 상품, D-27)대로 행을 잠그고 포인트를 건드리지 않는지도 실행된 SQL 로 확인한다.
+ * 순서(주문 → 상품)대로 행을 잠그고 포인트를 건드리지 않는지도 실행된 SQL 로 확인한다.
  *
  * <p>테스트를 부모 트랜잭션으로 감싸지 않는다. 데이터는 각각 commit 해 두고, 결과는 영속성 컨텍스트를 거치지 않는
  * {@code JdbcTemplate} 으로 새로 읽는다. 실패는 {@link FailingStatementInspector} 로 UPDATE 문이 DB 로 나가기 직전에

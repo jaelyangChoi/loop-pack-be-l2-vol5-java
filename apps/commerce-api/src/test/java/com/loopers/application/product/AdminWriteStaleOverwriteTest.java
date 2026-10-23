@@ -30,7 +30,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 쓰기 경로가 대상 행을 <b>처음 읽을 때부터 잠그는지</b>를 결정적으로 확인한다 (D-24). 같은 행을 바꾸는 다른 요청이 먼저
+ * 쓰기 경로가 대상 행을 <b>처음 읽을 때부터 잠그는지</b>를 결정적으로 확인한다. 같은 행을 바꾸는 다른 요청이 먼저
  * commit 한 변경(재고 차감, 삭제)을 전체 컬럼 UPDATE 가 낡은 값으로 덮어쓰지 않아야 한다.
  *
  * <p>{@code AdminWriteConcurrencyTest} 는 실제 요청끼리 경쟁시키지만 관리자 요청이 짧아 겹침이 확률적이다. 여기서는 테스트

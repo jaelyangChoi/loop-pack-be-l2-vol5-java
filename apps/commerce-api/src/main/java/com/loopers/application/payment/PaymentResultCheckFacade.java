@@ -17,7 +17,7 @@ import java.util.function.Supplier;
 
 /**
  * PG 에 결제 상태를 물어 결과를 반영하는 유스케이스(고객의 확인, PG 의 알림). 메소드에 트랜잭션을 열지 않고 읽기와 반영
- * 구간만 {@link TransactionTemplate} 으로 감싼다 (D-51). 결제를 시작하는 확정 요청은 {@code OrderFacade.confirm} 이다.
+ * 구간만 {@link TransactionTemplate} 으로 감싼다. 결제를 시작하는 확정 요청은 {@code OrderFacade.confirm} 이다.
  */
 @Component
 public class PaymentResultCheckFacade {

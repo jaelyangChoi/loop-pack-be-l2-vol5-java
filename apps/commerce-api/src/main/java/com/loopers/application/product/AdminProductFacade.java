@@ -31,10 +31,10 @@ public class AdminProductFacade {
     @Transactional
     public ProductInfo create(Long brandId, String name, long price, int stock) {
         // 브랜드는 다른 Aggregate 라 존재 여부를 여기서 확인한다. 상품은 brandId 만 가진다.
-        // 공유 잠금으로 읽어 브랜드 삭제(배타 잠금)와 차례로 처리한다. 등록끼리는 서로 기다리지 않는다 (D-27).
+        // 공유 잠금으로 읽어 브랜드 삭제(배타 잠금)와 차례로 처리한다. 등록끼리는 서로 기다리지 않는다.
         brandService.getForShare(brandId);
         Product product = productService.create(brandId, name, new Money(price), new Stock(stock));
-        // 좋아요 수 집계 행이 있어야 브랜드 없는 좋아요순 목록에 나온다 (D-33).
+        // 좋아요 수 집계 행이 있어야 브랜드 없는 좋아요순 목록에 나온다.
         likeService.createCount(product.getId());
         eventPublisher.publishEvent(new ProductCatalogChanged());
         return ProductInfo.from(product);
@@ -42,7 +42,7 @@ public class AdminProductFacade {
 
     @Transactional
     public ProductInfo update(Long productId, String name, long price) {
-        // 변경 감지가 모든 컬럼을 쓰므로, 처음 읽을 때부터 잠가서 확정이 차감한 재고나 삭제 표시를 낡은 값으로 덮지 않는다 (D-24).
+        // 변경 감지가 모든 컬럼을 쓰므로, 처음 읽을 때부터 잠가서 확정이 차감한 재고나 삭제 표시를 낡은 값으로 덮지 않는다.
         Product product = productService.getForUpdate(productId);
         product.update(name, new Money(price));
         eventPublisher.publishEvent(new ProductCatalogChanged());

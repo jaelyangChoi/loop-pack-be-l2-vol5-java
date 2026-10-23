@@ -37,7 +37,7 @@ import java.util.stream.Collectors;
 
 /**
  * 주문 유스케이스. 요청자 id 는 식별 필터를 거친 값이라 null 이 아니다. {@link #confirm} 만 메소드에 트랜잭션을 열지 않고
- * 구간(TX A, TX B)마다 {@link TransactionTemplate} 으로 감싼다 (D-51).
+ * 구간(TX A, TX B)마다 {@link TransactionTemplate} 으로 감싼다.
  */
 @Component
 public class OrderFacade {
@@ -102,7 +102,7 @@ public class OrderFacade {
 
     /**
      * 주문 확정을 요청한다. 준비(TX A) → PG 요청(TX 밖) → 결과 반영(TX B) 순서이며, 주문은 PG 성공을 확인한 뒤에야
-     * CONFIRMED 가 된다. 결과 미확인이어도 create 를 다시 보내지 않는다 (D-48).
+     * CONFIRMED 가 된다. 결과 미확인이어도 create 를 다시 보내지 않는다.
      */
     public PaymentAttemptInfo confirm(OrderConfirmCommand command) {
         ConfirmPreparation preparation = prepareConfirm(command);
@@ -115,7 +115,7 @@ public class OrderFacade {
         );
     }
 
-    /** TX A. PG 호출 전에 주문 잠금, 재고 차감, 시도 저장을 한 번에 commit 한다. 실패하면 전부 rollback 되고 PG 는 호출하지 않는다 (D-27). */
+    /** TX A. PG 호출 전에 주문 잠금, 재고 차감, 시도 저장을 한 번에 commit 한다. 실패하면 전부 rollback 되고 PG 는 호출하지 않는다. */
     public ConfirmPreparation prepareConfirm(OrderConfirmCommand command) {
         return writeTransaction.execute(status -> prepare(command));
     }

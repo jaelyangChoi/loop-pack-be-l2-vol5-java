@@ -34,7 +34,7 @@ import java.util.Set;
 @Component
 public class ProductFacade {
 
-    // likes_desc 는 좋아요마다 순서가 바뀌어 캐시하지 않는다(D-37).
+    // likes_desc 는 좋아요마다 순서가 바뀌어 캐시하지 않는다.
     private static final Set<ProductSort> CACHED_SORTS = EnumSet.of(ProductSort.LATEST, ProductSort.PRICE_ASC);
 
     private final ProductService productService;
@@ -66,7 +66,7 @@ public class ProductFacade {
     }
 
     /**
-     * 상품 목록. {@code latest}·{@code price_asc} 는 캐시를 먼저 보고(D-37), 없으면 DB 에서 읽어 캐시에 저장한다.
+     * 상품 목록. {@code latest}·{@code price_asc} 는 캐시를 먼저 보고, 없으면 DB 에서 읽어 캐시에 저장한다.
      * 캐시 오류는 {@link ProductListCache} 가 miss 로 돌려주므로 여기서는 구분하지 않는다.
      *
      * <p>트랜잭션은 DB 에서 읽는 구간({@link #load})에만 연다. readOnly 트랜잭션은 시작할 때 DB 커넥션을 잡으므로, 메서드
@@ -108,7 +108,7 @@ public class ProductFacade {
         });
     }
 
-    // 캐시 hit 경로. 좋아요 수 조회가 삭제 확인을 겸한다(D-38): 집계 행이 없는 상품(삭제됨)이 하나라도 있으면
+    // 캐시 hit 경로. 좋아요 수 조회가 삭제 확인을 겸한다: 집계 행이 없는 상품(삭제됨)이 하나라도 있으면
     // 캐시 값을 쓰지 않고 DB 로 다시 읽는다. 무효화가 실패해도 삭제된 상품이 나가지 않고 페이지가 짧아지지도 않는다.
     // 조회 하나라 트랜잭션을 열지 않는다.
     private Optional<Page<ProductListItemInfo>> withLikeCounts(ProductListSnapshot snapshot, PageRequest pageRequest) {
@@ -125,7 +125,7 @@ public class ProductFacade {
 
     /**
      * 상품의 브랜드를 찾는다. 상품이 있는 브랜드는 삭제할 수 없어 항상 있어야 하므로, 없으면 데이터가 깨진 것으로 보고
-     * 조용히 넘기지 않고 드러낸다. 브랜드 삭제와 상품 등록이 동시에 일어나는 경쟁(D-16)에서만 생길 수 있다.
+     * 조용히 넘기지 않고 드러낸다. 브랜드 삭제와 상품 등록이 동시에 일어나는 경쟁에서만 생길 수 있다.
      */
     private Brand brandOf(Product product, Map<Long, Brand> brands) {
         Brand brand = brands.get(product.getBrandId());

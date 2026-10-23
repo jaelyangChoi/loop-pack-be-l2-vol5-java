@@ -37,7 +37,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 
 /**
- * 상품 목록 캐시가 틀릴 수 있는 두 장면을 실제 MySQL·Redis 로 재현하고, 남는 낡음이 허용 범위(D-40) 안에 있는지 확인한다
+ * 상품 목록 캐시가 틀릴 수 있는 두 장면을 실제 MySQL·Redis 로 재현하고, 남는 낡음이 허용 범위 안에 있는지 확인한다
  * (week4 product-cache-design.md 5-3장).
  *
  * <p>TTL 을 3초로 줄여 만료 뒤 복구까지 본다. 낡은 값이 남는 것은 실패가 아니라 허용한 결과이며, 삭제 비노출은 낡음 허용 대상이 아니다.

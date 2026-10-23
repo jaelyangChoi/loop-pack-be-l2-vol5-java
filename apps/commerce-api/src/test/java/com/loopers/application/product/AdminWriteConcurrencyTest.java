@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * 관리자가 상품·브랜드를 바꾸는 요청과 결제 시작(재고 확보)·삭제가 같은 행에서 겹칠 때, 한쪽의 변경이 다른 쪽의 전체 컬럼
- * UPDATE에 덮이지 않는지 확인한다 (D-24). 결제 시작도 확정처럼 상품 행을 잠그고 재고를 바꾸므로 보호 대상은 같다. 가격만 바꾸는 요청이 재고를 되돌리거나, 이름만 바꾸는 요청이 삭제를 되살리는 반례다.
+ * UPDATE에 덮이지 않는지 확인한다. 결제 시작도 확정처럼 상품 행을 잠그고 재고를 바꾸므로 보호 대상은 같다. 가격만 바꾸는 요청이 재고를 되돌리거나, 이름만 바꾸는 요청이 삭제를 되살리는 반례다.
  *
  * <p>결제 시작은 포인트를 건드리지 않으므로 모든 구매자의 잔액은 그대로여야 한다. 데이터는 요청 전에 commit 하고 테스트를
  * 부모 트랜잭션으로 감싸지 않는다. 요청은 출발만 맞춰 동시에 시작하고, 모두
@@ -121,7 +121,7 @@ class AdminWriteConcurrencyTest extends PaymentFlowTestSupport {
             repeated(ADMIN_REQUESTS, () -> adminProductFacade.update(product.getId(), "새 이름", 5_000))));
 
         // assert: 수정이 먼저 읽은 재고(낡은 값)로 차감을 되돌리면 안 되고, 결제 시작이 수정을 되돌려도 안 된다.
-        // 결제액은 주문 당시 가격이다 (D-21).
+        // 결제액은 주문 당시 가격이다.
         assertAccountedFor(results, 5 + ADMIN_REQUESTS);
         assertThat(results.successes()).isEqualTo(5 + ADMIN_REQUESTS);
         assertThat(stockOf(product)).isEqualTo(5);
