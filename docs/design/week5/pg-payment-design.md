@@ -20,7 +20,7 @@ week4까지의 상품·주문·관리자 API와 동시성 제어를 유지하고
 | D-10·D-21 확정은 단일 트랜잭션에서 재고·포인트 차감 | **대체** | 확정이 세 단계(TX A / HTTP / TX B)로 나뉜다. 포인트는 차감하지 않는다 (D-45) |
 | D-26 포인트는 비관적 잠금으로 보호 | **confirm에서 제외** | 충전·조회 API의 잠금은 그대로다. 주문 확정 경로에서 사용자 잠금이 빠진다 |
 | D-27 잠금 순서 주문 → 상품(id 오름차순) → 사용자 | **유지** | TX A·TX B 모두 주문 → 상품(id 오름차순) 순서를 지킨다. 사용자는 잠그지 않는다 |
-| D-44 `PaymentResult`는 결제 수단의 상태를 담지 않는다 | **유지** | 결제 수단 *종류*(`method`)만 추가한다. 잔액 같은 상태는 담지 않는다 |
+| D-44 `PaymentResult`는 결제 수단의 상태를 담지 않는다 | **유지** | 구조를 바꾸지 않는다. 결제액만 담고, PG 결제 사실은 `PaymentAttempt`가 가진다 |
 | D-5 soft delete | **유지** | 이미 재고를 확보한 결제 대기 주문의 실패 반환은 삭제된 상품 행에도 수량을 돌려주되 `deletedAt`은 건드리지 않는다 (D-46) |
 
 ---
@@ -63,7 +63,7 @@ DRAFT ──start──▶ PAYMENT_PENDING ──complete──▶ CONFIRMED
 
 - 전이는 모델 메서드(`startPayment`, `completePayment(PaymentResult)`, `failPayment`)로만 일어난다. 각각 정해진 상태에서만 허용하고, 아니면 예외를 던진다.
 - `CONFIRMED`·`PAYMENT_FAILED`는 종결이다. 나가는 전이가 없다.
-- `PaymentResult`는 `paidAmount`와 `method`(`POINT` | `PG`)를 담는다.
+- `PaymentResult`는 week4와 같이 `paidAmount`만 담는다. 결제 수단을 구분하는 필드는 두지 않는다. PG가 포인트 결제를 대체했고 과거 주문은 이미 `CONFIRMED`로 가정하므로 구분할 필요가 없다. PG 결제의 거래 사실은 `PaymentAttempt`에 있다.
 
 ### 2-2. 결제 시도 (`PaymentAttempt`)
 
@@ -189,7 +189,7 @@ apply(orderId, observation):
   시도와 관찰의 식별(providerOrderId, transactionKey)·금액 확인 → 불일치면 anomaly 기록 후 종료
   이미 같은 종결 결과이면 아무 효과도 추가하지 않고 종료
   다른 종결 결과와 충돌하면 덮어쓰지 않고 CONFLICTING_RESULT 기록 후 종료
-  SUCCESS → 시도 SUCCEEDED, 주문 CONFIRMED(method=PG, 결제액=주문 합계)
+  SUCCESS → 시도 SUCCEEDED, 주문 CONFIRMED(결제액=주문 합계)
   FAILED  → 시도 FAILED, 주문 PAYMENT_FAILED,
             상품 FOR UPDATE (삭제 행 포함, id 오름차순) → 품목별 stock 증가
   PENDING/불확실 → 미완료 유지(PENDING이면 transactionKey 기록)
@@ -348,10 +348,10 @@ create는 다시 실행하면 새 거래가 생길 수 있다. HALF_OPEN 탐색 
 
 | 기능 | method · path | 성공 | 대표 오류 |
 |---|---|---|---|
-| 결제 시작 | `POST /api/v1/orders/{orderId}/confirm` (본문: `paymentAttemptKey`, `cardType`, `cardNo`) | 미종결(`PENDING`/`UNKNOWN`) **202**, 같은 시도의 종결 **200**. 본문: `orderId`, `orderStatus`, `payment{method, attemptStatus, amount}`, 조회 경로 | 404, 400, 409 `PAYMENT_ATTEMPT_CONFLICT`, 409 `PRODUCT_UNAVAILABLE`·`OUT_OF_STOCK`·`ORDER_ALREADY_CONFIRMED` |
+| 결제 시작 | `POST /api/v1/orders/{orderId}/confirm` (본문: `paymentAttemptKey`, `cardType`, `cardNo`) | 미종결(`PENDING`/`UNKNOWN`) **202**, 같은 시도의 종결 **200**. 본문: `orderId`, `orderStatus`, `payment{attemptStatus, amount}`, 조회 경로 | 404, 400, 409 `PAYMENT_ATTEMPT_CONFLICT`, 409 `PRODUCT_UNAVAILABLE`·`OUT_OF_STOCK`·`ORDER_ALREADY_CONFIRMED` |
 | 결제 확인 | `POST /api/v1/orders/{orderId}/payment/reconcile` | 미종결 202(`lookupUnavailable` 표시 가능), 종결 200 | 404(없는·타인 주문), 409(시도 없음) |
 | PG 알림 | `POST /api/v1/payments/callback` (본문: `providerOrderId`, `transactionKey`, `status`) | 200 현재 상태 | 404(모르는 `providerOrderId`) |
-| 주문 상세 | `GET /api/v1/orders/{orderId}` | 기존 응답 + `payment{method, status, paidAmount?}`. PG 호출 없음 | 기존과 동일 |
+| 주문 상세 | `GET /api/v1/orders/{orderId}` | 기존 응답 + `payment{status, paidAmount?}`. PG 호출 없음 | 기존과 동일 |
 | 관리자 주문 조회 | `GET /api-admin/v1/orders[/{id}]` | 결제 대기·미확인·최종 결과 표시 | 기존과 동일 |
 
 - 새 `ErrorType`: `PAYMENT_ATTEMPT_CONFLICT`(409). `ErrorTypeHttpStatusMapper`에 매핑을 추가한다.
@@ -406,7 +406,7 @@ create는 다시 실행하면 새 거래가 생길 수 있다. HALF_OPEN 탐색 
 ### D-45. 주문 결제를 PG로 교체하고 포인트를 결제에서 분리한다
 
 - **상황**: week3까지 확정은 같은 DB에서 재고·포인트를 차감했다. PG는 외부 시스템이라 효과를 rollback할 수 없다.
-- **결정**: confirm은 PG 결제를 *시작*하고, 주문은 `PAYMENT_PENDING`을 거쳐 `CONFIRMED` 또는 `PAYMENT_FAILED`로 끝난다. 새 결제는 포인트를 차감하지 않는다. 포인트 충전·조회와 `payPoint` 코드는 남기지만 주문 결제에서는 쓰지 않는다. `PaymentResult`에는 결제 수단 종류(`method`)만 추가한다 (D-44 유지).
+- **결정**: confirm은 PG 결제를 *시작*하고, 주문은 `PAYMENT_PENDING`을 거쳐 `CONFIRMED` 또는 `PAYMENT_FAILED`로 끝난다. 새 결제는 포인트를 차감하지 않는다. 포인트 충전·조회와 `payPoint` 코드는 남기지만 주문 결제에서는 쓰지 않는다. `PaymentResult`는 바꾸지 않는다 (D-44 유지).
 - **근거**: "결제수단을 바꾼다"는 포인트 차감과 PG 호출을 겹친다는 뜻이 아니다. 외부 연결은 adapter 뒤로 분리해 Controller·Entity가 카드 JSON과 네트워크 오류를 알지 않게 한다.
 - **비용**: 확정이 한 번의 호출이 아니라 상태 머신이 된다. 고객은 202를 받은 뒤 조회·reconcile로 결과를 알아야 한다.
 - **재검토 조건**: 포인트와 PG를 혼합 결제하는 요구가 생기면.
