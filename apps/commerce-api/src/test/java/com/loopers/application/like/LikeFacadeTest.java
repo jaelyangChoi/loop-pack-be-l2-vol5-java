@@ -1,6 +1,6 @@
 package com.loopers.application.like;
 
-import com.loopers.application.product.ProductInfo;
+import com.loopers.application.product.dto.ProductInfo;
 import com.loopers.domain.common.Money;
 import com.loopers.domain.like.LikeRepository;
 import com.loopers.domain.like.LikeService;

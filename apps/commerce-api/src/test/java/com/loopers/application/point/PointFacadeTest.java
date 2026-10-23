@@ -1,5 +1,6 @@
 package com.loopers.application.point;
 
+import com.loopers.application.point.dto.PointInfo;
 import com.loopers.domain.common.Money;
 import com.loopers.domain.user.PointBalance;
 import com.loopers.domain.user.User;

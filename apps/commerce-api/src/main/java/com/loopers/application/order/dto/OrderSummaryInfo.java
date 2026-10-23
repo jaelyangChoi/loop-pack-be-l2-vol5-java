@@ -1,4 +1,4 @@
-package com.loopers.application.order;
+package com.loopers.application.order.dto;
 
 import com.loopers.domain.order.Order;
 import com.loopers.domain.order.OrderStatus;

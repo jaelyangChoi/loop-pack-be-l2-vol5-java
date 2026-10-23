@@ -1,9 +1,9 @@
 package com.loopers.infrastructure.product;
 
 import com.loopers.application.product.ProductListCache;
-import com.loopers.application.product.ProductListItemInfo;
-import com.loopers.application.product.ProductListQuery;
-import com.loopers.application.product.ProductListSnapshot;
+import com.loopers.application.product.dto.ProductListItemInfo;
+import com.loopers.application.product.dto.ProductListQuery;
+import com.loopers.application.product.dto.ProductListSnapshot;
 import com.loopers.config.redis.RedisConfig;
 import com.loopers.domain.product.ProductSort;
 import com.loopers.utils.RedisCleanUp;

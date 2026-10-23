@@ -2,8 +2,8 @@ package com.loopers.application.product;
 
 import com.loopers.application.brand.AdminBrandFacade;
 import com.loopers.application.order.OrderFacade;
-import com.loopers.application.order.OrderItemCommand;
-import com.loopers.application.payment.OrderConfirmCommand;
+import com.loopers.application.order.dto.OrderItemCommand;
+import com.loopers.application.order.dto.OrderConfirmCommand;
 import com.loopers.domain.brand.Brand;
 import com.loopers.domain.brand.BrandRepository;
 import com.loopers.domain.common.Money;

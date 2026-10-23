@@ -1,5 +1,6 @@
 package com.loopers.application.brand;
 
+import com.loopers.application.brand.dto.BrandInfo;
 import com.loopers.domain.brand.Brand;
 import com.loopers.domain.brand.BrandRepository;
 import com.loopers.domain.common.Money;

@@ -2,11 +2,11 @@ package com.loopers.infrastructure.payment;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.loopers.application.payment.PaymentGateway.PgPaymentRequestResult;
-import com.loopers.application.payment.PaymentGateway.PgPaymentStatusCheckResult;
-import com.loopers.application.payment.PaymentGateway.PgPaymentRequest;
-import com.loopers.application.payment.PaymentGateway.PgStatus;
-import com.loopers.application.payment.PaymentGateway.PgTransaction;
+import com.loopers.application.payment.pg.PgPaymentRequestResult;
+import com.loopers.application.payment.pg.PgPaymentStatusCheckResult;
+import com.loopers.application.payment.pg.PgPaymentRequest;
+import com.loopers.application.payment.pg.PgStatus;
+import com.loopers.application.payment.pg.PgTransaction;
 import com.loopers.support.pg.FakePgServer;
 import com.loopers.support.pg.FakePgServer.FakeTransaction;
 import com.loopers.support.pg.FakePgServer.RecordedRequest;

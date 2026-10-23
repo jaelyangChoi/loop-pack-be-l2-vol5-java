@@ -1,4 +1,4 @@
-package com.loopers.application.payment;
+package com.loopers.application.payment.dto;
 
 import com.loopers.domain.order.Order;
 import com.loopers.domain.order.OrderStatus;

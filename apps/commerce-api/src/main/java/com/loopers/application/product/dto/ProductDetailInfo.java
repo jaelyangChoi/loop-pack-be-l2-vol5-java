@@ -1,6 +1,6 @@
-package com.loopers.application.product;
+package com.loopers.application.product.dto;
 
-import com.loopers.application.brand.BrandInfo;
+import com.loopers.application.brand.dto.BrandInfo;
 import com.loopers.domain.brand.Brand;
 import com.loopers.domain.product.Product;
 

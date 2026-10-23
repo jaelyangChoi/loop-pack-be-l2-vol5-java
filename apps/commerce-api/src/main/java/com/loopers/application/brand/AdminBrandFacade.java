@@ -1,5 +1,6 @@
 package com.loopers.application.brand;
 
+import com.loopers.application.brand.dto.BrandInfo;
 import com.loopers.application.product.ProductCatalogChanged;
 import com.loopers.domain.brand.Brand;
 import com.loopers.domain.brand.BrandService;

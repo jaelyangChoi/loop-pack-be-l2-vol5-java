@@ -1,4 +1,4 @@
-package com.loopers.application.product;
+package com.loopers.application.product.dto;
 
 import org.springframework.data.domain.Page;
 

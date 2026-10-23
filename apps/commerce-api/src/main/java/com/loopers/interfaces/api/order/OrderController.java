@@ -1,8 +1,8 @@
 package com.loopers.interfaces.api.order;
 
 import com.loopers.application.order.OrderFacade;
-import com.loopers.application.payment.PaymentAttemptInfo;
-import com.loopers.application.payment.PaymentCheckInfo;
+import com.loopers.application.payment.dto.PaymentAttemptInfo;
+import com.loopers.application.payment.dto.PaymentCheckInfo;
 import com.loopers.application.payment.PaymentResultCheckFacade;
 import com.loopers.interfaces.api.ApiResponse;
 import com.loopers.interfaces.api.PageResponse;

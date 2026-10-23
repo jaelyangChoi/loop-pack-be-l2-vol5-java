@@ -1,4 +1,4 @@
-package com.loopers.application.order;
+package com.loopers.application.order.dto;
 
 /**
  * 주문 생성 요청의 품목 한 줄. interfaces 가 도메인 타입을 알지 않도록 application 이 정한 입력 형식이며,

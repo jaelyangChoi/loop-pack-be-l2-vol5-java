@@ -1,10 +1,12 @@
 package com.loopers.application.payment;
 
-import com.loopers.application.order.OrderItemCommand;
+import com.loopers.application.order.dto.OrderItemCommand;
+import com.loopers.application.payment.dto.PaymentAttemptInfo;
+import com.loopers.application.payment.dto.PaymentCheckInfo;
 import com.loopers.domain.product.Product;
 import com.loopers.domain.user.User;
-import com.loopers.support.jpa.FailingStatementInspector;
 import com.loopers.support.jpa.FailingStatementInspector.InjectedFailureException;
+import com.loopers.support.jpa.FailingStatementInspector;
 import com.loopers.support.pg.FakePgServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;

@@ -1,6 +1,6 @@
 package com.loopers.application.like;
 
-import com.loopers.application.product.ProductInfo;
+import com.loopers.application.product.dto.ProductInfo;
 import com.loopers.domain.like.LikeService;
 import com.loopers.domain.product.ProductService;
 import com.loopers.support.error.CoreException;

@@ -1,7 +1,7 @@
 package com.loopers.interfaces.api.admin.order;
 
 import com.loopers.application.order.OrderFacade;
-import com.loopers.application.order.OrderItemCommand;
+import com.loopers.application.order.dto.OrderItemCommand;
 import com.loopers.domain.common.Money;
 import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductRepository;

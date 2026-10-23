@@ -1,6 +1,7 @@
 package com.loopers.application.payment;
 
-import com.loopers.application.order.OrderItemCommand;
+import com.loopers.application.order.dto.OrderItemCommand;
+import com.loopers.application.payment.dto.PaymentAttemptInfo;
 import com.loopers.application.product.AdminProductFacade;
 import com.loopers.domain.order.OrderStatus;
 import com.loopers.domain.payment.PaymentAttemptStatus;

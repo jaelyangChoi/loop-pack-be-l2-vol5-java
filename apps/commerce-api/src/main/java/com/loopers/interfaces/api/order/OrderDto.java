@@ -1,13 +1,13 @@
 package com.loopers.interfaces.api.order;
 
-import com.loopers.application.order.OrderInfo;
-import com.loopers.application.order.OrderItemCommand;
-import com.loopers.application.order.OrderItemInfo;
-import com.loopers.application.order.OrderSummaryInfo;
-import com.loopers.application.order.PaymentInfo;
-import com.loopers.application.payment.PaymentAttemptInfo;
-import com.loopers.application.payment.PaymentCheckInfo;
-import com.loopers.application.payment.OrderConfirmCommand;
+import com.loopers.application.order.dto.OrderInfo;
+import com.loopers.application.order.dto.OrderItemCommand;
+import com.loopers.application.order.dto.OrderItemInfo;
+import com.loopers.application.order.dto.OrderSummaryInfo;
+import com.loopers.application.order.dto.PaymentInfo;
+import com.loopers.application.payment.dto.PaymentAttemptInfo;
+import com.loopers.application.payment.dto.PaymentCheckInfo;
+import com.loopers.application.order.dto.OrderConfirmCommand;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;

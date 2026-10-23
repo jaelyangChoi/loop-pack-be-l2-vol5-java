@@ -1,6 +1,9 @@
 package com.loopers.infrastructure.payment;
 
 import com.loopers.application.payment.PaymentGateway;
+import com.loopers.application.payment.pg.PgPaymentRequest;
+import com.loopers.application.payment.pg.PgPaymentRequestResult;
+import com.loopers.application.payment.pg.PgPaymentStatusCheckResult;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

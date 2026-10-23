@@ -1,5 +1,8 @@
 package com.loopers.application.product;
 
+import com.loopers.application.product.dto.ProductListQuery;
+import com.loopers.application.product.dto.ProductListSnapshot;
+
 import java.util.Optional;
 
 /**

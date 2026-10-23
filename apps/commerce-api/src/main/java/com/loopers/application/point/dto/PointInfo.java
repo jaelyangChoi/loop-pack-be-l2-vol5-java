@@ -1,4 +1,4 @@
-package com.loopers.application.point;
+package com.loopers.application.point.dto;
 
 import com.loopers.domain.user.User;
 

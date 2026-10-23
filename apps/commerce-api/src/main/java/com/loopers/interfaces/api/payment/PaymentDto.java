@@ -1,6 +1,6 @@
 package com.loopers.interfaces.api.payment;
 
-import com.loopers.application.payment.PaymentCheckInfo;
+import com.loopers.application.payment.dto.PaymentCheckInfo;
 import jakarta.validation.constraints.NotBlank;
 
 public class PaymentDto {

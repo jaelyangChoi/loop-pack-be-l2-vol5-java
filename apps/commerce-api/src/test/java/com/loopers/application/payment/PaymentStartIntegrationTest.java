@@ -1,8 +1,9 @@
 package com.loopers.application.payment;
 
-import com.loopers.application.payment.PaymentGateway.PgPaymentRequestResult;
-import com.loopers.application.payment.PaymentGateway.PgStatus;
-import com.loopers.application.payment.PaymentGateway.PgTransaction;
+import com.loopers.application.payment.dto.PaymentAttemptInfo;
+import com.loopers.application.payment.pg.PgPaymentRequestResult;
+import com.loopers.application.payment.pg.PgStatus;
+import com.loopers.application.payment.pg.PgTransaction;
 import com.loopers.domain.order.OrderStatus;
 import com.loopers.domain.payment.PaymentAttemptStatus;
 import com.loopers.domain.product.Product;

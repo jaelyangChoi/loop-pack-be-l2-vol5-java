@@ -1,12 +1,15 @@
 package com.loopers.application.order;
 
-import com.loopers.application.payment.PaymentAttemptInfo;
+import com.loopers.application.order.dto.ConfirmPreparation;
+import com.loopers.application.order.dto.OrderConfirmCommand;
+import com.loopers.application.order.dto.OrderInfo;
+import com.loopers.application.order.dto.OrderItemCommand;
+import com.loopers.application.order.dto.OrderSummaryInfo;
 import com.loopers.application.payment.PaymentGateway;
-import com.loopers.application.payment.PaymentGateway.PgPaymentRequest;
-import com.loopers.application.payment.PaymentGateway.PgPaymentRequestResult;
-import com.loopers.application.payment.ConfirmPreparation;
 import com.loopers.application.payment.PaymentResultApplier;
-import com.loopers.application.payment.OrderConfirmCommand;
+import com.loopers.application.payment.dto.PaymentAttemptInfo;
+import com.loopers.application.payment.pg.PgPaymentRequest;
+import com.loopers.application.payment.pg.PgPaymentRequestResult;
 import com.loopers.domain.order.Order;
 import com.loopers.domain.order.OrderLine;
 import com.loopers.domain.order.OrderLines;

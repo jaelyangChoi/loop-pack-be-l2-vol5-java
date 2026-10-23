@@ -1,11 +1,13 @@
 package com.loopers.application.payment;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.loopers.application.payment.PaymentGateway.PgPaymentRequestResult;
-import com.loopers.application.payment.PaymentGateway.PgPaymentStatusCheckResult;
-import com.loopers.application.payment.PaymentGateway.PgStatus;
-import com.loopers.application.payment.PaymentGateway.PgTransaction;
 import com.loopers.application.order.OrderFacade;
+import com.loopers.application.payment.dto.PaymentAttemptInfo;
+import com.loopers.application.payment.dto.PaymentCheckInfo;
+import com.loopers.application.payment.pg.PgPaymentRequestResult;
+import com.loopers.application.payment.pg.PgPaymentStatusCheckResult;
+import com.loopers.application.payment.pg.PgStatus;
+import com.loopers.application.payment.pg.PgTransaction;
 import com.loopers.domain.order.OrderService;
 import com.loopers.domain.order.OrderStatus;
 import com.loopers.domain.order.OrderStockService;

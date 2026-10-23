@@ -1,9 +1,11 @@
 package com.loopers.application.payment;
 
 import com.loopers.application.order.OrderFacade;
-import com.loopers.application.order.OrderItemCommand;
-import com.loopers.application.payment.PaymentGateway.PgPaymentRequestResult;
-import com.loopers.application.payment.PaymentGateway.PgPaymentStatusCheckResult;
+import com.loopers.application.order.dto.OrderConfirmCommand;
+import com.loopers.application.order.dto.OrderItemCommand;
+import com.loopers.application.payment.dto.PaymentAttemptInfo;
+import com.loopers.application.payment.pg.PgPaymentRequestResult;
+import com.loopers.application.payment.pg.PgPaymentStatusCheckResult;
 import com.loopers.domain.common.Money;
 import com.loopers.domain.payment.PaymentAttempt;
 import com.loopers.domain.product.Product;
@@ -20,10 +22,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
