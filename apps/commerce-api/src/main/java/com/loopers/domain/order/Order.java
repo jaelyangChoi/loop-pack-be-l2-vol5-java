@@ -5,7 +5,6 @@ import com.loopers.domain.common.Money;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import jakarta.persistence.AttributeOverride;
-import jakarta.persistence.AttributeOverrides;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
@@ -47,10 +46,7 @@ public class Order extends BaseEntity {
 
     // 확정 전(DRAFT)에는 비어 있다. 컬럼이 모두 null 이면 값 자체가 null 로 읽힌다.
     @Embedded
-    @AttributeOverrides({
-        @AttributeOverride(name = "paidAmount.amount", column = @Column(name = "paid_amount")),
-        @AttributeOverride(name = "balanceAfter.amount", column = @Column(name = "balance_after"))
-    })
+    @AttributeOverride(name = "paidAmount.amount", column = @Column(name = "paid_amount"))
     private PaymentResult paymentResult;
 
     // 품목은 필요할 때만 읽는다. 트랜잭션 밖에서는 읽을 수 없으므로 application 이 Info 로 변환해 내보낸다.

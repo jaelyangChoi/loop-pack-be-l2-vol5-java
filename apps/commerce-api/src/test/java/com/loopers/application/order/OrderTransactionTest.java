@@ -83,7 +83,7 @@ class OrderTransactionTest {
     }
 
     private Map<String, Object> paymentOf(Long orderId) {
-        return jdbcTemplate.queryForMap("select paid_amount, balance_after from orders where id = ?", orderId);
+        return jdbcTemplate.queryForMap("select paid_amount from orders where id = ?", orderId);
     }
 
     // `for update` 로 끝나는 조회가 어떤 테이블을 어떤 순서로 잠갔는지 돌려준다.
@@ -121,7 +121,7 @@ class OrderTransactionTest {
             assertThat(stockOf(shirt)).isEqualTo(9);
             assertThat(stockOf(socks)).isEqualTo(3);
             assertThat(balanceOf(user)).isEqualTo(3_000);
-            assertThat(paymentOf(orderId)).containsEntry("paid_amount", 7_000L).containsEntry("balance_after", 3_000L);
+            assertThat(paymentOf(orderId)).containsEntry("paid_amount", 7_000L);
         }
 
         @DisplayName("주문 → 상품 → 사용자 순서로 행을 잠근다.")
@@ -173,7 +173,7 @@ class OrderTransactionTest {
             assertThat(stockOf(shirt)).isEqualTo(10);
             assertThat(stockOf(socks)).isEqualTo(5);
             assertThat(balanceOf(user)).isEqualTo(10_000);
-            assertThat(paymentOf(orderId)).containsEntry("paid_amount", null).containsEntry("balance_after", null);
+            assertThat(paymentOf(orderId)).containsEntry("paid_amount", null);
         }
     }
 }

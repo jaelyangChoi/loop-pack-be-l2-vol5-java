@@ -129,9 +129,9 @@ class OrderTest {
             );
         }
 
-        // 합계 7,000원을 결제하고 10,000원에서 3,000원이 남은 결과
+        // 합계 7,000원을 결제한 결과
         private PaymentResult payment() {
-            return new PaymentResult(new Money(7_000), new Money(3_000));
+            return new PaymentResult(new Money(7_000));
         }
 
         @DisplayName("DRAFT 주문은 확정할 수 있는 상태다.")
@@ -141,7 +141,7 @@ class OrderTest {
             draftOrder().ensureConfirmable();
         }
 
-        @DisplayName("확정하면 CONFIRMED 가 되고, 결제액과 결제 후 잔액을 보존한다. 품목과 합계는 그대로다.")
+        @DisplayName("확정하면 CONFIRMED 가 되고, 결제액을 보존한다. 품목과 합계는 그대로다.")
         @Test
         void becomesConfirmed_withPaymentResult() {
             // arrange
@@ -169,7 +169,7 @@ class OrderTest {
             // arrange
             Order order = draftOrder();
             order.confirm(payment());
-            PaymentResult other = new PaymentResult(new Money(1), new Money(1));
+            PaymentResult other = new PaymentResult(new Money(1));
 
             // act & assert
             assertErrorType(ErrorType.ORDER_ALREADY_CONFIRMED, order::ensureConfirmable);

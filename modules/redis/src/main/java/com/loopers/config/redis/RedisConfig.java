@@ -1,7 +1,10 @@
 package com.loopers.config.redis;
 
 
+import io.lettuce.core.ClientOptions;
 import io.lettuce.core.ReadFrom;
+import io.lettuce.core.SocketOptions;
+import io.lettuce.core.TimeoutOptions;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -75,7 +78,9 @@ public class RedisConfig{
             List<RedisNodeInfo> replicas,
             Consumer<LettuceClientConfiguration.LettuceClientConfigurationBuilder> customizer
     ){
-        LettuceClientConfiguration.LettuceClientConfigurationBuilder builder = LettuceClientConfiguration.builder();
+        LettuceClientConfiguration.LettuceClientConfigurationBuilder builder = LettuceClientConfiguration.builder()
+                .commandTimeout(redisProperties.commandTimeout())
+                .clientOptions(clientOptions());
         if(customizer != null) customizer.accept(builder);
         LettuceClientConfiguration clientConfig = builder.build();
         RedisStaticMasterReplicaConfiguration masterReplicaConfig = new RedisStaticMasterReplicaConfiguration(master.host(), master.port());
@@ -84,6 +89,15 @@ public class RedisConfig{
             masterReplicaConfig.addNode(r.host(), r.port());
         }
         return new LettuceConnectionFactory(masterReplicaConfig, clientConfig);
+    }
+
+    // clientOptions를 직접 지정하면 Spring Data Redis 기본값(TimeoutOptions.enabled())이 사라지므로 함께 넣는다.
+    // 이 옵션이 있어야 연결이 끊긴 동안 쌓인 명령도 commandTimeout 뒤에 실패한다.
+    private ClientOptions clientOptions(){
+        return ClientOptions.builder()
+                .socketOptions(SocketOptions.builder().connectTimeout(redisProperties.connectTimeout()).build())
+                .timeoutOptions(TimeoutOptions.enabled())
+                .build();
     }
 
     private <K,V> RedisTemplate<K,V> defaultRedisTemplate(

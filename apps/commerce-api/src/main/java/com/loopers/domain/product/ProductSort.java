@@ -25,6 +25,11 @@ public enum ProductSort {
         this.value = value;
     }
 
+    /** 요청에 쓰는 문자열 값({@code latest} 등). */
+    public String value() {
+        return value;
+    }
+
     public static ProductSort from(String value) {
         return Arrays.stream(values())
             .filter(sort -> sort.value.equals(value))

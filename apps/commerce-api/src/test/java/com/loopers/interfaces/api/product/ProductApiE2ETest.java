@@ -3,15 +3,16 @@ package com.loopers.interfaces.api.product;
 import com.loopers.domain.brand.Brand;
 import com.loopers.domain.brand.BrandRepository;
 import com.loopers.domain.common.Money;
-import com.loopers.domain.like.Like;
-import com.loopers.domain.like.LikeRepository;
+import com.loopers.domain.like.LikeService;
 import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductRepository;
 import com.loopers.domain.product.Stock;
 import com.loopers.domain.user.User;
 import com.loopers.domain.user.UserRepository;
 import com.loopers.interfaces.api.ApiResponse;
+import com.loopers.support.fixture.ExposedProducts;
 import com.loopers.utils.DatabaseCleanUp;
+import com.loopers.utils.RedisCleanUp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -40,6 +41,9 @@ class ProductApiE2ETest {
     private static final String USER_ID_HEADER = "X-USER-ID";
 
     @Autowired
+    private ExposedProducts exposedProducts;
+
+    @Autowired
     private TestRestTemplate testRestTemplate;
 
     @Autowired
@@ -51,15 +55,21 @@ class ProductApiE2ETest {
     @Autowired
     private UserRepository userRepository;
 
+    // 좋아요 수 집계도 함께 바뀌어야 해서 관계는 LikeService 로 만든다.
     @Autowired
-    private LikeRepository likeRepository;
+    private LikeService likeService;
 
     @Autowired
     private DatabaseCleanUp databaseCleanUp;
 
+    @Autowired
+    private RedisCleanUp redisCleanUp;
+
     @AfterEach
     void tearDown() {
         databaseCleanUp.truncateAllTables();
+        // 테이블을 비우면 id 가 다시 1부터 쓰이므로, 이전 테스트의 목록 캐시가 새 데이터로 hit 되지 않게 함께 비운다.
+        redisCleanUp.truncateAll();
     }
 
     private Brand saveBrand(String name) {
@@ -67,7 +77,7 @@ class ProductApiE2ETest {
     }
 
     private Product saveProduct(Brand brand, String name, long price) {
-        return productRepository.save(Product.create(brand.getId(), name, new Money(price), new Stock(10)));
+        return exposedProducts.save(Product.create(brand.getId(), name, new Money(price), new Stock(10)));
     }
 
     private Product saveDeletedProduct(Brand brand, String name) {
@@ -78,7 +88,7 @@ class ProductApiE2ETest {
 
     private void saveLike(Product product) {
         User user = userRepository.save(User.create());
-        likeRepository.save(Like.create(user.getId(), product.getId()));
+        likeService.like(user.getId(), product.getId());
     }
 
     // 응답 필드 구성을 확인하려고 data 를 Map 으로 받는다. X-USER-ID 는 일부러 지정할 때만 보낸다.
