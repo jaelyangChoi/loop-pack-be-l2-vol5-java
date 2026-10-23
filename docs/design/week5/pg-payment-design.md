@@ -122,7 +122,7 @@ DRAFT ──start──▶ PAYMENT_PENDING ──complete──▶ CONFIRMED
 ```
 [confirm 요청 스레드]
 
-TX A  PaymentStarter.start                       ← 로컬 TX
+TX A  OrderFacade.prepareConfirm                 ← 로컬 TX (TransactionTemplate)
   주문 FOR UPDATE (소유권 포함)
   → 요청 일치·상태 검사
   → 상품 FOR UPDATE (id 오름차순) → 가용 재고 차감
@@ -132,7 +132,7 @@ TX A  PaymentStarter.start                       ← 로컬 TX
 HTTP  PaymentGateway.requestPayment              ← TX 밖 (잠금·커넥션 보유 없음)
   POST /api/v1/payments   (자동 재시도 없음)
 
-TX B  PaymentResultApplier.apply                 ← 로컬 TX
+TX B  PaymentResultApplier.apply                 ← 로컬 TX (호출하는 Facade가 TransactionTemplate으로 감쌈)
   주문 FOR UPDATE → 시도 조회
   → 식별·금액 확인 → 멱등 가드
   → 관찰에 따라 시도·주문·재고 전이
@@ -167,10 +167,11 @@ TX B  PaymentResultApplier.apply                 ← 로컬 TX
 ### 3-4. 세 입구, 하나의 결과 적용
 
 ```
-confirm   ──┐
-reconcile ──┼──▶ PaymentFacade (TX 없음, 오케스트레이션)
-callback  ──┘         │
-                      ├─ 조회/발송 (TX 밖)
+confirm   ───▶ OrderFacade.confirm (TX 없음, 오케스트레이션)
+reconcile ──┐
+callback  ──┴─▶ PaymentFacade (TX 없음, 오케스트레이션)
+                      │
+          (둘 다)     ├─ 조회/발송 (TX 밖)
                       └─ PaymentResultApplier.apply(...)   ← 유일한 상태 쓰기 지점
 ```
 
@@ -459,13 +460,13 @@ create는 다시 실행하면 새 거래가 생길 수 있다. HALF_OPEN 탐색 
 - **비용**: 순서가 코드에 드러나지 않고, self-invocation 실수가 조용히 일어날 수 있다. 테스트와 분기 위치 규칙(5-4)으로 막는다. 호출하는 쪽과 변환하는 쪽을 나누느라 클래스가 둘이 된다.
 - **기각한 대안**: 함수형 decorator(순서는 보이지만 Spring에서 덜 보편적), CB 바깥 순서(회로가 늦게 열리고 HALF_OPEN 탐색이 불어남).
 
-### D-51. 트랜잭션 경계는 Facade가 아니라 application의 전용 컴포넌트에 둔다
+### D-51. 트랜잭션 경계는 Facade 메소드가 아니라 `TransactionTemplate`으로 구간마다 둔다
 
-- **상황**: CLAUDE.md는 트랜잭션 경계를 Facade의 `@Transactional`로 두라고 한다. 그런데 결제는 TX A, HTTP(TX 밖), TX B가 한 유스케이스 안에 순서대로 이어진다. 한 Facade 메서드에 `@Transactional`을 달면 HTTP가 트랜잭션 안으로 들어오고, 같은 클래스 안에서 호출하면 프록시를 거치지 않는다.
-- **결정**: `PaymentFacade`는 트랜잭션 없이 흐름만 조합한다. 트랜잭션은 같은 application 레이어의 `PaymentStarter`(TX A)와 `PaymentResultApplier`(TX B)에 둔다. 도메인 `Service`에는 여전히 `@Transactional`을 붙이지 않는다. 이 예외를 CLAUDE.md에 반영한다.
-- **근거**: PG 호출 동안 DB 트랜잭션·재고 잠금을 잡지 않는다는 요구는 경계를 나누는 것으로만 지킬 수 있다. 각 컴포넌트는 별도 빈이라 프록시가 적용된다.
-- **비용**: "트랜잭션은 Facade"라는 단순 규칙에 예외가 생긴다.
-- **기각한 대안**: Facade 한 메서드에 `@Transactional`(HTTP가 잠금·커넥션을 쥠), `TransactionTemplate` 수동 사용(관례와 거리, 프록시 방식으로 충분).
+- **상황**: CLAUDE.md는 트랜잭션 경계를 Facade의 `@Transactional`로 두라고 한다. 그런데 결제는 TX A, HTTP(TX 밖), TX B가 한 유스케이스 안에 순서대로 이어진다. 한 Facade 메소드에 `@Transactional`을 달면 HTTP가 트랜잭션 안으로 들어오고, 같은 클래스 안에서 호출하면 프록시를 거치지 않는다.
+- **결정**: 결제를 시작하는 `OrderFacade.confirm`과 결과를 확인하는 `PaymentFacade.reconcile`·`handleCallback`은 메소드에 트랜잭션을 열지 않고, 필요한 구간(TX A, TX B, PG 조회 전 읽기)만 `TransactionTemplate`으로 감싼다. `PaymentResultApplier`는 `@Transactional` 없이 반영 로직만 가지며 호출하는 Facade가 트랜잭션을 연다. 도메인 `Service`에는 여전히 `@Transactional`을 붙이지 않는다. `ProductFacade`가 이미 같은 방식으로 읽기 구간만 감싼다.
+- **근거**: PG 호출 동안 DB 트랜잭션·재고 잠금을 잡지 않는다는 요구는 경계를 나누는 것으로만 지킬 수 있다. 구간이 Facade 코드에 그대로 보여 흐름(TX A → PG → TX B)을 한 곳에서 읽을 수 있고, 트랜잭션 전용 빈을 따로 두지 않아도 된다. `/confirm`은 주문의 확정 요청이므로 `OrderFacade`에 둔다.
+- **비용**: 구조가 경계를 강제하지 않는다. `TransactionTemplate` 구간 밖에서 쓰기를 하거나 구간 안에서 PG를 호출하는 실수를 막으려면 `PaymentTransactionTest`가 필요하다. "트랜잭션은 Facade의 `@Transactional`"이라는 단순 규칙에 예외가 생긴다.
+- **기각한 대안**: Facade 한 메소드에 `@Transactional`(HTTP가 잠금·커넥션을 쥠), 트랜잭션 전용 빈(`PaymentStarter`·`Applier`에 `@Transactional`: 경계는 구조가 강제하지만 클래스가 늘고 흐름이 여러 파일로 흩어짐).
 
 ---
 

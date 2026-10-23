@@ -71,7 +71,7 @@ class AdminWriteConcurrencyTest extends PaymentFlowTestSupport {
             Long orderId = placeOrder(buyer, product, 1);
             users.add(buyer);
             orderIds.add(orderId);
-            starts.add(() -> paymentFacade.start(command(buyer, orderId, "attempt-" + orderId)));
+            starts.add(() -> orderFacade.confirm(command(buyer, orderId, "attempt-" + orderId)));
         }
         return new Buyers(users, orderIds, starts);
     }

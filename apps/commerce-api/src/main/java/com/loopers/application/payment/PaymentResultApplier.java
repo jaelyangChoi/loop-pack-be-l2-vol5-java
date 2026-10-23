@@ -13,10 +13,10 @@ import com.loopers.domain.payment.PaymentAttemptService;
 import com.loopers.domain.payment.PaymentAttemptStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
- * PG 결과를 시도·주문·재고에 반영하는 로컬 트랜잭션 B. 외부 호출은 이 트랜잭션 밖에서 끝난 뒤에 부른다 (D-51).
+ * PG 결과를 시도·주문·재고에 반영하는 로컬 트랜잭션 B 의 내용. 트랜잭션은 호출하는 쪽(Facade)이 열고, 외부 호출은 그
+ * 트랜잭션 밖에서 끝난 뒤에 부른다 (D-51).
  *
  * <p>항상 주문 행을 먼저 잠그고(D-27) 시도를 읽는다. 시도에 대한 쓰기는 이 잠금 아래에서만 일어나므로 같은 주문의 여러 입구가
  * 줄을 서고, 상태 전이가 중복 효과를 막는다. 이미 나아간 상태는 늦게 도착한 응답이 되돌리지 못한다 (PENDING 을 UNKNOWN 으로,
@@ -31,7 +31,6 @@ public class PaymentResultApplier {
     private final OrderStockService orderStockService;
 
     /** 결제 생성 요청의 결과를 반영한다. */
-    @Transactional
     public PaymentAttemptInfo applyCreateResult(Long orderId, CreateResult result) {
         Order order = orderService.getForUpdate(orderId);
         PaymentAttempt attempt = paymentAttemptService.getByOrderId(orderId);
@@ -51,7 +50,6 @@ public class PaymentResultApplier {
      * 결과를 보게 되어 효과가 없다. 재고 반환은 주문의 {@code PAYMENT_PENDING → PAYMENT_FAILED} 전이와 같은 트랜잭션에서
      * 한 번만 일어난다. 이 트랜잭션이 DB 오류로 취소되면 아무것도 바뀌지 않으므로 같은 거래를 다시 조회해 반영하면 된다.
      */
-    @Transactional
     public PaymentAttemptInfo apply(Long orderId, PaymentObservation observation) {
         Order order = orderService.getForUpdate(orderId);
         PaymentAttempt attempt = paymentAttemptService.getByOrderId(orderId);

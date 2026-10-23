@@ -66,7 +66,7 @@ class PaymentStartRulesTest extends PaymentFlowTestSupport {
             Long orderId = placeOrder(user, new OrderItemCommand(shirt.getId(), 1), new OrderItemCommand(socks.getId(), 2));
 
             // act
-            PaymentAttemptInfo info = paymentFacade.start(command(user, orderId, KEY));
+            PaymentAttemptInfo info = orderFacade.confirm(command(user, orderId, KEY));
 
             // assert
             assertThat(info.orderStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
@@ -89,7 +89,7 @@ class PaymentStartRulesTest extends PaymentFlowTestSupport {
             Long orderId = placeOrder(user, new OrderItemCommand(shirt.getId(), 2));
 
             // act
-            PaymentAttemptInfo info = paymentFacade.start(command(user, orderId, KEY));
+            PaymentAttemptInfo info = orderFacade.confirm(command(user, orderId, KEY));
 
             // assert
             assertThat(info.orderStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
@@ -106,7 +106,7 @@ class PaymentStartRulesTest extends PaymentFlowTestSupport {
             adminProductFacade.update(shirt.getId(), "티셔츠", 500_000);
 
             // act
-            PaymentAttemptInfo info = paymentFacade.start(command(user, orderId, KEY));
+            PaymentAttemptInfo info = orderFacade.confirm(command(user, orderId, KEY));
 
             // assert
             assertThat(info.amount()).isEqualTo(6_000L);
@@ -123,7 +123,7 @@ class PaymentStartRulesTest extends PaymentFlowTestSupport {
             Long orderId = placeOrder(user, new OrderItemCommand(shirt.getId(), 1));
 
             // act
-            PaymentAttemptInfo info = paymentFacade.start(command(user, orderId, KEY));
+            PaymentAttemptInfo info = orderFacade.confirm(command(user, orderId, KEY));
 
             // assert
             assertThat(info.orderStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
@@ -144,8 +144,8 @@ class PaymentStartRulesTest extends PaymentFlowTestSupport {
             Long orderId = placeOrder(owner, new OrderItemCommand(shirt.getId(), 1));
 
             // act
-            CoreException missing = rejected(() -> paymentFacade.start(command(owner, 999_999L, KEY)));
-            CoreException otherUsers = rejected(() -> paymentFacade.start(command(other, orderId, KEY)));
+            CoreException missing = rejected(() -> orderFacade.confirm(command(owner, 999_999L, KEY)));
+            CoreException otherUsers = rejected(() -> orderFacade.confirm(command(other, orderId, KEY)));
 
             // assert: 다른 사람의 주문이 존재하는지 알 수 없다.
             assertThat(missing.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
@@ -166,7 +166,7 @@ class PaymentStartRulesTest extends PaymentFlowTestSupport {
             jdbcTemplate.update("update products set stock = 0 where id = ?", shirt.getId());
 
             // act
-            CoreException exception = rejected(() -> paymentFacade.start(command(user, orderId, KEY)));
+            CoreException exception = rejected(() -> orderFacade.confirm(command(user, orderId, KEY)));
 
             // assert
             assertThat(exception.getErrorType()).isEqualTo(ErrorType.ORDER_ALREADY_CONFIRMED);
@@ -195,7 +195,7 @@ class PaymentStartRulesTest extends PaymentFlowTestSupport {
             adminProductFacade.delete(hat.getId());
 
             // act
-            CoreException exception = rejected(() -> paymentFacade.start(command(user, orderId, KEY)));
+            CoreException exception = rejected(() -> orderFacade.confirm(command(user, orderId, KEY)));
 
             // assert
             assertThat(exception.getErrorType()).isEqualTo(ErrorType.PRODUCT_UNAVAILABLE);
@@ -215,7 +215,7 @@ class PaymentStartRulesTest extends PaymentFlowTestSupport {
             adminProductFacade.changeStock(hat.getId(), remainingStock);
 
             // act
-            CoreException exception = rejected(() -> paymentFacade.start(command(user, orderId, KEY)));
+            CoreException exception = rejected(() -> orderFacade.confirm(command(user, orderId, KEY)));
 
             // assert
             assertThat(exception.getErrorType()).isEqualTo(ErrorType.OUT_OF_STOCK);
@@ -233,12 +233,12 @@ class PaymentStartRulesTest extends PaymentFlowTestSupport {
             adminProductFacade.changeStock(hat.getId(), 1);
 
             // act & assert: 재고 부족만 있으면 OUT_OF_STOCK
-            assertThat(rejected(() -> paymentFacade.start(command(user, orderId, KEY))).getErrorType())
+            assertThat(rejected(() -> orderFacade.confirm(command(user, orderId, KEY))).getErrorType())
                 .as("재고 부족").isEqualTo(ErrorType.OUT_OF_STOCK);
 
             // 삭제된 상품 + 재고 부족 → PRODUCT_UNAVAILABLE
             adminProductFacade.delete(shirt.getId());
-            assertThat(rejected(() -> paymentFacade.start(command(user, orderId, KEY))).getErrorType())
+            assertThat(rejected(() -> orderFacade.confirm(command(user, orderId, KEY))).getErrorType())
                 .as("삭제된 상품 + 재고 부족").isEqualTo(ErrorType.PRODUCT_UNAVAILABLE);
             assertThat(pg.createCalls()).isZero();
         }

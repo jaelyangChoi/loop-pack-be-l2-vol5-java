@@ -1,42 +1,50 @@
 package com.loopers.application.payment;
 
-import com.loopers.application.payment.PaymentGateway.CreateResult;
 import com.loopers.application.payment.PaymentGateway.OrderLookup;
 import com.loopers.application.payment.PaymentGateway.TransactionLookup;
-import com.loopers.application.payment.PaymentStarter.StartOutcome;
-import lombok.RequiredArgsConstructor;
+import com.loopers.domain.order.Order;
+import com.loopers.domain.order.OrderService;
+import com.loopers.domain.payment.PaymentAttempt;
+import com.loopers.domain.payment.PaymentAttemptService;
+import com.loopers.support.error.CoreException;
+import com.loopers.support.error.ErrorType;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.function.Supplier;
 
 /**
- * 결제 유스케이스의 조합. <b>트랜잭션을 열지 않는다.</b> 트랜잭션 A 를 끝내고 commit 한 뒤에 PG 를 호출하고, 그 결과를
- * 트랜잭션 B 로 반영한다. 한 메소드에 {@code @Transactional} 을 달면 HTTP 호출 동안 연결과 재고 잠금을 쥐게 된다 (D-51).
+ * 결제 결과 확인 유스케이스의 조합. <b>메소드에 트랜잭션을 열지 않는다.</b> PG 를 조회하기 전에는 짧은 읽기 전용 트랜잭션으로
+ * 확인할 시도를 읽고, 조회한 사실은 별도 트랜잭션으로 반영한다. 한 메소드에 {@code @Transactional} 을 달면 HTTP 호출 동안
+ * 연결과 재고 잠금을 쥐게 된다 (D-51).
  *
- * <p>발송 기록(REQUESTED)을 commit 한 뒤에는 자동으로 create 를 다시 보내지 않는다. PG 호출 뒤 반영이 실패해 시도가
- * REQUESTED 로 남아도 같은 요청을 재발송하지 않고, 기존 거래를 조회로 확인한다 (D-48).
+ * <p>결제를 시작하는 확정 요청은 주문의 유스케이스라 {@code OrderFacade.confirm} 이 맡는다.
  */
-@RequiredArgsConstructor
 @Component
 public class PaymentFacade {
 
-    private final PaymentStarter paymentStarter;
     private final PaymentGateway paymentGateway;
     private final PaymentResultApplier paymentResultApplier;
-    private final PaymentQuery paymentQuery;
+    private final OrderService orderService;
+    private final PaymentAttemptService paymentAttemptService;
+    private final TransactionTemplate readOnlyTransaction;
+    private final TransactionTemplate writeTransaction;
 
-    /**
-     * 본인의 DRAFT 주문의 PG 결제를 시작한다. 발송 권한을 얻은 실행만 PG 에 요청하고, 이미 시도가 있는 주문의 같은 키 요청은
-     * 저장된 상태만 돌려준다. 결과 미확인이면 새 결제를 만들지 않고 미확인 상태를 돌려준다. 호출하는 쪽이 조회·확인 경로로
-     * 이어 간다.
-     */
-    public PaymentAttemptInfo start(PaymentStartCommand command) {
-        StartOutcome outcome = paymentStarter.start(command);
-        if (!outcome.shouldSend()) {
-            return outcome.info();
-        }
-        CreateResult result = paymentGateway.requestPayment(outcome.request());
-        return paymentResultApplier.applyCreateResult(outcome.info().orderId(), result);
+    public PaymentFacade(
+        PaymentGateway paymentGateway,
+        PaymentResultApplier paymentResultApplier,
+        OrderService orderService,
+        PaymentAttemptService paymentAttemptService,
+        PlatformTransactionManager transactionManager
+    ) {
+        this.paymentGateway = paymentGateway;
+        this.paymentResultApplier = paymentResultApplier;
+        this.orderService = orderService;
+        this.paymentAttemptService = paymentAttemptService;
+        this.readOnlyTransaction = new TransactionTemplate(transactionManager);
+        this.readOnlyTransaction.setReadOnly(true);
+        this.writeTransaction = new TransactionTemplate(transactionManager);
     }
 
     /**
@@ -45,7 +53,7 @@ public class PaymentFacade {
      * <b>create 는 다시 보내지 않는다.</b> 거래가 보이지 않아도 새 결제를 만들지 않는다.
      */
     public PaymentCheckResult reconcile(Long userId, Long orderId) {
-        PaymentTarget target = paymentQuery.findMine(userId, orderId);
+        PaymentTarget target = readOnlyTransaction.execute(status -> findMine(userId, orderId));
         return refresh(target, () -> target.transactionKey() != null
             ? observeByKey(target.transactionKey())
             : observeByOrder(target.providerOrderId()));
@@ -56,7 +64,7 @@ public class PaymentFacade {
      * 찾은 뒤 알림의 거래 키로 PG 를 조회해 확인한 사실만 반영한다. 시도를 찾지 못하면 {@code NOT_FOUND} 이며 아무 효과도 없다.
      */
     public PaymentCheckResult handleCallback(String providerOrderId, String transactionKey) {
-        PaymentTarget target = paymentQuery.findByProviderOrderId(providerOrderId);
+        PaymentTarget target = readOnlyTransaction.execute(status -> findByProviderOrderId(providerOrderId));
         return refresh(target, () -> observeByKey(transactionKey));
     }
 
@@ -69,7 +77,8 @@ public class PaymentFacade {
         if (observation instanceof PaymentObservation.Unavailable) {
             return new PaymentCheckResult(target.info(), true);
         }
-        return new PaymentCheckResult(paymentResultApplier.apply(target.orderId(), observation), false);
+        PaymentAttemptInfo info = writeTransaction.execute(status -> paymentResultApplier.apply(target.orderId(), observation));
+        return new PaymentCheckResult(info, false);
     }
 
     private PaymentObservation observeByKey(String transactionKey) {
@@ -89,5 +98,23 @@ public class PaymentFacade {
             };
             case OrderLookup.Unavailable unavailable -> new PaymentObservation.Unavailable();
         };
+    }
+
+    // 본인 주문의 시도를 읽는다. 없는 주문과 다른 사용자의 주문은 구분하지 않고 NOT_FOUND 이고, 결제를 시작하지 않은
+    // 주문은 확인할 시도가 없으므로 CONFLICT 다.
+    private PaymentTarget findMine(Long userId, Long orderId) {
+        Order order = orderService.getMine(orderId, userId);
+        PaymentAttempt attempt = paymentAttemptService.findByOrderId(order.getId()).orElseThrow(
+            () -> new CoreException(ErrorType.CONFLICT, "결제를 시작한 주문이 아닙니다.")
+        );
+        return PaymentTarget.of(order, attempt);
+    }
+
+    // PG 알림이 가리키는 시도를 읽는다. 알림은 요청자가 없으므로 소유권 확인 없이 PG 용 주문 식별자로 찾는다.
+    private PaymentTarget findByProviderOrderId(String providerOrderId) {
+        PaymentAttempt attempt = paymentAttemptService.findByProviderOrderId(providerOrderId).orElseThrow(
+            () -> new CoreException(ErrorType.NOT_FOUND, "결제 시도를 찾을 수 없습니다.")
+        );
+        return PaymentTarget.of(orderService.get(attempt.getOrderId()), attempt);
     }
 }

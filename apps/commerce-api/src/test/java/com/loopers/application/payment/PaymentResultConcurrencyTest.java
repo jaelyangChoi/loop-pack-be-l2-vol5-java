@@ -50,7 +50,7 @@ class PaymentResultConcurrencyTest extends PaymentFlowTestSupport {
         User user = saveUser(10_000);
         Product product = saveProduct("러닝화", 3_500, 5);
         Long orderId = placeOrder(user, product, 2);
-        paymentFacade.start(command(user, orderId, "attempt-1"));
+        orderFacade.confirm(command(user, orderId, "attempt-1"));
         String key = pgKeyOf(orderId);
         pg.setStatus(key, "SUCCESS");
 
@@ -75,7 +75,7 @@ class PaymentResultConcurrencyTest extends PaymentFlowTestSupport {
         User user = saveUser(10_000);
         Product product = saveProduct("러닝화", 3_500, 5);
         Long orderId = placeOrder(user, product, 2);
-        paymentFacade.start(command(user, orderId, "attempt-1"));
+        orderFacade.confirm(command(user, orderId, "attempt-1"));
         assertThat(stockOf(product)).isEqualTo(3);
         String key = pgKeyOf(orderId);
         pg.setStatus(key, "FAILED");
@@ -100,7 +100,7 @@ class PaymentResultConcurrencyTest extends PaymentFlowTestSupport {
         Product product = saveProduct("러닝화", 3_500, 5);
         Long orderId = placeOrder(user, product, 2);
         pg.onCreate(FakePgServer.acceptThenDropResponse());
-        paymentFacade.start(command(user, orderId, "attempt-1"));
+        orderFacade.confirm(command(user, orderId, "attempt-1"));
         String key = pgKeyOf(orderId);
         pg.setStatus(key, "FAILED");
 

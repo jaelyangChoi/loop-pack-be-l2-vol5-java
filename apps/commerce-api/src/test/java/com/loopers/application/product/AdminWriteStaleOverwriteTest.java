@@ -4,7 +4,6 @@ import com.loopers.application.brand.AdminBrandFacade;
 import com.loopers.application.order.OrderFacade;
 import com.loopers.application.order.OrderItemCommand;
 import com.loopers.application.payment.PaymentStartCommand;
-import com.loopers.application.payment.PaymentStarter;
 import com.loopers.domain.brand.Brand;
 import com.loopers.domain.brand.BrandRepository;
 import com.loopers.domain.common.Money;
@@ -53,9 +52,6 @@ class AdminWriteStaleOverwriteTest {
 
     @Autowired
     private OrderFacade orderFacade;
-
-    @Autowired
-    private PaymentStarter paymentStarter;
 
     @Autowired
     private BrandRepository brandRepository;
@@ -229,7 +225,7 @@ class AdminWriteStaleOverwriteTest {
     @Test
     void startsOnLatestStock_andKeepsConcurrentDeletion() {
         // arrange: 결제를 시작할 주문 두 개. 하나는 다른 요청이 재고를 20 으로 설정한 상품, 하나는 삭제한 상품이다.
-        // PG 호출 없이 재고를 확보하는 트랜잭션 A(PaymentStarter)만 실행한다. 읽는 시점의 잠금은 이 트랜잭션이 정한다.
+        // PG 호출 없이 재고를 확보하는 트랜잭션 A(prepareConfirm)만 실행한다. 읽는 시점의 잠금은 이 트랜잭션이 정한다.
         Brand brand = saveBrand();
         Product restocked = saveProduct(brand.getId(), 10);
         Product removed = saveProduct(brand.getId(), 10);
@@ -240,14 +236,14 @@ class AdminWriteStaleOverwriteTest {
         // act & assert 1: 재고 설정이 commit 된 뒤의 값(20)에서 차감한다.
         Results restockResults = runBehindProductLock(restocked,
             "update products set stock = 20 where id = ?", new Object[] {restocked.getId()},
-            () -> paymentStarter.start(startCommand(buyer, restockedOrder, "attempt-restocked")));
+            () -> orderFacade.prepareConfirm(startCommand(buyer, restockedOrder, "attempt-restocked")));
         assertThat(restockResults.successes()).as("%s", restockResults.outcomes()).isEqualTo(1);
         assertThat(stockOf(restocked)).isEqualTo(18);
 
         // act & assert 2: 삭제가 commit 된 상품은 구매 불가로 거절되고 되살아나지 않는다.
         Results removeResults = runBehindProductLock(removed,
             "update products set deleted_at = current_timestamp(6) where id = ?", new Object[] {removed.getId()},
-            () -> paymentStarter.start(startCommand(buyer, removedOrder, "attempt-removed")));
+            () -> orderFacade.prepareConfirm(startCommand(buyer, removedOrder, "attempt-removed")));
         assertThat(removeResults.rejectedWith(ErrorType.PRODUCT_UNAVAILABLE)).as("%s", removeResults.outcomes()).isEqualTo(1);
         assertThat(isDeleted("products", removed.getId())).isTrue();
         assertThat(stockOf(removed)).isEqualTo(10);

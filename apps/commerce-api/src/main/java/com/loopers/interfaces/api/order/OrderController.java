@@ -76,7 +76,7 @@ public class OrderController implements OrderApiSpec {
         @PathVariable Long orderId,
         @Valid @RequestBody OrderDto.ConfirmRequest request
     ) {
-        PaymentAttemptInfo info = paymentFacade.start(request.toCommand(userId, orderId));
+        PaymentAttemptInfo info = orderFacade.confirm(request.toCommand(userId, orderId));
         // PG 결과로 끝난 시도는 200, 처리 중이거나 결과 미확인이면 202. 202 는 성공도 실패도 아니라 아직 모른다는 뜻이다.
         HttpStatus status = info.settled() ? HttpStatus.OK : HttpStatus.ACCEPTED;
         return ResponseEntity.status(status).body(ApiResponse.success(OrderDto.PaymentStartResponse.from(info)));

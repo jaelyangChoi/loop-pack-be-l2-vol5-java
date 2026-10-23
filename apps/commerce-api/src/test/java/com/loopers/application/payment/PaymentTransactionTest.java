@@ -10,7 +10,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import java.util.List;
@@ -34,9 +33,6 @@ class PaymentTransactionTest extends PaymentFlowTestSupport {
 
     private static final Pattern FROM_TABLE = Pattern.compile("\\bfrom (\\w+)");
     private static final long USER_BALANCE = 10_000L;
-
-    @Autowired
-    private PaymentStarter paymentStarter;
 
     @AfterEach
     void disarmInspector() {
@@ -71,7 +67,7 @@ class PaymentTransactionTest extends PaymentFlowTestSupport {
             )).id();
 
             // act: PG 호출 없이 트랜잭션 A 만 실행한다.
-            paymentStarter.start(command(user, orderId, "attempt-1"));
+            orderFacade.prepareConfirm(command(user, orderId, "attempt-1"));
 
             // assert
             assertThat(orderStatusOf(orderId)).isEqualTo("PAYMENT_PENDING");
@@ -95,7 +91,7 @@ class PaymentTransactionTest extends PaymentFlowTestSupport {
             FailingStatementInspector.record();
 
             // act
-            paymentStarter.start(command(user, orderId, "attempt-1"));
+            orderFacade.prepareConfirm(command(user, orderId, "attempt-1"));
 
             // assert
             assertThat(lockedTables()).containsExactly("orders", "products");
@@ -117,7 +113,7 @@ class PaymentTransactionTest extends PaymentFlowTestSupport {
             FailingStatementInspector.arm("update products", 1);
 
             // act & assert: 실패는 밖으로 전달된다. Spring 이 감쌀 수 있으므로 원인 사슬에서 주입한 예외를 찾는다.
-            assertThatThrownBy(() -> paymentFacade.start(command(user, orderId, "attempt-1")))
+            assertThatThrownBy(() -> orderFacade.confirm(command(user, orderId, "attempt-1")))
                 .hasRootCauseInstanceOf(InjectedFailureException.class);
 
             // 실패 전에 시도 insert 와 주문 update 가 실제로 DB 로 나갔어야 rollback 검증이 의미를 가진다.
@@ -157,7 +153,7 @@ class PaymentTransactionTest extends PaymentFlowTestSupport {
             FailingStatementInspector.arm("update products", 4);
 
             // act & assert
-            assertThatThrownBy(() -> paymentFacade.start(command(user, orderId, "attempt-1")))
+            assertThatThrownBy(() -> orderFacade.confirm(command(user, orderId, "attempt-1")))
                 .hasRootCauseInstanceOf(InjectedFailureException.class);
 
             FailingStatementInspector.disarm();
@@ -180,12 +176,12 @@ class PaymentTransactionTest extends PaymentFlowTestSupport {
             )).id();
             pg.onCreate(FakePgServer.rejectBeforeCreate());
             FailingStatementInspector.arm("update products", 2);
-            assertThatThrownBy(() -> paymentFacade.start(command(user, orderId, "attempt-1")))
+            assertThatThrownBy(() -> orderFacade.confirm(command(user, orderId, "attempt-1")))
                 .hasRootCauseInstanceOf(InjectedFailureException.class);
             FailingStatementInspector.disarm();
 
             // act
-            PaymentAttemptInfo again = paymentFacade.start(command(user, orderId, "attempt-1"));
+            PaymentAttemptInfo again = orderFacade.confirm(command(user, orderId, "attempt-1"));
 
             // assert: 저장된 REQUESTED 를 돌려줄 뿐, 발송 기록이 있는 시도를 자동으로 다시 보내지 않는다.
             assertThat(again.attemptStatus().name()).isEqualTo("REQUESTED");
@@ -204,7 +200,7 @@ class PaymentTransactionTest extends PaymentFlowTestSupport {
             User user = saveUser(USER_BALANCE);
             Product shirt = saveProduct("티셔츠", 3_000, 10);
             Long orderId = orderFacade.create(user.getId(), List.of(new OrderItemCommand(shirt.getId(), 1))).id();
-            paymentFacade.start(command(user, orderId, "attempt-1"));
+            orderFacade.confirm(command(user, orderId, "attempt-1"));
             pg.setStatus(pgKeyOf(orderId), "SUCCESS");
             // 주문 UPDATE 가 DB 로 나간 뒤 시도 UPDATE 에서 실패시킨다.
             FailingStatementInspector.arm("update payment_attempts", 1);
@@ -244,7 +240,7 @@ class PaymentTransactionTest extends PaymentFlowTestSupport {
             Long orderId = orderFacade.create(user.getId(), List.of(
                 new OrderItemCommand(shirt.getId(), 1), new OrderItemCommand(socks.getId(), 1)
             )).id();
-            paymentFacade.start(command(user, orderId, "attempt-1"));
+            orderFacade.confirm(command(user, orderId, "attempt-1"));
             assertThat(stockOf(shirt)).isEqualTo(9);
             assertThat(stockOf(socks)).isEqualTo(4);
             pg.setStatus(pgKeyOf(orderId), "FAILED");

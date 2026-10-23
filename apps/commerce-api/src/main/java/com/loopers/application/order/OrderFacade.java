@@ -1,37 +1,74 @@
 package com.loopers.application.order;
 
+import com.loopers.application.payment.PaymentAttemptInfo;
+import com.loopers.application.payment.PaymentGateway;
+import com.loopers.application.payment.PaymentGateway.CreateResult;
+import com.loopers.application.payment.PaymentGateway.PaymentRequest;
+import com.loopers.application.payment.PaymentPreparation;
+import com.loopers.application.payment.PaymentResultApplier;
+import com.loopers.application.payment.PaymentStartCommand;
 import com.loopers.domain.order.Order;
 import com.loopers.domain.order.OrderLine;
 import com.loopers.domain.order.OrderLines;
 import com.loopers.domain.order.OrderProduct;
 import com.loopers.domain.order.OrderService;
+import com.loopers.domain.order.OrderStockService;
+import com.loopers.domain.payment.PaymentAttempt;
+import com.loopers.domain.payment.PaymentAttemptService;
 import com.loopers.domain.product.Product;
 import com.loopers.domain.product.ProductService;
 import com.loopers.support.error.CoreException;
 import com.loopers.support.error.ErrorType;
 import com.loopers.support.paging.PageRequests;
-import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
  * 주문 유스케이스.
  *
  * <p>요청자 id 는 앞단의 식별 필터({@code CustomerIdentityFilter})를 거친, 존재하는 사용자의 id 이며 컨트롤러의
- * {@code @Requester} 파라미터가 {@code null} 이 아님을 보장한다 ({@code LikeFacade} 와 같다). 결제(확정)는 PG 호출이
- * 트랜잭션 밖에 있어야 해서 이 Facade가 아니라 {@code PaymentFacade} 가 맡는다 (D-51).
+ * {@code @Requester} 파라미터가 {@code null} 이 아님을 보장한다 ({@code LikeFacade} 와 같다).
+ *
+ * <p>{@link #confirm} 만 메소드에 {@code @Transactional} 을 달지 않는다. PG 호출이 트랜잭션 밖에 있어야 해서, 준비(트랜잭션
+ * A)와 결과 반영(트랜잭션 B)을 {@link TransactionTemplate} 으로 각각 감싼다 (D-51).
  */
-@RequiredArgsConstructor
 @Component
 public class OrderFacade {
 
     private final ProductService productService;
     private final OrderService orderService;
+    private final OrderStockService orderStockService;
+    private final PaymentAttemptService paymentAttemptService;
+    private final PaymentGateway paymentGateway;
+    private final PaymentResultApplier paymentResultApplier;
+    private final TransactionTemplate writeTransaction;
+
+    public OrderFacade(
+        ProductService productService,
+        OrderService orderService,
+        OrderStockService orderStockService,
+        PaymentAttemptService paymentAttemptService,
+        PaymentGateway paymentGateway,
+        PaymentResultApplier paymentResultApplier,
+        PlatformTransactionManager transactionManager
+    ) {
+        this.productService = productService;
+        this.orderService = orderService;
+        this.orderStockService = orderStockService;
+        this.paymentAttemptService = paymentAttemptService;
+        this.paymentGateway = paymentGateway;
+        this.paymentResultApplier = paymentResultApplier;
+        this.writeTransaction = new TransactionTemplate(transactionManager);
+    }
 
     /**
      * DRAFT 주문을 만든다. 재고를 확보하지 않고 포인트도 차감하지 않는다. 재고는 결제를 시작할 때 확보한다.
@@ -66,6 +103,85 @@ public class OrderFacade {
     @Transactional(readOnly = true)
     public Page<OrderSummaryInfo> getMyList(Long userId, int page, int size) {
         return orderService.getList(userId, PageRequests.of(page, size)).map(OrderSummaryInfo::from);
+    }
+
+    /**
+     * 본인의 DRAFT 주문의 확정을 요청한다. 주문은 PG 성공을 확인한 뒤에야 CONFIRMED 가 되므로, 여기서는 결제를 준비하고
+     * PG 에 요청한 결과까지만 반영한다. 발송 권한을 얻은 실행만 PG 에 요청하고, 이미 시도가 있는 주문의 같은 키 요청은 저장된
+     * 상태만 돌려준다. 결과 미확인이면 새 결제를 만들지 않고 미확인 상태를 돌려준다. 호출하는 쪽이 조회·확인 경로로 이어간다.
+     *
+     * <p>메소드에 트랜잭션을 열지 않는다. 준비를 commit 한 뒤에 PG 를 호출하고, 그 결과를 별도 트랜잭션으로 반영한다. 발송
+     * 기록(REQUESTED)을 commit 한 뒤에는 자동으로 create 를 다시 보내지 않는다 (D-48).
+     */
+    public PaymentAttemptInfo confirm(PaymentStartCommand command) {
+        PaymentPreparation preparation = prepareConfirm(command);
+        if (!preparation.shouldSend()) {
+            return preparation.info();
+        }
+        CreateResult result = paymentGateway.requestPayment(preparation.request());
+        return writeTransaction.execute(
+            status -> paymentResultApplier.applyCreateResult(preparation.info().orderId(), result)
+        );
+    }
+
+    /**
+     * 확정의 트랜잭션 A. PG 를 호출하기 <b>전에</b> 주문·재고·시도를 한 번에 확보하고 commit 한다. PG 호출 동안 DB 연결과
+     * 재고 잠금을 쥐지 않기 위해 PG 호출은 이 트랜잭션 밖에서 한다. 잠금 순서는 주문 → 상품(id 오름차순)이다 (D-27).
+     *
+     * <p>오류 우선순위: 주문 조회(404) → 시도 키·기존 시도(409) → 확정 여부(409) → 상품 삭제(409) → 재고(409). 재고 부족·삭제·
+     * 잘못된 입력이면 전체 rollback 되고 PG 는 호출하지 않는다.
+     */
+    public PaymentPreparation prepareConfirm(PaymentStartCommand command) {
+        return writeTransaction.execute(status -> prepare(command));
+    }
+
+    // 발송 권한은 시도를 새로 저장한 실행만 얻는다. 이미 시도가 있는 주문에 같은 키로 다시 오면 저장된 상태만 돌려주고
+    // 발송하지 않는다. 다른 키이거나, 다른 주문에 쓰인 키이면 PAYMENT_ATTEMPT_CONFLICT 다.
+    private PaymentPreparation prepare(PaymentStartCommand command) {
+        // 주문 행 잠금이 같은 주문의 동시 요청을 줄 세운다. 나중 요청은 먼저 요청의 commit 을 보고 저장된 시도를 만난다.
+        Order order = orderService.getMineForUpdate(command.orderId(), command.userId());
+
+        Optional<PaymentAttempt> existing = paymentAttemptService.findByOrderId(order.getId());
+        if (existing.isPresent()) {
+            return returnExisting(order, existing.get(), command);
+        }
+        // 이 주문에는 시도가 없으므로, 같은 키가 이미 있다면 다른 주문의 것이다.
+        if (paymentAttemptService.findByAttemptKey(command.attemptKey()).isPresent()) {
+            throw attemptConflict();
+        }
+
+        order.markPaymentPending(); // 이미 확정된 주문은 ORDER_ALREADY_CONFIRMED
+        orderStockService.deduct(order);
+        PaymentAttempt attempt = saveAttempt(order, command);
+        return new PaymentPreparation(
+            PaymentAttemptInfo.of(order, attempt),
+            new PaymentRequest(
+                attempt.getProviderOrderId(), command.cardType(), command.cardNo(), attempt.getAmount().amount()
+            )
+        );
+    }
+
+    // 이미 시도가 있는 주문의 재요청이다. 같은 키면 저장된 상태만 돌려주고 PG 에는 보내지 않는다. 다른 키면 충돌이며,
+    // 새 키를 보내도 두 번째 시도는 만들지 않는다.
+    private PaymentPreparation returnExisting(Order order, PaymentAttempt attempt, PaymentStartCommand command) {
+        if (!attempt.getAttemptKey().equals(command.attemptKey())) {
+            throw attemptConflict();
+        }
+        return new PaymentPreparation(PaymentAttemptInfo.of(order, attempt), null);
+    }
+
+    // 서로 다른 주문이 같은 키를 동시에 쓰면 둘 다 위의 확인을 통과할 수 있다. 유일 제약이 마지막 방어선이며, 졌을 때는
+    // 앞서 차감한 재고까지 이 트랜잭션과 함께 되돌아간다.
+    private PaymentAttempt saveAttempt(Order order, PaymentStartCommand command) {
+        try {
+            return paymentAttemptService.request(order.getId(), command.attemptKey(), order.getTotalAmount());
+        } catch (DataIntegrityViolationException e) {
+            throw attemptConflict();
+        }
+    }
+
+    private CoreException attemptConflict() {
+        return new CoreException(ErrorType.PAYMENT_ATTEMPT_CONFLICT);
     }
 
     // null 목록과 null 품목은 그대로 OrderLines 에 넘겨, 값 규칙을 한 곳에서 거절한다.

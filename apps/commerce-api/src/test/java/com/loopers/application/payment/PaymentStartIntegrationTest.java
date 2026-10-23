@@ -56,7 +56,7 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             arrange();
 
             // act
-            PaymentAttemptInfo info = paymentFacade.start(command(user, orderId, KEY));
+            PaymentAttemptInfo info = orderFacade.confirm(command(user, orderId, KEY));
 
             // assert
             assertThat(info.orderStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
@@ -80,7 +80,7 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             arrange();
 
             // act
-            paymentFacade.start(command(user, orderId, KEY));
+            orderFacade.confirm(command(user, orderId, KEY));
 
             // assert
             var body = pg.lastRequest().json();
@@ -95,7 +95,7 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             arrange();
 
             // act
-            paymentFacade.start(command(user, orderId, KEY));
+            orderFacade.confirm(command(user, orderId, KEY));
 
             // assert
             assertThat(jdbcTemplate.queryForList("select * from payment_attempts").toString()).doesNotContain(CARD_NO);
@@ -110,7 +110,7 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             pg.onCreate(FakePgServer.acceptThenDropResponse());
 
             // act
-            PaymentAttemptInfo info = paymentFacade.start(command(user, orderId, KEY));
+            PaymentAttemptInfo info = orderFacade.confirm(command(user, orderId, KEY));
 
             // assert
             assertThat(info.orderStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
@@ -130,7 +130,7 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             pg.onCreate(FakePgServer.respond(500, "{\"code\":\"ERROR\"}"));
 
             // act
-            PaymentAttemptInfo info = paymentFacade.start(command(user, orderId, KEY));
+            PaymentAttemptInfo info = orderFacade.confirm(command(user, orderId, KEY));
 
             // assert
             assertThat(info.attemptStatus()).isEqualTo(PaymentAttemptStatus.UNKNOWN);
@@ -147,7 +147,7 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             pg.onCreate(FakePgServer.rejectBeforeCreate());
 
             // act
-            PaymentAttemptInfo info = paymentFacade.start(command(user, orderId, KEY));
+            PaymentAttemptInfo info = orderFacade.confirm(command(user, orderId, KEY));
 
             // assert
             assertThat(info.orderStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED);
@@ -166,11 +166,11 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             // arrange
             arrange();
             pg.onCreate(FakePgServer.rejectBeforeCreate());
-            paymentFacade.start(command(user, orderId, KEY));
+            orderFacade.confirm(command(user, orderId, KEY));
 
             // act
-            paymentResultApplier.applyCreateResult(orderId, new CreateResult.RejectedNoEffect());
-            paymentResultApplier.applyCreateResult(orderId, new CreateResult.RejectedNoEffect());
+            applyCreateResult(orderId, new CreateResult.RejectedNoEffect());
+            applyCreateResult(orderId, new CreateResult.RejectedNoEffect());
 
             // assert
             assertThat(stockOf(product)).isEqualTo(5);
@@ -197,7 +197,7 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             jdbcTemplate.update("update products set stock = 1 where id = ?", product.getId());
 
             // act
-            CoreException exception = rejected(() -> paymentFacade.start(command(user, orderId, KEY)));
+            CoreException exception = rejected(() -> orderFacade.confirm(command(user, orderId, KEY)));
 
             // assert
             assertThat(exception.getErrorType()).isEqualTo(ErrorType.OUT_OF_STOCK);
@@ -212,7 +212,7 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             jdbcTemplate.update("update products set deleted_at = now() where id = ?", product.getId());
 
             // act
-            CoreException exception = rejected(() -> paymentFacade.start(command(user, orderId, KEY)));
+            CoreException exception = rejected(() -> orderFacade.confirm(command(user, orderId, KEY)));
 
             // assert
             assertThat(exception.getErrorType()).isEqualTo(ErrorType.PRODUCT_UNAVAILABLE);
@@ -228,7 +228,7 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             User stranger = saveUser(0);
 
             // act
-            CoreException exception = rejected(() -> paymentFacade.start(command(stranger, orderId, KEY)));
+            CoreException exception = rejected(() -> orderFacade.confirm(command(stranger, orderId, KEY)));
 
             // assert
             assertThat(exception.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
@@ -243,7 +243,7 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             jdbcTemplate.update("update orders set status = 'CONFIRMED', paid_amount = 7000 where id = ?", orderId);
 
             // act
-            CoreException exception = rejected(() -> paymentFacade.start(command(user, orderId, KEY)));
+            CoreException exception = rejected(() -> orderFacade.confirm(command(user, orderId, KEY)));
 
             // assert
             assertThat(exception.getErrorType()).isEqualTo(ErrorType.ORDER_ALREADY_CONFIRMED);
@@ -259,10 +259,10 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
         void returnsStoredResult_withoutSendingAgain() {
             // arrange
             arrange();
-            PaymentAttemptInfo first = paymentFacade.start(command(user, orderId, KEY));
+            PaymentAttemptInfo first = orderFacade.confirm(command(user, orderId, KEY));
 
             // act
-            PaymentAttemptInfo second = paymentFacade.start(command(user, orderId, KEY));
+            PaymentAttemptInfo second = orderFacade.confirm(command(user, orderId, KEY));
 
             // assert
             assertThat(second).isEqualTo(first);
@@ -278,10 +278,10 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             // arrange
             arrange();
             pg.onCreate(FakePgServer.acceptThenDropResponse());
-            paymentFacade.start(command(user, orderId, KEY));
+            orderFacade.confirm(command(user, orderId, KEY));
 
             // act
-            PaymentAttemptInfo again = paymentFacade.start(command(user, orderId, KEY));
+            PaymentAttemptInfo again = orderFacade.confirm(command(user, orderId, KEY));
 
             // assert
             assertThat(again.attemptStatus()).isEqualTo(PaymentAttemptStatus.UNKNOWN);
@@ -296,10 +296,10 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             // arrange
             arrange();
             pg.onCreate(FakePgServer.rejectBeforeCreate());
-            paymentFacade.start(command(user, orderId, KEY));
+            orderFacade.confirm(command(user, orderId, KEY));
 
             // act
-            PaymentAttemptInfo again = paymentFacade.start(command(user, orderId, KEY));
+            PaymentAttemptInfo again = orderFacade.confirm(command(user, orderId, KEY));
 
             // assert
             assertThat(again.attemptStatus()).isEqualTo(PaymentAttemptStatus.FAILED);
@@ -313,10 +313,10 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
         void rejectsWithConflict_whenKeyDiffers() {
             // arrange
             arrange();
-            paymentFacade.start(command(user, orderId, KEY));
+            orderFacade.confirm(command(user, orderId, KEY));
 
             // act
-            CoreException exception = rejected(() -> paymentFacade.start(command(user, orderId, "attempt-2")));
+            CoreException exception = rejected(() -> orderFacade.confirm(command(user, orderId, "attempt-2")));
 
             // assert
             assertThat(exception.getErrorType()).isEqualTo(ErrorType.PAYMENT_ATTEMPT_CONFLICT);
@@ -331,10 +331,10 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             // arrange
             arrange();
             pg.onCreate(FakePgServer.rejectBeforeCreate());
-            paymentFacade.start(command(user, orderId, KEY));
+            orderFacade.confirm(command(user, orderId, KEY));
 
             // act
-            CoreException exception = rejected(() -> paymentFacade.start(command(user, orderId, "attempt-2")));
+            CoreException exception = rejected(() -> orderFacade.confirm(command(user, orderId, "attempt-2")));
 
             // assert
             assertThat(exception.getErrorType()).isEqualTo(ErrorType.PAYMENT_ATTEMPT_CONFLICT);
@@ -348,12 +348,12 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
         void rejectsWithConflict_whenKeyBelongsToOtherOrder() {
             // arrange
             arrange();
-            paymentFacade.start(command(user, orderId, KEY));
+            orderFacade.confirm(command(user, orderId, KEY));
             User other = saveUser(0);
             Long otherOrderId = placeOrder(other, product, 1);
 
             // act
-            CoreException exception = rejected(() -> paymentFacade.start(command(other, otherOrderId, KEY)));
+            CoreException exception = rejected(() -> orderFacade.confirm(command(other, otherOrderId, KEY)));
 
             // assert
             assertThat(exception.getErrorType()).isEqualTo(ErrorType.PAYMENT_ATTEMPT_CONFLICT);
@@ -372,10 +372,10 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
         void doesNotRegressPendingToUnknown() {
             // arrange
             arrange();
-            paymentFacade.start(command(user, orderId, KEY));
+            orderFacade.confirm(command(user, orderId, KEY));
 
             // act
-            PaymentAttemptInfo info = paymentResultApplier.applyCreateResult(orderId, new CreateResult.Unknown("late"));
+            PaymentAttemptInfo info = applyCreateResult(orderId, new CreateResult.Unknown("late"));
 
             // assert
             assertThat(info.attemptStatus()).isEqualTo(PaymentAttemptStatus.PENDING);
@@ -388,13 +388,13 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             // arrange
             arrange();
             pg.onCreate(FakePgServer.rejectBeforeCreate());
-            paymentFacade.start(command(user, orderId, KEY));
+            orderFacade.confirm(command(user, orderId, KEY));
             PgTransaction lateTransaction =
                 new PgTransaction("TEST-TX-LATE", providerOrderIdOf(orderId), 7_000, PgStatus.PENDING);
 
             // act
             PaymentAttemptInfo info =
-                paymentResultApplier.applyCreateResult(orderId, new CreateResult.Accepted(lateTransaction));
+                applyCreateResult(orderId, new CreateResult.Accepted(lateTransaction));
 
             // assert
             assertThat(info.attemptStatus()).isEqualTo(PaymentAttemptStatus.FAILED);
@@ -410,11 +410,11 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
         void doesNotFailPending_whenRejectionArrivesLate() {
             // arrange
             arrange();
-            paymentFacade.start(command(user, orderId, KEY));
+            orderFacade.confirm(command(user, orderId, KEY));
 
             // act
             PaymentAttemptInfo info =
-                paymentResultApplier.applyCreateResult(orderId, new CreateResult.RejectedNoEffect());
+                applyCreateResult(orderId, new CreateResult.RejectedNoEffect());
 
             // assert
             assertThat(info.attemptStatus()).isEqualTo(PaymentAttemptStatus.PENDING);
@@ -433,12 +433,12 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             // arrange: 결과 미확인으로 재고 3 을 쥔 채, 상품이 삭제된다.
             arrange();
             pg.onCreate(FakePgServer.acceptThenDropResponse());
-            paymentFacade.start(command(user, orderId, KEY));
+            orderFacade.confirm(command(user, orderId, KEY));
             jdbcTemplate.update("update products set deleted_at = now() where id = ?", product.getId());
 
             // act: 이 확정 거절은 결과 미확인 시도를 FAILED 로 종결하는 경로를 쓴다(조회로 FAILED 를 확인했을 때와 같은 반환).
             PaymentAttemptInfo info =
-                paymentResultApplier.applyCreateResult(orderId, new CreateResult.RejectedNoEffect());
+                applyCreateResult(orderId, new CreateResult.RejectedNoEffect());
 
             // assert
             assertThat(info.orderStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED);

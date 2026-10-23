@@ -56,7 +56,7 @@ class PaymentStartConcurrencyTest extends PaymentFlowTestSupport {
 
         // act
         Results results = ConcurrentRequests.run(
-            requests(requestCount, i -> () -> paymentFacade.start(command(user, orderId, KEY)))
+            requests(requestCount, i -> () -> orderFacade.confirm(command(user, orderId, KEY)))
         );
 
         // assert
@@ -81,7 +81,7 @@ class PaymentStartConcurrencyTest extends PaymentFlowTestSupport {
 
         // act
         Results results = ConcurrentRequests.run(
-            requests(requestCount, i -> () -> paymentFacade.start(command(user, orderId, "attempt-" + i)))
+            requests(requestCount, i -> () -> orderFacade.confirm(command(user, orderId, "attempt-" + i)))
         );
 
         // assert
@@ -105,8 +105,8 @@ class PaymentStartConcurrencyTest extends PaymentFlowTestSupport {
 
         // act
         Results results = ConcurrentRequests.run(List.of(
-            () -> paymentFacade.start(command(first, firstOrder, "attempt-first")),
-            () -> paymentFacade.start(command(second, secondOrder, "attempt-second"))
+            () -> orderFacade.confirm(command(first, firstOrder, "attempt-first")),
+            () -> orderFacade.confirm(command(second, secondOrder, "attempt-second"))
         ));
 
         // assert
@@ -131,8 +131,8 @@ class PaymentStartConcurrencyTest extends PaymentFlowTestSupport {
 
         // act
         Results results = ConcurrentRequests.run(List.of(
-            () -> paymentFacade.start(command(first, firstOrder, KEY)),
-            () -> paymentFacade.start(command(second, secondOrder, KEY))
+            () -> orderFacade.confirm(command(first, firstOrder, KEY)),
+            () -> orderFacade.confirm(command(second, secondOrder, KEY))
         ));
 
         // assert: 재고는 이긴 쪽 몫(2개)만 줄어든다.
@@ -167,7 +167,7 @@ class PaymentStartConcurrencyTest extends PaymentFlowTestSupport {
 
         // act
         Results results = ConcurrentRequests.run(
-            requests(requestCount, i -> () -> paymentFacade.start(command(buyers.get(i), orderIds.get(i), "attempt-" + i)))
+            requests(requestCount, i -> () -> orderFacade.confirm(command(buyers.get(i), orderIds.get(i), "attempt-" + i)))
         );
 
         // assert: 재고 부족으로 거절된 주문은 PG 에 요청하지 않고 DRAFT 로 남는다.
@@ -200,7 +200,7 @@ class PaymentStartConcurrencyTest extends PaymentFlowTestSupport {
 
         // act
         Results results = ConcurrentRequests.run(
-            requests(requestCount, i -> () -> paymentFacade.start(command(buyer, orderIds.get(i), "attempt-" + i)))
+            requests(requestCount, i -> () -> orderFacade.confirm(command(buyer, orderIds.get(i), "attempt-" + i)))
         );
 
         // assert
@@ -224,7 +224,7 @@ class PaymentStartConcurrencyTest extends PaymentFlowTestSupport {
 
         // act
         Results results = ConcurrentRequests.run(List.of(
-            () -> paymentFacade.start(command(buyer, orderId, KEY)),
+            () -> orderFacade.confirm(command(buyer, orderId, KEY)),
             () -> pointFacade.charge(buyer.getId(), chargeAmount)
         ));
 

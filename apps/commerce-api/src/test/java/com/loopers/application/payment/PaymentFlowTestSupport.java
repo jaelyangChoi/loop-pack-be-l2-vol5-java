@@ -2,6 +2,7 @@ package com.loopers.application.payment;
 
 import com.loopers.application.order.OrderFacade;
 import com.loopers.application.order.OrderItemCommand;
+import com.loopers.application.payment.PaymentGateway.CreateResult;
 import com.loopers.domain.common.Money;
 import com.loopers.domain.payment.PaymentAttempt;
 import com.loopers.domain.product.Product;
@@ -18,6 +19,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
@@ -59,6 +62,9 @@ public abstract class PaymentFlowTestSupport {
 
     @Autowired
     protected PaymentResultApplier paymentResultApplier;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @Autowired
     protected OrderFacade orderFacade;
@@ -143,6 +149,19 @@ public abstract class PaymentFlowTestSupport {
     protected Map<String, Object> attemptOf(Long orderId) {
         return jdbcTemplate.queryForMap(
             "select status, transaction_key, amount, anomaly from payment_attempts where order_id = ?", orderId
+        );
+    }
+
+    // 결과 반영은 호출하는 Facade 가 트랜잭션을 연다. Facade 를 거치지 않고 반영 로직만 실행할 때도 같은 경계를 만든다.
+    protected PaymentAttemptInfo applyCreateResult(Long orderId, CreateResult result) {
+        return new TransactionTemplate(transactionManager).execute(
+            status -> paymentResultApplier.applyCreateResult(orderId, result)
+        );
+    }
+
+    protected PaymentAttemptInfo applyObservation(Long orderId, PaymentObservation observation) {
+        return new TransactionTemplate(transactionManager).execute(
+            status -> paymentResultApplier.apply(orderId, observation)
         );
     }
 }

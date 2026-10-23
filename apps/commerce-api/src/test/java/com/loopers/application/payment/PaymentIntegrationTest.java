@@ -4,9 +4,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.loopers.application.payment.PaymentGateway.CreateResult;
 import com.loopers.application.payment.PaymentGateway.PgStatus;
 import com.loopers.application.payment.PaymentGateway.PgTransaction;
+import com.loopers.application.order.OrderFacade;
+import com.loopers.domain.order.OrderService;
 import com.loopers.domain.order.OrderStatus;
+import com.loopers.domain.order.OrderStockService;
+import com.loopers.domain.payment.PaymentAttemptService;
 import com.loopers.domain.payment.PaymentAttemptStatus;
 import com.loopers.domain.product.Product;
+import com.loopers.domain.product.ProductService;
 import com.loopers.domain.user.User;
 import com.loopers.infrastructure.payment.PaymentGatewayImpl;
 import com.loopers.infrastructure.payment.PaymentPgProperties;
@@ -18,6 +23,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -36,10 +42,22 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
     private static final long USER_BALANCE = 10_000L;
 
     @Autowired
-    private PaymentStarter paymentStarter;
+    private PaymentGateway paymentGateway;
 
     @Autowired
-    private PaymentQuery paymentQuery;
+    private ProductService productService;
+
+    @Autowired
+    private OrderService orderService;
+
+    @Autowired
+    private OrderStockService orderStockService;
+
+    @Autowired
+    private PaymentAttemptService paymentAttemptService;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @Autowired
     private PaymentPgProperties pgProperties;
@@ -57,21 +75,21 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
     // 결제를 시작해 PG 가 거래를 수락한 상태(PENDING)로 만든다.
     private void startAccepted() {
         arrange();
-        paymentFacade.start(command(user, orderId, KEY));
+        orderFacade.confirm(command(user, orderId, KEY));
     }
 
     // 거래가 생긴 뒤 응답을 잃어 결과 미확인(UNKNOWN, 거래 키 없음)인 상태로 만든다.
     private void startWithLostResponse() {
         arrange();
         pg.onCreate(FakePgServer.acceptThenDropResponse());
-        paymentFacade.start(command(user, orderId, KEY));
+        orderFacade.confirm(command(user, orderId, KEY));
     }
 
     // 거래가 만들어졌는지조차 모르는 결과 미확인 상태로 만든다. PG 에는 거래가 없다.
     private void startWithServerError() {
         arrange();
         pg.onCreate(FakePgServer.respond(500, "{\"code\":\"ERROR\"}"));
-        paymentFacade.start(command(user, orderId, KEY));
+        orderFacade.confirm(command(user, orderId, KEY));
     }
 
     private PaymentCheckResult reconcile() {
@@ -453,14 +471,14 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             reconcile();
 
             // act 1: 같은 결과
-            paymentResultApplier.apply(orderId, new PaymentObservation.Transaction(
+            applyObservation(orderId, new PaymentObservation.Transaction(
                 new PgTransaction(key, providerOrderIdOf(orderId), 7_000, PgStatus.SUCCESS)));
 
             // assert 1
             assertThat(attemptOf(orderId).get("anomaly")).isNull();
 
             // act 2: 같은 거래가 FAILED 로 관찰됨(상충)
-            paymentResultApplier.apply(orderId, new PaymentObservation.Transaction(
+            applyObservation(orderId, new PaymentObservation.Transaction(
                 new PgTransaction(key, providerOrderIdOf(orderId), 7_000, PgStatus.FAILED)));
 
             // assert 2
@@ -480,7 +498,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             reconcile();
 
             // act
-            paymentResultApplier.apply(orderId, new PaymentObservation.Transaction(
+            applyObservation(orderId, new PaymentObservation.Transaction(
                 new PgTransaction(key, providerOrderIdOf(orderId), 7_000, PgStatus.PENDING)));
 
             // assert
@@ -498,8 +516,8 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             callback(key);
 
             // act: 늦게 도착한 결과 미확인과, 같은 거래를 알리는 생성 응답
-            paymentResultApplier.applyCreateResult(orderId, new CreateResult.Unknown("late"));
-            paymentResultApplier.applyCreateResult(orderId, new CreateResult.Accepted(
+            applyCreateResult(orderId, new CreateResult.Unknown("late"));
+            applyCreateResult(orderId, new CreateResult.Accepted(
                 new PgTransaction(key, providerOrderIdOf(orderId), 7_000, PgStatus.PENDING)));
 
             // assert
@@ -514,9 +532,21 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
     @Nested
     class Restart {
         // 서비스·client 를 새로 만든다. DB 와 PG 의 거래 상태는 그대로다.
+        private PaymentGateway restartedGateway() {
+            return new PaymentGatewayImpl(new TestPgClient(pgProperties, new ObjectMapper()));
+        }
+
         private PaymentFacade restartedFacade() {
-            TestPgClient newClient = new TestPgClient(pgProperties, new ObjectMapper());
-            return new PaymentFacade(paymentStarter, new PaymentGatewayImpl(newClient), paymentResultApplier, paymentQuery);
+            return new PaymentFacade(
+                restartedGateway(), paymentResultApplier, orderService, paymentAttemptService, transactionManager
+            );
+        }
+
+        private OrderFacade restartedOrderFacade() {
+            return new OrderFacade(
+                productService, orderService, orderStockService, paymentAttemptService, restartedGateway(),
+                paymentResultApplier, transactionManager
+            );
         }
 
         @DisplayName("저장된 시도와 재고 확보가 유지되고, 거래가 보이지 않아도 자동으로 다시 발송하지 않는다.")
@@ -524,7 +554,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
         void doesNotResend_whenNoTransactionIsVisible() {
             // arrange: 발송을 시작한다고 기록하고 commit 한 직후 멈췄다. 실제 발송 여부는 로컬 기록만으로 알 수 없다.
             arrange();
-            paymentStarter.start(command(user, orderId, KEY));
+            orderFacade.prepareConfirm(command(user, orderId, KEY));
             PaymentFacade restarted = restartedFacade();
 
             // act
@@ -544,7 +574,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
         void settlesTransactionThatWasAlreadySent() {
             // arrange: HTTP 가 끝난 뒤 내부 저장 전에 멈춘 상황. PG 에는 거래가 있고 우리 기록은 REQUESTED 다.
             arrange();
-            paymentStarter.start(command(user, orderId, KEY));
+            orderFacade.prepareConfirm(command(user, orderId, KEY));
             pg.addTransaction(providerOrderIdOf(orderId), 7_000, "SUCCESS");
             PaymentFacade restarted = restartedFacade();
 
@@ -563,11 +593,11 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
         void doesNotResend_whenSameKeyIsStartedAgain() {
             // arrange
             arrange();
-            paymentStarter.start(command(user, orderId, KEY));
+            orderFacade.prepareConfirm(command(user, orderId, KEY));
             PaymentFacade restarted = restartedFacade();
 
             // act
-            PaymentAttemptInfo info = restarted.start(command(user, orderId, KEY));
+            PaymentAttemptInfo info = restartedOrderFacade().confirm(command(user, orderId, KEY));
 
             // assert
             assertThat(info.attemptStatus()).isEqualTo(PaymentAttemptStatus.REQUESTED);
