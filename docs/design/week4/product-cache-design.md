@@ -81,11 +81,11 @@ product:list:v1:brand={brandId|all}:sort={latest|price_asc}:page={n}:size={n}
 
 ```
 application.product
-  ProductListCache           포트: find(ProductListQuery) / save(ProductListQuery, ProductListSnapshot) / evictAll()
+  ProductListCache           포트: find(ProductListQuery) / save(ProductListQuery, CachedProductList) / evictAll()
   ProductListQuery           조회 조건 record (brandId|null, sort, page, size)
-  ProductListSnapshot        payload record (상품 id·name·price·brand{id,name}, totalElements). page·size는 키에 있어 담지 않음. likeCount 없음
+  CachedProductList        payload record (상품 id·name·price·brand{id,name}, totalElements). page·size는 키에 있어 담지 않음. likeCount 없음
   ProductListItemInfo        고객 목록 항목 (payload 항목 + likeCount). DB 조회·hit 가 같은 타입을 돌려준다
-  ProductCatalogChanged      관리자 쓰기가 발행하는 이벤트
+  ProductListChangedEvent      관리자 쓰기가 발행하는 이벤트
   ProductListCacheEvictor    @TransactionalEventListener(AFTER_COMMIT) → evictAll()
 infrastructure.product
   ProductListRedisCache      구현: 키 형식·JSON 직렬화·TTL·SCAN+UNLINK·Redis 예외 처리
@@ -189,7 +189,7 @@ infrastructure.product
 
 ### 10-3. commit 뒤 무효화
 
-- `AdminProductFacade.create/update/delete`, `AdminBrandFacade.update/delete`가 트랜잭션 안에서 `ProductCatalogChanged`를 발행한다. 5-1 표에서 "하지 않는다"인 쓰기(`changeStock`, 좋아요, 주문, `AdminBrandFacade.create`)는 발행하지 않고, 그 이유를 메서드 주석에 남겼다.
+- `AdminProductFacade.create/update/delete`, `AdminBrandFacade.update/delete`가 트랜잭션 안에서 `ProductListChangedEvent`를 발행한다. 5-1 표에서 "하지 않는다"인 쓰기(`changeStock`, 좋아요, 주문, `AdminBrandFacade.create`)는 발행하지 않고, 그 이유를 메서드 주석에 남겼다.
 - `ProductListCacheEvictor`가 `@TransactionalEventListener(AFTER_COMMIT)`에서 `evictAll()`을 호출한다. 캐시 구현이 Redis 오류를 이미 삼키지만, 예상 밖의 `RuntimeException`도 잡아 로그만 남긴다. commit 된 관리자 요청을 실패로 바꾸지 않기 위해서다. 실패 시 응답이 성공으로 유지되는지는 T6에서 확인한다.
 
 | 확인 (`ProductCacheInvalidationTest`, 실제 MySQL·Redis, 브랜드 필터 유무 × 정렬 4개 키를 채운 뒤) | 결과 |
@@ -226,7 +226,7 @@ infrastructure.product
   - 캐시 조회·저장과 hit의 좋아요 수 조회(SQL 1개)는 트랜잭션 밖에서 실행한다.
   - `ProductCacheQueryCountTest.TransactionScope`가 호출 순서와 트랜잭션 여부를 고정한다: 캐시 조회(밖) → 좋아요 수(안) → 캐시 저장(밖) / 캐시 조회(밖) → 좋아요 수(밖). SQL 수(miss 4, hit 1)는 그대로다.
 - **payload에서 `page`·`size` 제거**: 키에 이미 있고 hit 때도 요청의 페이지 정보로 결과를 만들어, 저장만 되고 읽히지 않았다. 배포 전이라 형식 버전 `v1`은 유지한다.
-- **변환 위치 통일**: 캐시 값 → 결과 변환을 `ProductListSnapshot.Item.withLikeCount`로 옮겨, 결과 → 캐시 값 변환(`ProductListSnapshot.from`)과 같은 곳에 둔다.
+- **변환 위치 통일**: 캐시 값 → 결과 변환을 `CachedProductList.Item.withLikeCount`로 옮겨, 결과 → 캐시 값 변환(`CachedProductList.from`)과 같은 곳에 둔다.
 
 ### 10-6. 측정과 최종 검사
 

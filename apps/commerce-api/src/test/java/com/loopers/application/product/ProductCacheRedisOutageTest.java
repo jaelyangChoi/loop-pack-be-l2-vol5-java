@@ -1,6 +1,7 @@
 package com.loopers.application.product;
 
 import com.github.dockerjava.api.DockerClient;
+import com.loopers.application.product.cache.ProductListCache;
 import com.loopers.application.product.dto.ProductListItemInfo;
 import com.loopers.application.product.dto.ProductListQuery;
 import com.loopers.domain.brand.Brand;

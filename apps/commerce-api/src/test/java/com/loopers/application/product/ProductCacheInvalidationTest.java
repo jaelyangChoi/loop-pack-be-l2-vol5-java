@@ -5,6 +5,7 @@ import com.loopers.application.like.LikeFacade;
 import com.loopers.application.order.OrderFacade;
 import com.loopers.application.order.dto.OrderInfo;
 import com.loopers.application.order.dto.OrderItemCommand;
+import com.loopers.application.product.cache.ProductListCache;
 import com.loopers.application.product.dto.ProductInfo;
 import com.loopers.application.product.dto.ProductListItemInfo;
 import com.loopers.application.product.dto.ProductListQuery;

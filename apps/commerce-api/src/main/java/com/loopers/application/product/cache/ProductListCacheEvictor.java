@@ -1,4 +1,4 @@
-package com.loopers.application.product;
+package com.loopers.application.product.cache;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,7 +21,7 @@ public class ProductListCacheEvictor {
     private final ProductListCache productListCache;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void evict(ProductCatalogChanged event) {
+    public void evict(ProductListChangedEvent event) {
         try {
             productListCache.evictAll();
         } catch (RuntimeException e) {

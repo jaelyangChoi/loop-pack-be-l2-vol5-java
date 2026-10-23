@@ -1,7 +1,7 @@
 package com.loopers.application.brand;
 
 import com.loopers.application.brand.dto.BrandInfo;
-import com.loopers.application.product.ProductCatalogChanged;
+import com.loopers.application.product.cache.ProductListChangedEvent;
 import com.loopers.domain.brand.Brand;
 import com.loopers.domain.brand.BrandService;
 import com.loopers.domain.like.LikeService;
@@ -40,7 +40,7 @@ public class AdminBrandFacade {
         Brand brand = brandService.getForUpdate(brandId);
         brand.update(name);
         // 고객 목록 항목에 브랜드명이 담겨 있어 목록 캐시를 비운다.
-        eventPublisher.publishEvent(new ProductCatalogChanged());
+        eventPublisher.publishEvent(new ProductListChangedEvent());
         return BrandInfo.from(brand);
     }
 
@@ -54,7 +54,7 @@ public class AdminBrandFacade {
         // 삭제한 상품의 좋아요 수 집계 행을 지워 브랜드 없는 좋아요순 목록에서 뺀다.
         likeService.removeCounts(products.stream().map(Product::getId).toList());
         brand.delete();
-        eventPublisher.publishEvent(new ProductCatalogChanged());
+        eventPublisher.publishEvent(new ProductListChangedEvent());
     }
 
     @Transactional(readOnly = true)
