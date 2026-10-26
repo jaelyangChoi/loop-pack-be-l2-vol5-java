@@ -115,6 +115,9 @@ public class PaymentAttempt extends BaseEntity {
      * {@code null} 이다. 거래 키를 꾸며서 저장하지 않는다.
      */
     public void markFailed(String observedTransactionKey) {
+        if (observedTransactionKey != null) {
+            requireTransactionKey(observedTransactionKey);
+        }
         moveTo(PaymentAttemptStatus.FAILED, observedTransactionKey);
     }
 
@@ -144,9 +147,6 @@ public class PaymentAttempt extends BaseEntity {
             );
         }
         if (observedTransactionKey != null) {
-            if (observedTransactionKey.isBlank()) {
-                throw new CoreException(ErrorType.INVALID_INPUT, "거래 키는 비어 있을 수 없습니다.");
-            }
             if (transactionKey != null && !transactionKey.equals(observedTransactionKey)) {
                 throw new CoreException(ErrorType.CONFLICT, "이 시도의 거래와 다른 거래 키입니다.");
             }
