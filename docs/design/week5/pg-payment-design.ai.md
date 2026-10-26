@@ -225,7 +225,8 @@ updateByStatusLookupResult(orderId, lookupResult):
 | 구분 | 위치 | 내용 |
 |---|---|---|
 | 포트 | `application.payment.PaymentGateway` | 입출력은 application 타입만 쓴다 |
-| HTTP 호출 | `infrastructure.payment.PgHttpClient` | URL·헤더·JSON·timeout을 숨기고 응답을 해석한다. 조회는 하지 못하면 `PgStatusLookupFailedException`을 던진다. 조회 메서드에 Retry·CB를 건다 |
+| HTTP 호출 | `infrastructure.payment.PgHttpClient` | URL·헤더·JSON 직렬화·timeout을 숨긴다. 응답 본문 해석은 `PgResponseParser`에 맡긴다. 조회는 하지 못하면 `PgStatusLookupFailedException`을 던진다. 조회 메서드에 Retry·CB를 건다 |
+| 응답 해석 | `infrastructure.payment.PgResponseParser` | 202·422·조회 응답 본문을 해석한다(package-private). 형식이 어긋나면 값을 지어내지 않고, 조회 응답이면 `PgStatusLookupFailedException`을 던진다 |
 | 포트 구현 | `infrastructure.payment.PaymentGatewayImpl` | `PgHttpClient`를 호출하고, 조회 실패 예외(`PgStatusLookupFailedException`, 회로가 막은 `CallNotPermittedException`)를 `LOOKUP_UNAVAILABLE`로 바꾼다 |
 
 ```

@@ -14,18 +14,38 @@
 | 결제 요청은 재시도하지 않고, 결과를 모르면 `UNKNOWN`으로 둔다. 복구는 조회로만 한다 | 테스트 PG는 멱등 키를 받지 않아 다시 보내면 이중 결제가 생길 수 있어서 |
 | 결과 반영은 한 곳(`PaymentStatusUpdater`)으로 모으고, PG 알림(callback)은 확인 요청의 신호로만 쓴다 | 위조·중복·순서 뒤바뀜이 있어도 같은 결과로 수렴시키려고 |
 | 재시도와 회로 차단은 조회에만 건다 | 조회는 다시 실행해도 안전하지만 결제 요청은 거래를 또 만들 수 있어서 |
+| HTTP 호출·응답 해석·실패 변환을 세 클래스로 나눈다 | HTTP 클라이언트가 응답 해석까지 하면 읽기 어렵고, 재시도·회로는 다른 빈이 호출해야 걸려서 |
 
 ## 흐름
 
 ```
 POST /orders/{id}/confirm
- ├─ TX A  주문 잠금 → 재고 차감 → 시도(REQUESTED) 저장 → 주문 PAYMENT_PENDING   (commit)
+ ├─ TX A  (prepareConfirm) 주문 잠금 → 재고 차감 → 시도(REQUESTED) 저장 → 주문 PAYMENT_PENDING   (commit)
  ├─ PG    결제 요청 (재시도 없음)                                              (TX 밖)
  └─ TX B  PG 응답을 시도·주문에 반영                                            (응답 유실이면 UNKNOWN)
 
 POST /orders/{id}/payment/reconcile ┐  PG에 결제 상태를 묻고
 POST /payments/callback             ┘  TX B와 같은 곳(PaymentStatusUpdater)에서 반영
 ```
+
+## 호출 구조와 복원력
+
+```
+PaymentResultLookupFacade / OrderFacade          (application, PaymentGateway 포트만 안다)
+ └─ PaymentGatewayImpl                           조회 실패·회로 차단을 LOOKUP_UNAVAILABLE 결과로 바꾼다
+     └─ PgHttpClient                             HTTP 전송. 조회 메서드에만 @Retry → @CircuitBreaker
+         └─ PgResponseParser                     응답 본문 해석. 형식이 어긋나면 값을 지어내지 않는다
+```
+
+| | 결제 요청 | 조회 |
+|---|---|---|
+| timeout | connect 1초, read 3초 | connect 1초, read 1초 |
+| 재시도 | 없음 | 최대 3회(100ms, 200ms 간격), 조회 한 번은 최대 약 3.3초 |
+| 회로 차단 | 없음 | 최근 10건 중 5건 이상이고 실패율 50% 이상이면 10초간 차단, 이후 2건으로 시험 |
+| 실패하면 | `UNKNOWN`(거래 생성 여부를 모름) | 예외 → `LOOKUP_UNAVAILABLE`(상태 유지) |
+
+- 재시도가 바깥이고 회로가 안쪽이라 시도 한 번이 회로 표본 한 건이다. 회로가 막은 호출은 다시 두드리지 않는다.
+- 예외를 결과로 바꾸는 일은 `PgHttpClient`를 호출하는 다른 빈(`PaymentGatewayImpl`)이 한다. 같은 클래스 안에서 부르면 재시도·회로가 빠진다.
 
 ## 상태
 
