@@ -288,6 +288,8 @@ lookupPaymentStatusByOrder(providerOrderId)  → outcome: ANSWERED(거래 0건 �
 | 실패로 세는 것 | `PgStatusLookupFailedException` (연결·timeout, 5xx, 해석할 수 없는 응답) |
 | 세지 않는 것 | 404, 빈 목록 등 정상 응답으로 돌아온 업무 결과 |
 
+**TimeLimiter를 쓰지 않는다.** 비동기 호출(`Future`/`CompletionStage`)용이라 동기 `RestClient`에 쓰려면 별도 스레드풀이 필요하고, 호출자의 대기만 끊을 뿐 PG로 나간 요청은 계속 진행될 수 있다. 대기 상한은 request factory의 read timeout이 연결 수준에서 보장한다.
+
 회로의 표본 크기는 동시 요청 제한이 아니다. 동시 호출을 제한하는 bulkhead와 역할이 다르고, 이번 범위에는 넣지 않는다. 회로도 개별 호출의 timeout을 대신하지 않는다.
 
 ### 5-3. 적용 순서가 중요한 이유
