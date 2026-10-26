@@ -55,7 +55,7 @@ class PaymentAttemptTest {
             assertThat(attempt.getStatus()).isEqualTo(PaymentAttemptStatus.REQUESTED);
             assertThat(attempt.getTransactionKey()).isNull();
             assertThat(attempt.getAnomaly()).isNull();
-            assertThat(attempt.isTerminal()).isFalse();
+            assertThat(attempt.isTerminated()).isFalse();
         }
 
         @DisplayName("providerOrderId 는 PG 의 최소 길이(6자)를 만족한다.")
@@ -134,7 +134,7 @@ class PaymentAttemptTest {
 
         @DisplayName("PENDING·UNKNOWN 은 SUCCEEDED, FAILED 로 갈 수 있다.")
         @Test
-        void movesToTerminal_fromPendingAndUnknown() {
+        void movesToTerminated_fromPendingAndUnknown() {
             PaymentAttempt pendingSucceeded = pending();
             pendingSucceeded.markSucceeded(TX_KEY);
             assertThat(pendingSucceeded.getStatus()).isEqualTo(PaymentAttemptStatus.SUCCEEDED);
@@ -149,7 +149,7 @@ class PaymentAttemptTest {
 
             PaymentAttempt unknownFailed = unknown();
             unknownFailed.markFailed(TX_KEY);
-            assertThat(unknownFailed.isTerminal()).isTrue();
+            assertThat(unknownFailed.isTerminated()).isTrue();
         }
 
         @DisplayName("PENDING 은 UNKNOWN 으로 되돌아가지 않고, 다시 REQUESTED·PENDING 으로도 가지 않는다.")
@@ -178,7 +178,7 @@ class PaymentAttemptTest {
 
         @DisplayName("종결 상태(SUCCEEDED·FAILED)에서는 어떤 전이도 거절하고, 상태와 거래 키를 유지한다.")
         @Test
-        void rejectsAnyMove_whenTerminal() {
+        void rejectsAnyMove_whenTerminated() {
             // arrange
             PaymentAttempt succeeded = pending();
             succeeded.markSucceeded(TX_KEY);
@@ -186,15 +186,15 @@ class PaymentAttemptTest {
             failed.markFailed(TX_KEY);
 
             // act & assert
-            for (PaymentAttempt terminal : new PaymentAttempt[] {succeeded, failed}) {
-                PaymentAttemptStatus before = terminal.getStatus();
-                assertErrorType(ErrorType.CONFLICT, terminal::markUnknown);
-                assertErrorType(ErrorType.CONFLICT, () -> terminal.markPending(TX_KEY));
-                assertErrorType(ErrorType.CONFLICT, () -> terminal.markSucceeded(TX_KEY));
-                assertErrorType(ErrorType.CONFLICT, () -> terminal.markFailed(TX_KEY));
-                assertThat(terminal.getStatus()).isEqualTo(before);
-                assertThat(terminal.getTransactionKey()).isEqualTo(TX_KEY);
-                assertThat(terminal.isTerminal()).isTrue();
+            for (PaymentAttempt terminated : new PaymentAttempt[] {succeeded, failed}) {
+                PaymentAttemptStatus before = terminated.getStatus();
+                assertErrorType(ErrorType.CONFLICT, terminated::markUnknown);
+                assertErrorType(ErrorType.CONFLICT, () -> terminated.markPending(TX_KEY));
+                assertErrorType(ErrorType.CONFLICT, () -> terminated.markSucceeded(TX_KEY));
+                assertErrorType(ErrorType.CONFLICT, () -> terminated.markFailed(TX_KEY));
+                assertThat(terminated.getStatus()).isEqualTo(before);
+                assertThat(terminated.getTransactionKey()).isEqualTo(TX_KEY);
+                assertThat(terminated.isTerminated()).isTrue();
             }
         }
 

@@ -51,7 +51,7 @@ public class PaymentStatusUpdater {
         Order order = orderService.getForUpdate(orderId);
         PaymentAttempt attempt = paymentAttemptService.getByOrderId(orderId);
         switch (lookupResult.outcome()) {
-            case KEY_NOT_FOUND -> recordUnlessSettled(attempt, PaymentAnomaly.TRANSACTION_NOT_FOUND);
+            case KEY_NOT_FOUND -> recordUnlessTerminated(attempt, PaymentAnomaly.TRANSACTION_NOT_FOUND);
             case ANSWERED -> applyAnswer(order, attempt, lookupResult.transactions());
             // 묻지 못한 것은 아무것도 알려 주지 않는다. 상태도 재고도 그대로다.
             case LOOKUP_UNAVAILABLE -> { }
@@ -64,12 +64,12 @@ public class PaymentStatusUpdater {
         switch (transactions.size()) {
             case 0 -> { }
             case 1 -> applyTransaction(order, attempt, transactions.get(0));
-            default -> recordUnlessSettled(attempt, PaymentAnomaly.MULTIPLE_TRANSACTIONS);
+            default -> recordUnlessTerminated(attempt, PaymentAnomaly.MULTIPLE_TRANSACTIONS);
         }
     }
 
-    private void recordUnlessSettled(PaymentAttempt attempt, PaymentAnomaly anomaly) {
-        if (!attempt.isTerminal()) {
+    private void recordUnlessTerminated(PaymentAttempt attempt, PaymentAnomaly anomaly) {
+        if (!attempt.isTerminated()) {
             attempt.recordAnomaly(anomaly);
         }
     }
@@ -80,8 +80,8 @@ public class PaymentStatusUpdater {
             attempt.recordAnomaly(PaymentAnomaly.MISMATCH);
             return;
         }
-        if (attempt.isTerminal()) {
-            applyToSettled(attempt, transaction);
+        if (attempt.isTerminated()) {
+            applyToTerminated(attempt, transaction);
             return;
         }
         String key = transaction.transactionKey();
@@ -107,7 +107,7 @@ public class PaymentStatusUpdater {
 
     // 종결된 시도는 같은 결과가 다시 와도 효과가 없고, 다른 결과가 오면 덮어쓰지 않고 상충만 남긴다.
     // 종결 뒤에 도착한 처리 중 관찰은 낡은 정보라 무시한다.
-    private void applyToSettled(PaymentAttempt attempt, PgTransactionInfo transaction) {
+    private void applyToTerminated(PaymentAttempt attempt, PgTransactionInfo transaction) {
         if (transaction.status() == PgStatus.PENDING) {
             return;
         }

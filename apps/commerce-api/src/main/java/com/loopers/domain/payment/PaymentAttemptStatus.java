@@ -27,7 +27,7 @@ public enum PaymentAttemptStatus {
         };
     }
 
-    public boolean isTerminal() {
+    public boolean isTerminated() {
         return this == SUCCEEDED || this == FAILED;
     }
 }

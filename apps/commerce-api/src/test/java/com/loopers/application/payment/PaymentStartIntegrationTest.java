@@ -63,7 +63,7 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             assertThat(info.orderStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
             assertThat(info.attemptStatus()).isEqualTo(PaymentAttemptStatus.PENDING);
             assertThat(info.amount()).isEqualTo(7_000L);
-            assertThat(info.settled()).isFalse();
+            assertThat(info.isTerminated()).isFalse();
             assertThat(pg.createCalls()).isEqualTo(1);
             assertThat(pg.transactionCount()).isEqualTo(1);
             assertThat(stockOf(product)).isEqualTo(3);
@@ -153,7 +153,7 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
             // assert
             assertThat(info.orderStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED);
             assertThat(info.attemptStatus()).isEqualTo(PaymentAttemptStatus.FAILED);
-            assertThat(info.settled()).isTrue();
+            assertThat(info.isTerminated()).isTrue();
             assertThat(pg.transactionCount()).isZero();
             assertThat(pg.createCalls()).isEqualTo(1);
             assertThat(stockOf(product)).isEqualTo(5);
@@ -304,7 +304,7 @@ class PaymentStartIntegrationTest extends PaymentFlowTestSupport {
 
             // assert
             assertThat(again.attemptStatus()).isEqualTo(PaymentAttemptStatus.FAILED);
-            assertThat(again.settled()).isTrue();
+            assertThat(again.isTerminated()).isTrue();
             assertThat(pg.createCalls()).isEqualTo(1);
             assertThat(stockOf(product)).isEqualTo(5);
         }

@@ -126,8 +126,8 @@ public class PaymentAttempt extends BaseEntity {
         this.anomaly = anomaly;
     }
 
-    public boolean isTerminal() {
-        return status.isTerminal();
+    public boolean isTerminated() {
+        return status.isTerminated();
     }
 
     private void requireTransactionKey(String observedTransactionKey) {

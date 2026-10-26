@@ -122,7 +122,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             // act & assert 1: PG 가 아직 처리 중이면 확정하지 않는다.
             PaymentLookupInfo pending = reconcile();
             assertThat(pending.info().orderStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
-            assertThat(pending.info().settled()).isFalse();
+            assertThat(pending.info().isTerminated()).isFalse();
             assertThat(pending.lookupUnavailable()).isFalse();
             assertThat(orderStatusOf(orderId)).isEqualTo("PAYMENT_PENDING");
 
@@ -131,7 +131,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             PaymentLookupInfo confirmed = reconcile();
             assertThat(confirmed.info().orderStatus()).isEqualTo(OrderStatus.CONFIRMED);
             assertThat(confirmed.info().attemptStatus()).isEqualTo(PaymentAttemptStatus.SUCCEEDED);
-            assertThat(confirmed.info().settled()).isTrue();
+            assertThat(confirmed.info().isTerminated()).isTrue();
             assertThat(orderStatusOf(orderId)).isEqualTo("CONFIRMED");
             assertThat(jdbcTemplate.queryForObject("select paid_amount from orders where id = ?", Long.class, orderId))
                 .isEqualTo(7_000L);
@@ -465,10 +465,10 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
 
     @DisplayName("이미 종결된 시도에 결과가 다시 도착할 때,")
     @Nested
-    class Settled {
+    class Terminated {
         @DisplayName("같은 결과는 아무 효과가 없고, 다른 결과는 덮어쓰지 않고 상충만 기록한다.")
         @Test
-        void keepsSettledResult_andRecordsConflict() {
+        void keepsTerminatedResult_andRecordsConflict() {
             // arrange: SUCCESS 로 종결
             startAccepted();
             String key = pgKeyOf(orderId);

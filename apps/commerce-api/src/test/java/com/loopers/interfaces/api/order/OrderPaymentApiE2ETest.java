@@ -190,7 +190,7 @@ class OrderPaymentApiE2ETest extends PaymentFlowTestSupport {
 
         @DisplayName("종결된 시도에 같은 키로 다시 요청하면 저장된 결과를 200 으로 돌려주고 재고·PG 에 변화가 없다.")
         @Test
-        void returnsStoredResultAsOk_whenSettledAttemptIsRepeated() {
+        void returnsStoredResultAsOk_whenTerminatedAttemptIsRepeated() {
             // arrange
             User user = saveUser(0);
             Product shirt = saveProduct("티셔츠", 3_500, 5);

@@ -7,7 +7,7 @@ import com.loopers.domain.payment.PaymentAttemptStatus;
 
 /**
  * 결제 시도의 현재 상태를 주문 상태와 함께 담은 값. 엔티티가 아니라 값이므로 트랜잭션 밖에서 들고 다녀도 안전하다.
- * {@code settled} 가 true 이면 PG 결과로 종결한 시도이고, 아니면 처리 중이거나 결과 미확인이다.
+ * {@code isTerminated()} 가 true 이면 PG 결과로 종결한 시도이고, 아니면 처리 중이거나 결과 미확인이다.
  */
 public record PaymentAttemptInfo(
     Long orderId,
@@ -28,7 +28,7 @@ public record PaymentAttemptInfo(
         );
     }
 
-    public boolean settled() {
-        return attemptStatus.isTerminal();
+    public boolean isTerminated() {
+        return attemptStatus.isTerminated();
     }
 }

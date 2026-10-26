@@ -12,7 +12,9 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.function.Supplier;
 
-/** {@link PaymentGateway} 의 구현. {@link PgHttpClient} 의 결과를 포트의 결과 타입으로 옮기고, 조회 실패는 {@code LOOKUP_UNAVAILABLE} 로 바꾼다. */
+/**
+ * {@link PaymentGateway} 의 구현. {@link PgHttpClient} 의 결과를 포트의 결과 타입으로 옮기고, 조회 실패는 {@code LOOKUP_UNAVAILABLE} 로 바꾼다.
+ */
 @Slf4j
 @RequiredArgsConstructor
 @Component
@@ -26,15 +28,16 @@ public class PaymentGatewayImpl implements PaymentGateway {
 
     @Override
     public PgPaymentStatusLookupResult lookupPaymentStatusByTransactionKey(String transactionKey) {
-        return lookupOrUnavailable("transactionKey=" + transactionKey, () -> client.getTransactionByKey(transactionKey)
-            .map(transaction -> PgPaymentStatusLookupResult.answered(List.of(transaction)))
-            .orElseGet(PgPaymentStatusLookupResult::keyNotFound));
+        return lookupOrUnavailable("transactionKey=" + transactionKey,
+                () -> client.getTransactionByKey(transactionKey)
+                        .map(transaction -> PgPaymentStatusLookupResult.answered(List.of(transaction)))
+                        .orElseGet(PgPaymentStatusLookupResult::keyNotFound));
     }
 
     @Override
     public PgPaymentStatusLookupResult lookupPaymentStatusByOrder(String providerOrderId) {
         return lookupOrUnavailable("providerOrderId=" + providerOrderId,
-            () -> PgPaymentStatusLookupResult.answered(client.getTransactionsByOrder(providerOrderId)));
+                () -> PgPaymentStatusLookupResult.answered(client.getTransactionsByOrder(providerOrderId)));
     }
 
     private PgPaymentStatusLookupResult lookupOrUnavailable(String target, Supplier<PgPaymentStatusLookupResult> lookup) {
