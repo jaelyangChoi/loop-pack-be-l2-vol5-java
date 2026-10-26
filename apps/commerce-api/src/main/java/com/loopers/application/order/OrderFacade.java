@@ -105,13 +105,13 @@ public class OrderFacade {
      * CONFIRMED 가 된다. 결과 미확인이어도 create 를 다시 보내지 않는다.
      */
     public PaymentAttemptInfo confirm(OrderConfirmCommand command) {
-        ConfirmPreparationResult preparation = prepareConfirm(command);
-        if (!preparation.isNewAttempt()) {
-            return preparation.info();
+        ConfirmPreparationResult preparationResult = prepareConfirm(command);
+        if (!preparationResult.isNewAttempt()) {
+            return preparationResult.attemptInfo();
         }
-        PgPaymentRequestResult result = paymentGateway.requestPayment(preparation.request());
+        PgPaymentRequestResult result = paymentGateway.requestPayment(preparationResult.request());
         return writeTransaction.execute(
-            status -> paymentStatusUpdater.updateByPaymentRequestResult(preparation.info().orderId(), result)
+            status -> paymentStatusUpdater.updateByPaymentRequestResult(preparationResult.attemptInfo().orderId(), result)
         );
     }
 
