@@ -1,6 +1,6 @@
 package com.loopers.interfaces.api.payment;
 
-import com.loopers.application.payment.dto.PaymentCheckInfo;
+import com.loopers.application.payment.dto.PaymentLookupInfo;
 import jakarta.validation.constraints.NotBlank;
 
 public class PaymentDto {
@@ -16,12 +16,12 @@ public class PaymentDto {
     // PG 에 돌려주는 수신 확인. 주문과 시도의 현재 상태이며, 조회하지 못해 저장된 상태를 그대로 돌려줬으면 lookupUnavailable 이
     // true 다(조회했다면 생략된다).
     public record CallbackResponse(Long orderId, String orderStatus, String paymentStatus, Boolean lookupUnavailable) {
-        public static CallbackResponse from(PaymentCheckInfo result) {
+        public static CallbackResponse from(PaymentLookupInfo result) {
             return new CallbackResponse(
                 result.info().orderId(),
                 result.info().orderStatus().name(),
                 result.info().attemptStatus().name(),
-                result.lookupFailed() ? Boolean.TRUE : null
+                result.lookupUnavailable() ? Boolean.TRUE : null
             );
         }
     }

@@ -2,7 +2,7 @@ package com.loopers.application.payment;
 
 import com.loopers.application.payment.pg.PgPaymentRequestCommand;
 import com.loopers.application.payment.pg.PgPaymentRequestResult;
-import com.loopers.application.payment.pg.PgPaymentStatusCheckResult;
+import com.loopers.application.payment.pg.PgPaymentStatusLookupResult;
 
 /**
  * 외부 결제 시스템(PG)과의 경계. HTTP·JSON·timeout 같은 전송 지식은 구현({@code infrastructure.payment})이 숨기고,
@@ -14,8 +14,8 @@ public interface PaymentGateway {
     PgPaymentRequestResult requestPayment(PgPaymentRequestCommand request);
 
     /** 거래 키로 PG 에 결제 상태를 묻는다. */
-    PgPaymentStatusCheckResult checkPaymentStatusByTransactionKey(String transactionKey);
+    PgPaymentStatusLookupResult lookupPaymentStatusByTransactionKey(String transactionKey);
 
     /** 주문 식별자로 PG 에 결제 상태를 묻는다. 같은 주문의 거래가 0건 이상일 수 있다. */
-    PgPaymentStatusCheckResult checkPaymentStatusByOrder(String providerOrderId);
+    PgPaymentStatusLookupResult lookupPaymentStatusByOrder(String providerOrderId);
 }

@@ -29,10 +29,10 @@ class PaymentResultConcurrencyTest extends PaymentFlowTestSupport {
     private List<Runnable> callbacksAndReconciles(User user, Long orderId, String transactionKey) {
         List<Runnable> requests = new ArrayList<>();
         for (int i = 0; i < CALLBACKS; i++) {
-            requests.add(() -> paymentResultCheckFacade.checkPaymentResultOnPgCallback(providerOrderIdOf(orderId), transactionKey));
+            requests.add(() -> paymentResultLookupFacade.lookupPaymentResultOnPgCallback(providerOrderIdOf(orderId), transactionKey));
         }
         for (int i = 0; i < RECONCILES; i++) {
-            requests.add(() -> paymentResultCheckFacade.checkMyPaymentResult(user.getId(), orderId));
+            requests.add(() -> paymentResultLookupFacade.lookupMyPaymentResult(user.getId(), orderId));
         }
         return requests;
     }
@@ -94,7 +94,7 @@ class PaymentResultConcurrencyTest extends PaymentFlowTestSupport {
 
     @DisplayName("응답이 유실된 시도에 알림과 확인이 동시에 들어와도, 같은 거래 하나로 한 번만 종결하고 create 는 추가되지 않는다.")
     @RepeatedTest(REPETITIONS)
-    void settlesOnce_whenLostResponseIsCheckedConcurrently() {
+    void settlesOnce_whenLostResponseIsLookedUpConcurrently() {
         // arrange: 거래가 생긴 뒤 응답을 잃어 UNKNOWN. 거래 키를 모르는 상태에서 알림과 확인이 함께 온다.
         User user = saveUser(10_000);
         Product product = saveProduct("러닝화", 3_500, 5);

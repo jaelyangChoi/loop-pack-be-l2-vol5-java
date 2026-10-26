@@ -6,7 +6,7 @@ import com.loopers.application.order.dto.OrderItemInfo;
 import com.loopers.application.order.dto.OrderSummaryInfo;
 import com.loopers.application.order.dto.PaymentInfo;
 import com.loopers.application.payment.dto.PaymentAttemptInfo;
-import com.loopers.application.payment.dto.PaymentCheckInfo;
+import com.loopers.application.payment.dto.PaymentLookupInfo;
 import com.loopers.application.order.dto.OrderConfirmCommand;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -65,11 +65,11 @@ public class OrderDto {
             );
         }
 
-        public static PaymentStartResponse from(PaymentCheckInfo result) {
+        public static PaymentStartResponse from(PaymentLookupInfo result) {
             PaymentStartResponse base = from(result.info());
             return new PaymentStartResponse(
                 base.orderId(), base.orderStatus(), base.payment(), base.links(),
-                result.lookupFailed() ? Boolean.TRUE : null
+                result.lookupUnavailable() ? Boolean.TRUE : null
             );
         }
     }

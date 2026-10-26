@@ -171,22 +171,22 @@ TX B  PaymentStatusUpdater.updateByPaymentRequestResult ← 로컬 TX (호출하
 ```
 confirm   ───▶ OrderFacade.confirm (TX 없음, 오케스트레이션)
 reconcile ──┐
-callback  ──┴─▶ PaymentResultCheckFacade (TX 없음, 오케스트레이션)
+callback  ──┴─▶ PaymentResultLookupFacade (TX 없음, 오케스트레이션)
                       │
           (둘 다)     ├─ 조회/발송 (TX 밖)
-                      └─ PaymentStatusUpdater.updateByStatusCheckResult(...)   ← 유일한 상태 쓰기 지점
+                      └─ PaymentStatusUpdater.updateByStatusLookupResult(...)   ← 유일한 상태 쓰기 지점
 ```
 
 - **confirm**: TX A → 결제 요청 → `updateByPaymentRequestResult`(결제 요청 결과 반영). `UNKNOWN`이어도 같은 요청 안에서 조회하지 않고 202를 돌려준다 (D-48).
-- **reconcile** (`POST /orders/{id}/payment/reconcile`): 본인 주문의 미종결 시도를 조회해 `updateByStatusCheckResult`로 반영한다. 콜백과 무관하게 고객이 부르는 **기본 복구 경로**다.
-- **callback** (`POST /api/v1/payments/callback`): 본문의 `providerOrderId`로 시도를 찾고, 본문의 `transactionKey`로 **권위 조회**를 한 뒤 `updateByStatusCheckResult`로 반영한다. 본문의 `status`는 쓰지 않는다. 시도를 못 찾으면 404이고 아무 효과도 없다.
+- **reconcile** (`POST /orders/{id}/payment/reconcile`): 본인 주문의 미종결 시도를 조회해 `updateByStatusLookupResult`로 반영한다. 콜백과 무관하게 고객이 부르는 **기본 복구 경로**다.
+- **callback** (`POST /api/v1/payments/callback`): 본문의 `providerOrderId`로 시도를 찾고, 본문의 `transactionKey`로 **권위 조회**를 한 뒤 `updateByStatusLookupResult`로 반영한다. 본문의 `status`는 쓰지 않는다. 시도를 못 찾으면 404이고 아무 효과도 없다.
 - `GET /orders/{id}`는 **PG를 호출하지 않는** 순수 조회다. 저장된 주문·결제 상태만 보여 준다.
 - 콜백은 confirm을 처리하던 스레드의 연속이 아니라 완전히 새로운 HTTP 요청이다. 두 흐름을 잇는 것은 DB의 시도 레코드뿐이다.
 
-### 3-5. 결과 적용 (`updateByStatusCheckResult`)
+### 3-5. 결과 적용 (`updateByStatusLookupResult`)
 
 ```
-updateByStatusCheckResult(orderId, checkResult):
+updateByStatusLookupResult(orderId, lookupResult):
   TX 시작
   주문 FOR UPDATE → 시도 조회
   시도와 조회 결과의 식별(providerOrderId, transactionKey)·금액 확인 → 불일치면 anomaly 기록 후 종료
@@ -225,16 +225,16 @@ updateByStatusCheckResult(orderId, checkResult):
 | 구분 | 위치 | 내용 |
 |---|---|---|
 | 포트 | `application.payment.PaymentGateway` | 입출력은 application 타입만 쓴다 |
-| HTTP 호출 | `infrastructure.payment.PgHttpClient` | URL·헤더·JSON·timeout을 숨기고 응답을 해석한다. 조회는 하지 못하면 `PgStatusCheckFailedException`을 던진다. 조회 메서드에 Retry·CB를 건다 |
-| 포트 구현 | `infrastructure.payment.PaymentGatewayImpl` | `PgHttpClient`를 호출하고, 조회 실패 예외(`PgStatusCheckFailedException`, 회로가 막은 `CallNotPermittedException`)를 `COULD_NOT_CHECK`로 바꾼다 |
+| HTTP 호출 | `infrastructure.payment.PgHttpClient` | URL·헤더·JSON·timeout을 숨기고 응답을 해석한다. 조회는 하지 못하면 `PgStatusLookupFailedException`을 던진다. 조회 메서드에 Retry·CB를 건다 |
+| 포트 구현 | `infrastructure.payment.PaymentGatewayImpl` | `PgHttpClient`를 호출하고, 조회 실패 예외(`PgStatusLookupFailedException`, 회로가 막은 `CallNotPermittedException`)를 `LOOKUP_UNAVAILABLE`로 바꾼다 |
 
 ```
 requestPayment(...)                         → outcome: ACCEPTED | REJECTED_WITHOUT_TRANSACTION | UNKNOWN
-checkPaymentStatusByTransactionKey(key)     → outcome: ANSWERED(거래 1건) | KEY_NOT_FOUND | COULD_NOT_CHECK
-checkPaymentStatusByOrder(providerOrderId)  → outcome: ANSWERED(거래 0건 이상) | COULD_NOT_CHECK
+lookupPaymentStatusByTransactionKey(key)     → outcome: ANSWERED(거래 1건) | KEY_NOT_FOUND | LOOKUP_UNAVAILABLE
+lookupPaymentStatusByOrder(providerOrderId)  → outcome: ANSWERED(거래 0건 이상) | LOOKUP_UNAVAILABLE
 ```
 
-- `COULD_NOT_CHECK`는 timeout·5xx·회로 OPEN을 포함한다. 결제 결과가 아니라 "확인하지 못함"이다.
+- `LOOKUP_UNAVAILABLE`는 timeout·5xx·회로 OPEN을 포함한다. 결제 결과가 아니라 "확인하지 못함"이다.
 - HTTP client는 `RestClient` + `JdkClientHttpRequestFactory`다. Feign·WebClient는 새로 들이지 않는다.
 - timeout은 request factory에 건다: connect 1초, 결제 요청 read 3초, 조회 read 1초. 가정이 아니라 설정 객체에서 확인하는 테스트를 둔다.
 - JDK `HttpClient`는 POST를 자동 재시도하지 않는다. 그래도 **fixture의 결제 요청 횟수로** 숨은 재시도가 없음을 확인한다.
@@ -272,7 +272,7 @@ checkPaymentStatusByOrder(providerOrderId)  → outcome: ANSWERED(거래 0건 �
 |---|---|---|
 | `maxAttempts` | 3 | 최초 1회 + 재시도 2회 (라이브러리 계약을 테스트로 확인한다) |
 | 대기 | 100ms → 200ms 지수 | 조회 1회 최대 1초 × 3 + 300ms ≈ 3.3초가 전체 예산 |
-| 재시도 대상 | `PgStatusCheckFailedException` (연결·timeout, 5xx, 해석할 수 없는 응답) | 일시적 실패. 404 외의 4xx(예: 401)도 같은 예외라 재시도되는 단순화를 받아들인다. 설정 실수일 때 호출이 3회로 늘 뿐이다 |
+| 재시도 대상 | `PgStatusLookupFailedException` (연결·timeout, 5xx, 해석할 수 없는 응답) | 일시적 실패. 404 외의 4xx(예: 401)도 같은 예외라 재시도되는 단순화를 받아들인다. 설정 실수일 때 호출이 3회로 늘 뿐이다 |
 | 재시도 제외 | `CallNotPermittedException` | 회로가 막은 호출을 다시 두드리지 않는다 |
 
 **CircuitBreaker `pgLookup`**
@@ -284,7 +284,7 @@ checkPaymentStatusByOrder(providerOrderId)  → outcome: ANSWERED(거래 0건 �
 | `failureRateThreshold` | 50% |
 | `waitDurationInOpenState` | 10초 (`PaymentResilienceTest`는 400ms로 덮어쓴다) |
 | `permittedNumberOfCallsInHalfOpenState` | 2 |
-| 실패로 세는 것 | `PgStatusCheckFailedException` (연결·timeout, 5xx, 해석할 수 없는 응답) |
+| 실패로 세는 것 | `PgStatusLookupFailedException` (연결·timeout, 5xx, 해석할 수 없는 응답) |
 | 세지 않는 것 | 404, 빈 목록 등 정상 응답으로 돌아온 업무 결과 |
 
 회로의 표본 크기는 동시 요청 제한이 아니다. 동시 호출을 제한하는 bulkhead와 역할이 다르고, 이번 범위에는 넣지 않는다. 회로도 개별 호출의 timeout을 대신하지 않는다.
@@ -316,9 +316,9 @@ checkPaymentStatusByOrder(providerOrderId)  → outcome: ANSWERED(거래 0건 �
 
 ### 5-4. 실패의 변환과 self-invocation
 
-- **`fallbackMethod`를 쓰지 않는다.** annotation을 건 `PgHttpClient`는 조회하지 못하면 예외를 그대로 던지고(그래야 Retry가 재시도하고 CB가 센다), 그 예외를 `COULD_NOT_CHECK` 결과로 바꾸는 일은 `PgHttpClient`를 호출하는 **다른 빈** `PaymentGatewayImpl`이 한다. Retry·CB 바깥에서 변환하므로 fallback이 재시도를 가로채는 일이 없다.
-- 변환은 `COULD_NOT_CHECK`를 돌려줄 뿐이다. **결제 결과를 정하지 않는다.** 실패 확정, 성공 응답, 금액 0, 포인트 대체 결제, 예약 임의 반환을 하지 않는다. 회로가 OPEN이어도 기존 `UNKNOWN`·`PENDING`을 미발송으로 되돌리지 않는다.
-- annotation은 프록시를 거칠 때만 동작한다. 호출하는 쪽(`PaymentGatewayImpl`)이 다른 빈이므로 자기 호출이 구조적으로 생기지 않는다. 어느 조회를 쓸지의 분기(거래 키 유무)도 adapter 안이 아니라 application(`PaymentResultCheckFacade`)에 둔다. `PgHttpClient` 안에서 `this.getTransaction...`을 부르면 Retry·CB가 조용히 빠진다.
+- **`fallbackMethod`를 쓰지 않는다.** annotation을 건 `PgHttpClient`는 조회하지 못하면 예외를 그대로 던지고(그래야 Retry가 재시도하고 CB가 센다), 그 예외를 `LOOKUP_UNAVAILABLE` 결과로 바꾸는 일은 `PgHttpClient`를 호출하는 **다른 빈** `PaymentGatewayImpl`이 한다. Retry·CB 바깥에서 변환하므로 fallback이 재시도를 가로채는 일이 없다.
+- 변환은 `LOOKUP_UNAVAILABLE`를 돌려줄 뿐이다. **결제 결과를 정하지 않는다.** 실패 확정, 성공 응답, 금액 0, 포인트 대체 결제, 예약 임의 반환을 하지 않는다. 회로가 OPEN이어도 기존 `UNKNOWN`·`PENDING`을 미발송으로 되돌리지 않는다.
+- annotation은 프록시를 거칠 때만 동작한다. 호출하는 쪽(`PaymentGatewayImpl`)이 다른 빈이므로 자기 호출이 구조적으로 생기지 않는다. 어느 조회를 쓸지의 분기(거래 키 유무)도 adapter 안이 아니라 application(`PaymentResultLookupFacade`)에 둔다. `PgHttpClient` 안에서 `this.getTransaction...`을 부르면 Retry·CB가 조용히 빠진다.
 
 ### 5-5. 조회를 시작시키는 트리거
 
@@ -339,7 +339,7 @@ checkPaymentStatusByOrder(providerOrderId)  → outcome: ANSWERED(거래 0건 �
 | **B. 생성 전 확정 거절** | 거래 0건. 시도 `FAILED`, 주문 `PAYMENT_FAILED`, 재고 반환 1회. 같은 거절을 다시 적용해도 반환은 늘지 않는다 |
 | **C. 성공 뒤 내부 저장 실패** | PG는 `SUCCESS`, TX B가 DB 오류로 rollback. 시도·주문·재고는 변경 전 그대로다. 같은 거래를 다시 조회해 한 번 확정한다. 결제 요청 추가 0회 |
 | **D. 중복 callback** | 첫 callback이 종결한다. 이후는 "이미 같은 종결 결과"라 효과 없음. 재고 증가/감소 0 |
-| **E. callback-first vs lookup-first** | 둘 다 같은 `updateByStatusCheckResult`를 거친다. 먼저 적용한 쪽이 이기고 나중은 변화 없음. 최종 상태·transactionKey 동일 |
+| **E. callback-first vs lookup-first** | 둘 다 같은 `updateByStatusLookupResult`를 거친다. 먼저 적용한 쪽이 이기고 나중은 변화 없음. 최종 상태·transactionKey 동일 |
 | **F. 동시 callback + reconcile** | 둘 다 주문 `FOR UPDATE`에서 직렬화된다. 한쪽만 전이하고 반환·확정은 한 번 |
 | **G. 늦게 도착한 결제 요청 응답/timeout 처리** | callback이 먼저 `SUCCEEDED`로 종결한 뒤 PENDING·UNKNOWN 기록이 오면 종결 상태를 되돌리지 않는다 |
 | **H. 위조 callback** | 본문이 `SUCCESS`라도 권위 조회가 `PENDING`이거나 거래가 없으면 확정하지 않는다. 다른 주문의 `transactionKey`면 `MISMATCH` 기록 |
@@ -449,7 +449,7 @@ checkPaymentStatusByOrder(providerOrderId)  → outcome: ANSWERED(거래 0건 �
 ### D-49. 결과 적용은 한 경계로 모으고 callback은 확인 요청의 신호로만 쓴다
 
 - **상황**: callback은 유실·중복·지연·순서 변경이 가능하고, 본문만 믿으면 위조된 요청이 결제를 완료시킬 수 있다.
-- **결정**: confirm·reconcile·callback의 결과는 모두 `PaymentStatusUpdater` 한 클래스에서 상태에 반영한다(결제 요청 결과는 `updateByPaymentRequestResult`, 조회 결과는 `updateByStatusCheckResult`). callback은 본문의 `status`를 쓰지 않고 `transactionKey`로 adapter 권위 조회를 한 뒤, 계정·`providerOrderId`·`transactionKey`·저장 금액을 확인하고 적용한다. 주문 행 잠금 아래에서 단방향 전이만 허용하며, 종결 뒤 상충은 덮어쓰지 않고 `anomaly`로 남긴다.
+- **결정**: confirm·reconcile·callback의 결과는 모두 `PaymentStatusUpdater` 한 클래스에서 상태에 반영한다(결제 요청 결과는 `updateByPaymentRequestResult`, 조회 결과는 `updateByStatusLookupResult`). callback은 본문의 `status`를 쓰지 않고 `transactionKey`로 adapter 권위 조회를 한 뒤, 계정·`providerOrderId`·`transactionKey`·저장 금액을 확인하고 적용한다. 주문 행 잠금 아래에서 단방향 전이만 허용하며, 종결 뒤 상충은 덮어쓰지 않고 `anomaly`로 남긴다.
 - **근거**: 여러 입구가 각자 상태를 쓰면 순서에 따라 결과가 갈린다. 단일 경계와 전이 조건이 callback-first·lookup-first의 수렴을 보장한다.
 - **비용**: callback마다 PG 조회가 한 번 더 나간다. 서명 검증은 하지 않는다 (10장).
 - **기각한 대안**: callback 본문을 신뢰(위조에 취약), 입구마다 상태 직접 변경(중복 확정·반환 위험).
@@ -457,7 +457,7 @@ checkPaymentStatusByOrder(providerOrderId)  → outcome: ANSWERED(거래 0건 �
 ### D-50. 회복 도구는 Resilience4j annotation을 조회 경로에만, 기본 순서(Retry 바깥)로 적용한다
 
 - **상황**: 조회는 재시도해도 되지만 결제 요청은 안 된다. Retry와 CB를 겹치면 어느 호출을 표본으로 세는지 달라진다.
-- **결정**: `resilience4j-spring-boot3` + `starter-aop`, `@Retry`/`@CircuitBreaker`를 조회 메서드에만 둔다. 기본 순서를 유지해 실제 호출마다 회로 표본으로 센다. `CallNotPermittedException`은 재시도하지 않는다. `fallbackMethod`는 쓰지 않고, 호출하는 `PaymentGatewayImpl`이 실패 예외를 `COULD_NOT_CHECK`로 바꾼다. 순서·프록시 적용은 실제 호출 수와 회로 지표 테스트로 고정한다. 수치는 5-2.
+- **결정**: `resilience4j-spring-boot3` + `starter-aop`, `@Retry`/`@CircuitBreaker`를 조회 메서드에만 둔다. 기본 순서를 유지해 실제 호출마다 회로 표본으로 센다. `CallNotPermittedException`은 재시도하지 않는다. `fallbackMethod`는 쓰지 않고, 호출하는 `PaymentGatewayImpl`이 실패 예외를 `LOOKUP_UNAVAILABLE`로 바꾼다. 순서·프록시 적용은 실제 호출 수와 회로 지표 테스트로 고정한다. 수치는 5-2.
 - **근거**: 보편적인 Spring 사용 방식이고, 회로의 목적(외부 보호)에 맞게 실제 호출 기준으로 센다.
 - **비용**: 순서가 코드에 드러나지 않고, self-invocation 실수가 조용히 일어날 수 있다. 테스트와 분기 위치 규칙(5-4)으로 막는다. 호출하는 쪽과 변환하는 쪽을 나누느라 클래스가 둘이 된다.
 - **기각한 대안**: 함수형 decorator(순서는 보이지만 Spring에서 덜 보편적), CB 바깥 순서(회로가 늦게 열리고 HALF_OPEN 탐색이 불어남).
@@ -465,7 +465,7 @@ checkPaymentStatusByOrder(providerOrderId)  → outcome: ANSWERED(거래 0건 �
 ### D-51. 트랜잭션 경계는 Facade 메소드가 아니라 `TransactionTemplate`으로 구간마다 둔다
 
 - **상황**: CLAUDE.md는 트랜잭션 경계를 Facade의 `@Transactional`로 두라고 한다. 그런데 결제는 TX A, HTTP(TX 밖), TX B가 한 유스케이스 안에 순서대로 이어진다. 한 Facade 메소드에 `@Transactional`을 달면 HTTP가 트랜잭션 안으로 들어오고, 같은 클래스 안에서 호출하면 프록시를 거치지 않는다.
-- **결정**: 결제를 시작하는 `OrderFacade.confirm`과 결과를 확인하는 `PaymentResultCheckFacade.checkMyPaymentResult`·`checkPaymentResultOnPgCallback`은 메소드에 트랜잭션을 열지 않고, 필요한 구간(TX A, TX B, PG 조회 전 읽기)만 `TransactionTemplate`으로 감싼다. `PaymentStatusUpdater`는 `@Transactional` 없이 반영 로직만 가지며 호출하는 Facade가 트랜잭션을 연다. 도메인 `Service`에는 여전히 `@Transactional`을 붙이지 않는다. `ProductFacade`가 이미 같은 방식으로 읽기 구간만 감싼다.
+- **결정**: 결제를 시작하는 `OrderFacade.confirm`과 결과를 확인하는 `PaymentResultLookupFacade.lookupMyPaymentResult`·`lookupPaymentResultOnPgCallback`은 메소드에 트랜잭션을 열지 않고, 필요한 구간(TX A, TX B, PG 조회 전 읽기)만 `TransactionTemplate`으로 감싼다. `PaymentStatusUpdater`는 `@Transactional` 없이 반영 로직만 가지며 호출하는 Facade가 트랜잭션을 연다. 도메인 `Service`에는 여전히 `@Transactional`을 붙이지 않는다. `ProductFacade`가 이미 같은 방식으로 읽기 구간만 감싼다.
 - **근거**: PG 호출 동안 DB 트랜잭션·재고 잠금을 잡지 않는다는 요구는 경계를 나누는 것으로만 지킬 수 있다. 구간이 Facade 코드에 그대로 보여 흐름(TX A → PG → TX B)을 한 곳에서 읽을 수 있고, 트랜잭션 전용 빈을 따로 두지 않아도 된다. `/confirm`은 주문의 확정 요청이므로 `OrderFacade`에 둔다.
 - **비용**: 구조가 경계를 강제하지 않는다. `TransactionTemplate` 구간 밖에서 쓰기를 하거나 구간 안에서 PG를 호출하는 실수를 막으려면 `PaymentTransactionTest`가 필요하다. "트랜잭션은 Facade의 `@Transactional`"이라는 단순 규칙에 예외가 생긴다.
 - **기각한 대안**: Facade 한 메소드에 `@Transactional`(HTTP가 잠금·커넥션을 쥠), 트랜잭션 전용 빈(준비·반영 컴포넌트에 `@Transactional`: 경계는 구조가 강제하지만 클래스가 늘고 흐름이 여러 파일로 흩어짐).

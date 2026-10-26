@@ -5,7 +5,7 @@ import com.loopers.application.order.dto.OrderConfirmCommand;
 import com.loopers.application.order.dto.OrderItemCommand;
 import com.loopers.application.payment.dto.PaymentAttemptInfo;
 import com.loopers.application.payment.pg.PgPaymentRequestResult;
-import com.loopers.application.payment.pg.PgPaymentStatusCheckResult;
+import com.loopers.application.payment.pg.PgPaymentStatusLookupResult;
 import com.loopers.domain.common.Money;
 import com.loopers.domain.payment.PaymentAttempt;
 import com.loopers.domain.product.Product;
@@ -61,7 +61,7 @@ public abstract class PaymentFlowTestSupport {
     }
 
     @Autowired
-    protected PaymentResultCheckFacade paymentResultCheckFacade;
+    protected PaymentResultLookupFacade paymentResultLookupFacade;
 
     @Autowired
     protected PaymentStatusUpdater paymentStatusUpdater;
@@ -162,9 +162,9 @@ public abstract class PaymentFlowTestSupport {
         );
     }
 
-    protected PaymentAttemptInfo updateByStatusCheckResult(Long orderId, PgPaymentStatusCheckResult checkResult) {
+    protected PaymentAttemptInfo updateByStatusLookupResult(Long orderId, PgPaymentStatusLookupResult lookupResult) {
         return new TransactionTemplate(transactionManager).execute(
-            status -> paymentStatusUpdater.updateByStatusCheckResult(orderId, checkResult)
+            status -> paymentStatusUpdater.updateByStatusLookupResult(orderId, lookupResult)
         );
     }
 }

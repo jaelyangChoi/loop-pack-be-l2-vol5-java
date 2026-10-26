@@ -2,7 +2,7 @@ package com.loopers.application.payment;
 
 import com.loopers.application.order.dto.OrderItemCommand;
 import com.loopers.application.payment.dto.PaymentAttemptInfo;
-import com.loopers.application.payment.dto.PaymentCheckInfo;
+import com.loopers.application.payment.dto.PaymentLookupInfo;
 import com.loopers.domain.product.Product;
 import com.loopers.domain.user.User;
 import com.loopers.support.jpa.FailingStatementInspector.InjectedFailureException;
@@ -208,7 +208,7 @@ class PaymentTransactionTest extends PaymentFlowTestSupport {
             FailingStatementInspector.arm("update payment_attempts", 1);
 
             // act & assert 1
-            assertThatThrownBy(() -> paymentResultCheckFacade.checkMyPaymentResult(user.getId(), orderId))
+            assertThatThrownBy(() -> paymentResultLookupFacade.lookupMyPaymentResult(user.getId(), orderId))
                 .hasRootCauseInstanceOf(InjectedFailureException.class);
             List<String> mutations = FailingStatementInspector.mutations();
             assertThat(mutations.get(mutations.size() - 1)).startsWith("update payment_attempts");
@@ -222,7 +222,7 @@ class PaymentTransactionTest extends PaymentFlowTestSupport {
             assertThat(stockOf(shirt)).isEqualTo(9);
 
             // act & assert 2: 같은 거래를 다시 조회해 반영한다. 새 결제를 만들지 않는다.
-            PaymentCheckInfo again = paymentResultCheckFacade.checkMyPaymentResult(user.getId(), orderId);
+            PaymentLookupInfo again = paymentResultLookupFacade.lookupMyPaymentResult(user.getId(), orderId);
             assertThat(again.info().orderStatus().name()).isEqualTo("CONFIRMED");
             assertThat(orderStatusOf(orderId)).isEqualTo("CONFIRMED");
             assertThat(pg.createCalls()).isEqualTo(1);
@@ -250,7 +250,7 @@ class PaymentTransactionTest extends PaymentFlowTestSupport {
             FailingStatementInspector.arm("update products", 2);
 
             // act & assert 1
-            assertThatThrownBy(() -> paymentResultCheckFacade.checkMyPaymentResult(user.getId(), orderId))
+            assertThatThrownBy(() -> paymentResultLookupFacade.lookupMyPaymentResult(user.getId(), orderId))
                 .hasRootCauseInstanceOf(InjectedFailureException.class);
             assertThat(FailingStatementInspector.mutations().stream().filter(sql -> sql.startsWith("update products")))
                 .hasSize(2);
@@ -262,7 +262,7 @@ class PaymentTransactionTest extends PaymentFlowTestSupport {
             assertThat(stockOf(socks)).isEqualTo(4);
 
             // act & assert 2
-            paymentResultCheckFacade.checkMyPaymentResult(user.getId(), orderId);
+            paymentResultLookupFacade.lookupMyPaymentResult(user.getId(), orderId);
             assertThat(orderStatusOf(orderId)).isEqualTo("PAYMENT_FAILED");
             assertThat(stockOf(shirt)).isEqualTo(10);
             assertThat(stockOf(socks)).isEqualTo(5);

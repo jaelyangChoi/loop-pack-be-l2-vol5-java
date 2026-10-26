@@ -3,9 +3,9 @@ package com.loopers.application.payment;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.loopers.application.order.OrderFacade;
 import com.loopers.application.payment.dto.PaymentAttemptInfo;
-import com.loopers.application.payment.dto.PaymentCheckInfo;
+import com.loopers.application.payment.dto.PaymentLookupInfo;
 import com.loopers.application.payment.pg.PgPaymentRequestResult;
-import com.loopers.application.payment.pg.PgPaymentStatusCheckResult;
+import com.loopers.application.payment.pg.PgPaymentStatusLookupResult;
 import com.loopers.application.payment.pg.PgStatus;
 import com.loopers.application.payment.pg.PgTransactionInfo;
 import com.loopers.domain.order.OrderService;
@@ -97,12 +97,12 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
         orderFacade.confirm(command(user, orderId, KEY));
     }
 
-    private PaymentCheckInfo reconcile() {
-        return paymentResultCheckFacade.checkMyPaymentResult(user.getId(), orderId);
+    private PaymentLookupInfo reconcile() {
+        return paymentResultLookupFacade.lookupMyPaymentResult(user.getId(), orderId);
     }
 
-    private PaymentCheckInfo callback(String transactionKey) {
-        return paymentResultCheckFacade.checkPaymentResultOnPgCallback(providerOrderIdOf(orderId), transactionKey);
+    private PaymentLookupInfo callback(String transactionKey) {
+        return paymentResultLookupFacade.lookupPaymentResultOnPgCallback(providerOrderIdOf(orderId), transactionKey);
     }
 
     private CoreException rejected(Runnable action) {
@@ -120,15 +120,15 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             String key = pgKeyOf(orderId);
 
             // act & assert 1: PG 가 아직 처리 중이면 확정하지 않는다.
-            PaymentCheckInfo pending = reconcile();
+            PaymentLookupInfo pending = reconcile();
             assertThat(pending.info().orderStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
             assertThat(pending.info().settled()).isFalse();
-            assertThat(pending.lookupFailed()).isFalse();
+            assertThat(pending.lookupUnavailable()).isFalse();
             assertThat(orderStatusOf(orderId)).isEqualTo("PAYMENT_PENDING");
 
             // act & assert 2: SUCCESS 를 확인한 뒤에만 확정한다.
             pg.setStatus(key, "SUCCESS");
-            PaymentCheckInfo confirmed = reconcile();
+            PaymentLookupInfo confirmed = reconcile();
             assertThat(confirmed.info().orderStatus()).isEqualTo(OrderStatus.CONFIRMED);
             assertThat(confirmed.info().attemptStatus()).isEqualTo(PaymentAttemptStatus.SUCCEEDED);
             assertThat(confirmed.info().settled()).isTrue();
@@ -149,9 +149,9 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             pg.setStatus(pgKeyOf(orderId), "FAILED");
 
             // act
-            PaymentCheckInfo failed = reconcile();
+            PaymentLookupInfo failed = reconcile();
             int lookupsAfterFirst = pg.lookupByKeyCalls();
-            PaymentCheckInfo again = reconcile();
+            PaymentLookupInfo again = reconcile();
 
             // assert
             assertThat(failed.info().orderStatus()).isEqualTo(OrderStatus.PAYMENT_FAILED);
@@ -173,7 +173,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             String key = pgKeyOf(orderId);
 
             // act 1: 주문 식별자로 거래 1건을 찾는다. 처리 중이라 종결하지 않고 거래 키를 알게 된다.
-            PaymentCheckInfo found = reconcile();
+            PaymentLookupInfo found = reconcile();
 
             // assert 1
             assertThat(found.info().attemptStatus()).isEqualTo(PaymentAttemptStatus.PENDING);
@@ -183,7 +183,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
 
             // act 2: 같은 거래가 SUCCESS 가 되면 거래 키로 조회해 종결한다.
             pg.setStatus(key, "SUCCESS");
-            PaymentCheckInfo confirmed = reconcile();
+            PaymentLookupInfo confirmed = reconcile();
 
             // assert 2
             assertThat(confirmed.info().orderStatus()).isEqualTo(OrderStatus.CONFIRMED);
@@ -201,7 +201,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             pg.setStatus(pgKeyOf(orderId), "SUCCESS");
 
             // act
-            PaymentCheckInfo result = reconcile();
+            PaymentLookupInfo result = reconcile();
 
             // assert
             assertThat(result.info().orderStatus()).isEqualTo(OrderStatus.CONFIRMED);
@@ -216,12 +216,12 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             startWithServerError();
 
             // act
-            PaymentCheckInfo result = reconcile();
+            PaymentLookupInfo result = reconcile();
 
             // assert
             assertThat(result.info().attemptStatus()).isEqualTo(PaymentAttemptStatus.UNKNOWN);
             assertThat(result.info().orderStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
-            assertThat(result.lookupFailed()).isFalse();
+            assertThat(result.lookupUnavailable()).isFalse();
             assertThat(attemptOf(orderId).get("anomaly")).isNull();
             assertThat(stockOf(product)).isEqualTo(3);
             assertThat(pg.createCalls()).as("거래가 안 보여도 create 를 다시 보내지 않는다").isEqualTo(1);
@@ -237,7 +237,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             pg.addTransaction(providerOrderIdOf(orderId), 7_000, "SUCCESS");
 
             // act
-            PaymentCheckInfo result = reconcile();
+            PaymentLookupInfo result = reconcile();
 
             // assert
             assertThat(result.info().attemptStatus()).isEqualTo(PaymentAttemptStatus.UNKNOWN);
@@ -256,7 +256,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             pg.addTransaction(providerOrderIdOf(orderId), 1, "SUCCESS");
 
             // act
-            PaymentCheckInfo result = reconcile();
+            PaymentLookupInfo result = reconcile();
 
             // assert
             assertThat(result.info().orderStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
@@ -273,7 +273,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             pg.reset();
 
             // act
-            PaymentCheckInfo result = reconcile();
+            PaymentLookupInfo result = reconcile();
 
             // assert
             assertThat(result.info().attemptStatus()).isEqualTo(PaymentAttemptStatus.PENDING);
@@ -290,10 +290,10 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             pg.failLookups(500);
 
             // act
-            PaymentCheckInfo result = reconcile();
+            PaymentLookupInfo result = reconcile();
 
             // assert
-            assertThat(result.lookupFailed()).isTrue();
+            assertThat(result.lookupUnavailable()).isTrue();
             assertThat(result.info().attemptStatus()).isEqualTo(PaymentAttemptStatus.PENDING);
             assertThat(result.info().orderStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
             assertThat(pg.lookupByKeyCalls()).as("조회는 제한된 횟수만 재시도한다").isEqualTo(3);
@@ -314,8 +314,8 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             User stranger = saveUser(0);
 
             // act
-            CoreException notOwner = rejected(() -> paymentResultCheckFacade.checkMyPaymentResult(stranger.getId(), orderId));
-            CoreException noAttempt = rejected(() -> paymentResultCheckFacade.checkMyPaymentResult(user.getId(), orderId));
+            CoreException notOwner = rejected(() -> paymentResultLookupFacade.lookupMyPaymentResult(stranger.getId(), orderId));
+            CoreException noAttempt = rejected(() -> paymentResultLookupFacade.lookupMyPaymentResult(user.getId(), orderId));
 
             // assert
             assertThat(notOwner.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
@@ -336,9 +336,9 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             pg.setStatus(key, "SUCCESS");
 
             // act: 알림이 먼저
-            PaymentCheckInfo byCallback = callback(key);
+            PaymentLookupInfo byCallback = callback(key);
             int lookupsAfterCallback = pg.lookupByKeyCalls();
-            PaymentCheckInfo byReconcile = reconcile();
+            PaymentLookupInfo byReconcile = reconcile();
 
             // assert
             assertThat(byCallback.info().orderStatus()).isEqualTo(OrderStatus.CONFIRMED);
@@ -354,10 +354,10 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             startAccepted();
             String key = pgKeyOf(orderId);
             pg.setStatus(key, "SUCCESS");
-            PaymentCheckInfo first = reconcile();
+            PaymentLookupInfo first = reconcile();
 
             // act
-            PaymentCheckInfo late = callback(key);
+            PaymentLookupInfo late = callback(key);
 
             // assert
             assertThat(late.info()).isEqualTo(first.info());
@@ -390,7 +390,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             startAccepted();
 
             // act: 알림은 성공을 알린다고 가정하지만 PG 조회 결과는 PENDING 이다.
-            PaymentCheckInfo result = callback(pgKeyOf(orderId));
+            PaymentLookupInfo result = callback(pgKeyOf(orderId));
 
             // assert
             assertThat(result.info().orderStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
@@ -406,7 +406,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             String otherKey = pg.addTransaction("LP-ORD-0000099999", 7_000, "SUCCESS").key();
 
             // act
-            PaymentCheckInfo result = callback(otherKey);
+            PaymentLookupInfo result = callback(otherKey);
 
             // assert
             assertThat(result.info().orderStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
@@ -422,7 +422,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             startAccepted();
 
             // act
-            PaymentCheckInfo result = callback("TEST-TX-FORGED");
+            PaymentLookupInfo result = callback("TEST-TX-FORGED");
 
             // assert
             assertThat(result.info().orderStatus()).isEqualTo(OrderStatus.PAYMENT_PENDING);
@@ -437,7 +437,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             startAccepted();
 
             // act
-            CoreException exception = rejected(() -> paymentResultCheckFacade.checkPaymentResultOnPgCallback("LP-ORD-0000099999", pgKeyOf(orderId)));
+            CoreException exception = rejected(() -> paymentResultLookupFacade.lookupPaymentResultOnPgCallback("LP-ORD-0000099999", pgKeyOf(orderId)));
 
             // assert
             assertThat(exception.getErrorType()).isEqualTo(ErrorType.NOT_FOUND);
@@ -454,7 +454,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             pg.setStatus(key, "SUCCESS");
 
             // act
-            PaymentCheckInfo result = callback(key);
+            PaymentLookupInfo result = callback(key);
 
             // assert
             assertThat(result.info().orderStatus()).isEqualTo(OrderStatus.CONFIRMED);
@@ -476,13 +476,13 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             reconcile();
 
             // act 1: 같은 결과
-            updateByStatusCheckResult(orderId, PgPaymentStatusCheckResult.answered(List.of(new PgTransactionInfo(key, providerOrderIdOf(orderId), 7_000, PgStatus.SUCCESS))));
+            updateByStatusLookupResult(orderId, PgPaymentStatusLookupResult.answered(List.of(new PgTransactionInfo(key, providerOrderIdOf(orderId), 7_000, PgStatus.SUCCESS))));
 
             // assert 1
             assertThat(attemptOf(orderId).get("anomaly")).isNull();
 
             // act 2: 같은 거래가 FAILED 로 관찰됨(상충)
-            updateByStatusCheckResult(orderId, PgPaymentStatusCheckResult.answered(List.of(new PgTransactionInfo(key, providerOrderIdOf(orderId), 7_000, PgStatus.FAILED))));
+            updateByStatusLookupResult(orderId, PgPaymentStatusLookupResult.answered(List.of(new PgTransactionInfo(key, providerOrderIdOf(orderId), 7_000, PgStatus.FAILED))));
 
             // assert 2
             assertThat(orderStatusOf(orderId)).isEqualTo("CONFIRMED");
@@ -501,7 +501,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             reconcile();
 
             // act
-            updateByStatusCheckResult(orderId, PgPaymentStatusCheckResult.answered(List.of(new PgTransactionInfo(key, providerOrderIdOf(orderId), 7_000, PgStatus.PENDING))));
+            updateByStatusLookupResult(orderId, PgPaymentStatusLookupResult.answered(List.of(new PgTransactionInfo(key, providerOrderIdOf(orderId), 7_000, PgStatus.PENDING))));
 
             // assert
             assertThat(attemptOf(orderId).get("status")).isEqualTo("SUCCEEDED");
@@ -538,8 +538,8 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             return new PaymentGatewayImpl(new PgHttpClient(pgProperties, new ObjectMapper()));
         }
 
-        private PaymentResultCheckFacade restartedFacade() {
-            return new PaymentResultCheckFacade(
+        private PaymentResultLookupFacade restartedFacade() {
+            return new PaymentResultLookupFacade(
                 restartedGateway(), paymentStatusUpdater, orderService, paymentAttemptService, transactionManager
             );
         }
@@ -557,10 +557,10 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             // arrange: 발송을 시작한다고 기록하고 commit 한 직후 멈췄다. 실제 발송 여부는 로컬 기록만으로 알 수 없다.
             arrange();
             orderFacade.prepareConfirm(command(user, orderId, KEY));
-            PaymentResultCheckFacade restarted = restartedFacade();
+            PaymentResultLookupFacade restarted = restartedFacade();
 
             // act
-            PaymentCheckInfo result = restarted.checkMyPaymentResult(user.getId(), orderId);
+            PaymentLookupInfo result = restarted.lookupMyPaymentResult(user.getId(), orderId);
 
             // assert
             assertThat(result.info().attemptStatus()).isEqualTo(PaymentAttemptStatus.REQUESTED);
@@ -578,10 +578,10 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             arrange();
             orderFacade.prepareConfirm(command(user, orderId, KEY));
             pg.addTransaction(providerOrderIdOf(orderId), 7_000, "SUCCESS");
-            PaymentResultCheckFacade restarted = restartedFacade();
+            PaymentResultLookupFacade restarted = restartedFacade();
 
             // act
-            PaymentCheckInfo result = restarted.checkMyPaymentResult(user.getId(), orderId);
+            PaymentLookupInfo result = restarted.lookupMyPaymentResult(user.getId(), orderId);
 
             // assert
             assertThat(result.info().orderStatus()).isEqualTo(OrderStatus.CONFIRMED);
@@ -596,7 +596,7 @@ class PaymentIntegrationTest extends PaymentFlowTestSupport {
             // arrange
             arrange();
             orderFacade.prepareConfirm(command(user, orderId, KEY));
-            PaymentResultCheckFacade restarted = restartedFacade();
+            PaymentResultLookupFacade restarted = restartedFacade();
 
             // act
             PaymentAttemptInfo info = restartedOrderFacade().confirm(command(user, orderId, KEY));

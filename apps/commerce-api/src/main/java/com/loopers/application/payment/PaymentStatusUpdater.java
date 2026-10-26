@@ -2,7 +2,7 @@ package com.loopers.application.payment;
 
 import com.loopers.application.payment.dto.PaymentAttemptInfo;
 import com.loopers.application.payment.pg.PgPaymentRequestResult;
-import com.loopers.application.payment.pg.PgPaymentStatusCheckResult;
+import com.loopers.application.payment.pg.PgPaymentStatusLookupResult;
 import com.loopers.application.payment.pg.PgStatus;
 import com.loopers.application.payment.pg.PgTransactionInfo;
 import com.loopers.domain.order.Order;
@@ -47,14 +47,14 @@ public class PaymentStatusUpdater {
      * PG 에 물어 확인한 사실을 반영한다. confirm 직후·고객의 확인·PG 의 알림이 모두 여기를 거치므로 입구의 순서가 바뀌어도
      * 같은 결과로 수렴한다. 재고 반환은 {@code PAYMENT_PENDING → PAYMENT_FAILED} 전이와 같은 트랜잭션에서 한 번만 일어난다.
      */
-    public PaymentAttemptInfo updateByStatusCheckResult(Long orderId, PgPaymentStatusCheckResult checkResult) {
+    public PaymentAttemptInfo updateByStatusLookupResult(Long orderId, PgPaymentStatusLookupResult lookupResult) {
         Order order = orderService.getForUpdate(orderId);
         PaymentAttempt attempt = paymentAttemptService.getByOrderId(orderId);
-        switch (checkResult.outcome()) {
+        switch (lookupResult.outcome()) {
             case KEY_NOT_FOUND -> recordUnlessSettled(attempt, PaymentAnomaly.TRANSACTION_NOT_FOUND);
-            case ANSWERED -> applyAnswer(order, attempt, checkResult.transactions());
+            case ANSWERED -> applyAnswer(order, attempt, lookupResult.transactions());
             // 묻지 못한 것은 아무것도 알려 주지 않는다. 상태도 재고도 그대로다.
-            case COULD_NOT_CHECK -> { }
+            case LOOKUP_UNAVAILABLE -> { }
         }
         return PaymentAttemptInfo.of(order, attempt);
     }

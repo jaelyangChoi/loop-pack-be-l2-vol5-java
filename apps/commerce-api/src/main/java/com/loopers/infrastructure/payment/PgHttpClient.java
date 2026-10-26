@@ -173,7 +173,7 @@ public class PgHttpClient {
 
     private List<PgTransactionInfo> parseTransactionList(JsonNode root) {
         if (root == null || !root.isArray()) {
-            throw new PgStatusCheckFailedException(UNPARSEABLE_TRANSACTION_LIST);
+            throw new PgStatusLookupFailedException(UNPARSEABLE_TRANSACTION_LIST);
         }
         List<PgTransactionInfo> transactions = new ArrayList<>();
         for (JsonNode element : root) {
@@ -183,7 +183,7 @@ public class PgHttpClient {
     }
 
     private PgTransactionInfo requireParsed(Optional<PgTransactionInfo> transaction, String message) {
-        return transaction.orElseThrow(() -> new PgStatusCheckFailedException(message));
+        return transaction.orElseThrow(() -> new PgStatusLookupFailedException(message));
     }
 
     private Optional<PgTransactionInfo> parseTransaction(JsonNode node) {
@@ -246,13 +246,13 @@ public class PgHttpClient {
         try {
             return send(request);
         } catch (RestClientException e) {
-            throw new PgStatusCheckFailedException("조회 중 I/O 오류: " + e.getClass().getSimpleName(), e);
+            throw new PgStatusLookupFailedException("조회 중 I/O 오류: " + e.getClass().getSimpleName(), e);
         }
     }
 
     private void requireOk(RawResponse response) {
         if (!response.is(HttpStatus.OK)) {
-            throw new PgStatusCheckFailedException("조회 응답 상태 " + response.status().value());
+            throw new PgStatusLookupFailedException("조회 응답 상태 " + response.status().value());
         }
     }
 
