@@ -115,34 +115,34 @@ public class OrderFacade {
         );
     }
 
-    /** TX A. PG 호출 전에 주문 잠금, 재고 차감, 시도 저장을 한 번에 commit 한다. 실패하면 전부 rollback 되고 PG 는 호출하지 않는다. */
+    /**
+     * TX A. PG 호출 전에 주문 잠금, 재고 차감, 시도 저장을 한 번에 commit 한다. 실패하면 전부 rollback 되고 PG 는 호출하지 않는다.
+     * 시도를 새로 저장한 실행만 PG 에 보낸다. 이미 시도가 있으면 같은 키는 저장된 상태를, 다른 키는 충돌을 돌려준다.
+     */
     public ConfirmPreparationResult prepareConfirm(OrderConfirmCommand command) {
-        return writeTransaction.execute(status -> prepare(command));
-    }
+        return writeTransaction.execute(status -> {
+            // 주문 행 잠금이 같은 주문의 동시 요청을 줄 세운다.
+            Order order = orderService.getMineForUpdate(command.orderId(), command.userId());
 
-    // 시도를 새로 저장한 실행만 PG 에 보낸다. 이미 시도가 있으면 같은 키는 저장된 상태를, 다른 키는 충돌을 돌려준다.
-    private ConfirmPreparationResult prepare(OrderConfirmCommand command) {
-        // 주문 행 잠금이 같은 주문의 동시 요청을 줄 세운다.
-        Order order = orderService.getMineForUpdate(command.orderId(), command.userId());
+            Optional<PaymentAttempt> existing = paymentAttemptService.findByOrderId(order.getId());
+            if (existing.isPresent()) {
+                return returnExisting(order, existing.get(), command);
+            }
+            // 이 주문에 시도가 없는데 같은 키가 있으면 다른 주문의 키다.
+            if (paymentAttemptService.findByAttemptKey(command.attemptKey()).isPresent()) {
+                throw attemptConflict();
+            }
 
-        Optional<PaymentAttempt> existing = paymentAttemptService.findByOrderId(order.getId());
-        if (existing.isPresent()) {
-            return returnExisting(order, existing.get(), command);
-        }
-        // 이 주문에 시도가 없는데 같은 키가 있으면 다른 주문의 키다.
-        if (paymentAttemptService.findByAttemptKey(command.attemptKey()).isPresent()) {
-            throw attemptConflict();
-        }
-
-        order.markPaymentPending(); // 이미 확정된 주문은 ORDER_ALREADY_CONFIRMED
-        orderStockService.deductStock(order);
-        PaymentAttempt attempt = saveAttempt(order, command);
-        return new ConfirmPreparationResult(
-            PaymentAttemptInfo.of(order, attempt),
-            new PgPaymentRequestCommand(
-                attempt.getProviderOrderId(), command.cardType(), command.cardNo(), attempt.getAmount().amount()
-            )
-        );
+            order.markPaymentPending(); // 이미 확정된 주문은 ORDER_ALREADY_CONFIRMED
+            orderStockService.deductStock(order);
+            PaymentAttempt attempt = saveAttempt(order, command);
+            return new ConfirmPreparationResult(
+                PaymentAttemptInfo.of(order, attempt),
+                new PgPaymentRequestCommand(
+                    attempt.getProviderOrderId(), command.cardType(), command.cardNo(), attempt.getAmount().amount()
+                )
+            );
+        });
     }
 
     // 이미 시도가 있는 주문의 재요청. 새 키를 보내도 두 번째 시도는 만들지 않는다.
