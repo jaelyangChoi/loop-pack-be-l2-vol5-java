@@ -12,7 +12,7 @@ Loopers 에서 제공하는 Spring Boot(Java 21) 멀티 모듈 커머스 템플�
 
 실행·빌드 명령어와 모듈 구조 전체는 `docs/guide/development-environment.md`를 참고합니다.
 
-설계 문서는 `docs/design/{주차}/`에 두며, 사람용(`{주제}.md`, 80줄 이내)과 AI용 상세(`{주제}.ai.md`)로 나눕니다.
+설계 문서는 `docs/design/{주차}/`에 두며, 사람용(`{주제}.md`, 300줄 이내)과 AI용 상세(`{주제}.ai.md`)로 나눕니다.
 
 `local` 프로필 실행 전에 `docker/infra-compose.yml`로 인프라(MySQL, Redis)를 먼저 띄웁니다. 모니터링(Prometheus + Grafana)은 `docker/monitoring-compose.yml`로 별도 실행하며 http://localhost:3000 (admin/admin) 으로 접속합니다.
 
