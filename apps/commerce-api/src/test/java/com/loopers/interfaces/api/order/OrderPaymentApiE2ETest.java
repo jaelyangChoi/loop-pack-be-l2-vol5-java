@@ -126,6 +126,8 @@ class OrderPaymentApiE2ETest extends PaymentFlowTestSupport {
             assertThat(detail.getStatusCode()).isEqualTo(HttpStatus.OK);
             assertThat(detail.getBody().data().status()).isEqualTo("PAYMENT_PENDING");
             assertThat(detail.getBody().data().payment()).isNull();
+            assertThat(detail.getBody().data().paymentMethod()).isEqualTo("PG");
+            assertThat(detail.getBody().data().paymentStatus()).isEqualTo("PENDING");
             assertThat(pg.lookupByKeyCalls() + pg.lookupByOrderCalls()).isEqualTo(lookupsBefore);
         }
 
@@ -411,6 +413,8 @@ class OrderPaymentApiE2ETest extends PaymentFlowTestSupport {
             OrderDto.OrderResponse detail = getDetail(idOf(user), orderId).getBody().data();
             assertThat(detail.status()).isEqualTo("CONFIRMED");
             assertThat(detail.payment()).isEqualTo(new OrderDto.PaymentResponse(7_000L));
+            assertThat(detail.paymentMethod()).isEqualTo("PG");
+            assertThat(detail.paymentStatus()).isEqualTo("SUCCEEDED");
             assertThat(stockOf(shirt)).isEqualTo(3);
             assertThat(balanceOf(user)).isEqualTo(10_000L);
         }

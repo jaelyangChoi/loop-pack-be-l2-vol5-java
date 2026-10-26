@@ -62,6 +62,7 @@ PaymentResultLookupFacade / OrderFacade          (application, PaymentGateway �
 | 요청 | 결과 |
 |---|---|
 | `POST /api/v1/orders/{id}/confirm` | PG 결과로 끝났으면 200, 처리 중이거나 결과를 모르면 202 |
+| `GET /api/v1/orders/{id}` | 저장된 상태만 보여 준다(PG 호출 없음). `paymentMethod`(PG, 이전 포인트 확정 주문은 POINT)와 `paymentStatus`(시도 상태) 포함 |
 | `POST /api/v1/orders/{id}/payment/reconcile` | 같은 응답 모양. PG를 못 물었으면 저장된 상태와 `lookupUnavailable` 표시 |
 | `POST /api/v1/payments/callback` | PG 수신 확인. 본문의 상태는 쓰지 않고 PG에 다시 물어 확인한 사실만 반영 |
 

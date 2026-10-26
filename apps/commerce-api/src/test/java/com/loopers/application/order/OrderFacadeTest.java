@@ -5,6 +5,7 @@ import com.loopers.application.order.dto.OrderItemCommand;
 import com.loopers.application.order.dto.OrderItemInfo;
 import com.loopers.application.order.dto.OrderSummaryInfo;
 import com.loopers.application.order.dto.PaymentInfo;
+import com.loopers.application.order.dto.PaymentMethod;
 import com.loopers.application.product.AdminProductFacade;
 import com.loopers.domain.common.Money;
 import com.loopers.domain.order.OrderStatus;
@@ -303,6 +304,27 @@ class OrderFacadeTest {
             // assert
             assertThat(created.orderedAt()).isNotNull();
             assertThat(confirmed.orderedAt()).isEqualTo(created.orderedAt());
+        }
+
+        @DisplayName("결제 시도 없이 확정된 이전 주문은 결제수단이 POINT 이고 시도 상태가 없다. 확정 전 주문은 둘 다 없다.")
+        @Test
+        void showsPointMethod_forOrderConfirmedWithoutAttempt() {
+            // arrange
+            User user = saveUserWithBalance(10_000);
+            Product shirt = saveProduct("티셔츠", 3_000, 10);
+            OrderInfo draft = orderFacade.create(user.getId(), List.of(new OrderItemCommand(shirt.getId(), 1)));
+            OrderInfo past = orderFacade.create(user.getId(), List.of(new OrderItemCommand(shirt.getId(), 1)));
+            ConfirmedOrders.confirm(jdbcTemplate, past.id());
+
+            // act
+            OrderInfo draftDetail = orderFacade.getMine(user.getId(), draft.id());
+            OrderInfo pastDetail = orderFacade.getMine(user.getId(), past.id());
+
+            // assert
+            assertThat(draftDetail.paymentMethod()).isNull();
+            assertThat(draftDetail.paymentStatus()).isNull();
+            assertThat(pastDetail.paymentMethod()).isEqualTo(PaymentMethod.POINT);
+            assertThat(pastDetail.paymentStatus()).isNull();
         }
 
         @DisplayName("목록은 내 주문만 최신순으로 요약(품목 수, 결제 결과, 주문 시각)해서 돌려준다.")

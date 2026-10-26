@@ -81,7 +81,7 @@ public class OrderFacade {
         requireEnoughStock(lines, found);
 
         Order order = orderService.create(userId, lines, toOrderProducts(found));
-        return OrderInfo.from(order);
+        return OrderInfo.from(order, null);
     }
 
     /**
@@ -89,7 +89,8 @@ public class OrderFacade {
      */
     @Transactional(readOnly = true)
     public OrderInfo getMine(Long userId, Long orderId) {
-        return OrderInfo.from(orderService.getMine(orderId, userId));
+        Order order = orderService.getMine(orderId, userId);
+        return OrderInfo.from(order, paymentAttemptService.findByOrderId(order.getId()).orElse(null));
     }
 
     /**
