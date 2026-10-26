@@ -18,9 +18,9 @@ public class PaymentDto {
     public record CallbackResponse(Long orderId, String orderStatus, String paymentStatus, Boolean lookupUnavailable) {
         public static CallbackResponse from(PaymentLookupInfo result) {
             return new CallbackResponse(
-                result.info().orderId(),
-                result.info().orderStatus().name(),
-                result.info().attemptStatus().name(),
+                result.attempt().orderId(),
+                result.attempt().orderStatus().name(),
+                result.attempt().attemptStatus().name(),
                 result.lookupUnavailable() ? Boolean.TRUE : null
             );
         }

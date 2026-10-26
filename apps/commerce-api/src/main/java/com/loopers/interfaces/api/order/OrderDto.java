@@ -66,7 +66,7 @@ public class OrderDto {
         }
 
         public static PaymentStartResponse from(PaymentLookupInfo result) {
-            PaymentStartResponse base = from(result.info());
+            PaymentStartResponse base = from(result.attempt());
             return new PaymentStartResponse(
                 base.orderId(), base.orderStatus(), base.payment(), base.links(),
                 result.lookupUnavailable() ? Boolean.TRUE : null

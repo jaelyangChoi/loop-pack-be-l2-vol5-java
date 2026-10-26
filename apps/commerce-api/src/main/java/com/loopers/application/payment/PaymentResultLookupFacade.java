@@ -68,10 +68,10 @@ public class PaymentResultLookupFacade {
         if (lookupResult.outcome() == PgPaymentStatusLookupResult.Outcome.LOOKUP_UNAVAILABLE) {
             return new PaymentLookupInfo(target, true);
         }
-        PaymentAttemptInfo info = writeTransaction.execute(
+        PaymentAttemptInfo updated = writeTransaction.execute(
             status -> paymentStatusUpdater.updateByStatusLookupResult(target.orderId(), lookupResult)
         );
-        return new PaymentLookupInfo(info, false);
+        return new PaymentLookupInfo(updated, false);
     }
 
     // 없는 주문과 타인의 주문은 NOT_FOUND, 결제를 시작하지 않은 주문은 CONFLICT 다.

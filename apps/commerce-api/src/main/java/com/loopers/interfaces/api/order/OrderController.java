@@ -44,7 +44,7 @@ public class OrderController implements OrderApiSpec {
         @PathVariable Long orderId
     ) {
         PaymentLookupInfo result = paymentResultLookupFacade.lookupMyPaymentResult(userId, orderId);
-        HttpStatus status = result.info().isTerminated() ? HttpStatus.OK : HttpStatus.ACCEPTED;
+        HttpStatus status = result.attempt().isTerminated() ? HttpStatus.OK : HttpStatus.ACCEPTED;
         return ResponseEntity.status(status).body(ApiResponse.success(OrderDto.PaymentStartResponse.from(result)));
     }
 

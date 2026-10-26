@@ -223,7 +223,7 @@ class PaymentTransactionTest extends PaymentFlowTestSupport {
 
             // act & assert 2: 같은 거래를 다시 조회해 반영한다. 새 결제를 만들지 않는다.
             PaymentLookupInfo again = paymentResultLookupFacade.lookupMyPaymentResult(user.getId(), orderId);
-            assertThat(again.info().orderStatus().name()).isEqualTo("CONFIRMED");
+            assertThat(again.attempt().orderStatus().name()).isEqualTo("CONFIRMED");
             assertThat(orderStatusOf(orderId)).isEqualTo("CONFIRMED");
             assertThat(pg.createCalls()).isEqualTo(1);
             assertThat(pg.transactionCount()).isEqualTo(1);
