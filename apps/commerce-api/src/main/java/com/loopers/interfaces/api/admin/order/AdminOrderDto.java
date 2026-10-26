@@ -18,8 +18,6 @@ public class AdminOrderDto {
         List<ItemResponse> items,
         long totalAmount,
         PaymentResponse payment,
-        String paymentMethod,
-        String paymentStatus,
         ZonedDateTime orderedAt
     ) {
         public static OrderResponse from(OrderInfo info) {
@@ -30,8 +28,6 @@ public class AdminOrderDto {
                 info.items().stream().map(ItemResponse::from).toList(),
                 info.totalAmount(),
                 PaymentResponse.from(info.payment()),
-                info.paymentMethod() == null ? null : info.paymentMethod().name(),
-                info.paymentStatus() == null ? null : info.paymentStatus().name(),
                 info.orderedAt()
             );
         }

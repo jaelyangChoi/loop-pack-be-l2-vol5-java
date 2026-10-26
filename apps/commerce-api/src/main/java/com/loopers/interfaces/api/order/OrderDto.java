@@ -78,16 +78,13 @@ public class OrderDto {
 
     public record LinksResponse(String order) {}
 
-    // payment 는 확정된 주문에만 있다. paymentMethod 는 PG, 시도 없이 확정된 이전 주문은 POINT 이고, paymentStatus 는 PG 시도의
-    // 상태다. orderedAt 은 주문을 만든 시각이다.
+    // payment 는 확정된 주문에만 있고, 확정 전(DRAFT)에는 null 이다. orderedAt 은 주문을 만든 시각이다.
     public record OrderResponse(
         Long id,
         String status,
         List<ItemResponse> items,
         long totalAmount,
         PaymentResponse payment,
-        String paymentMethod,
-        String paymentStatus,
         ZonedDateTime orderedAt
     ) {
         public static OrderResponse from(OrderInfo info) {
@@ -97,8 +94,6 @@ public class OrderDto {
                 info.items().stream().map(ItemResponse::from).toList(),
                 info.totalAmount(),
                 PaymentResponse.from(info.payment()),
-                info.paymentMethod() == null ? null : info.paymentMethod().name(),
-                info.paymentStatus() == null ? null : info.paymentStatus().name(),
                 info.orderedAt()
             );
         }

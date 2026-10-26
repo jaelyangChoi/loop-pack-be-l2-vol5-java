@@ -2,9 +2,7 @@ package com.loopers.application.order;
 
 import com.loopers.application.order.dto.OrderInfo;
 import com.loopers.application.order.dto.OrderSummaryInfo;
-import com.loopers.domain.order.Order;
 import com.loopers.domain.order.OrderService;
-import com.loopers.domain.payment.PaymentAttemptService;
 import com.loopers.support.paging.PageRequests;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -19,7 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class AdminOrderFacade {
 
     private final OrderService orderService;
-    private final PaymentAttemptService paymentAttemptService;
 
     /** 주문 목록을 최신순으로 조회한다. {@code userId} 를 주면 그 구매자의 주문만, 없는 구매자는 빈 목록이다. */
     @Transactional(readOnly = true)
@@ -29,7 +26,6 @@ public class AdminOrderFacade {
 
     @Transactional(readOnly = true)
     public OrderInfo get(Long orderId) {
-        Order order = orderService.get(orderId);
-        return OrderInfo.from(order, paymentAttemptService.findByOrderId(order.getId()).orElse(null));
+        return OrderInfo.from(orderService.get(orderId));
     }
 }

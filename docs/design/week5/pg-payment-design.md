@@ -69,7 +69,7 @@ Facade ─ PaymentGateway(포트) ─ PaymentGatewayImpl ─ PgHttpClient ─ Pg
 | 요청 | 결과 |
 |---|---|
 | `POST /orders/{id}/confirm` | PG 결과로 끝났으면 200, 처리 중이거나 결과를 모르면 202 |
-| `GET /orders/{id}` | 저장된 상태만 보여 준다. `paymentMethod`(PG, 이전 포인트 확정 주문은 POINT), `paymentStatus` 포함 |
+| `GET /orders/{id}` | 저장된 상태만 보여 준다(PG 호출 없음) |
 | `POST /orders/{id}/payment/reconcile` | 같은 응답 모양. PG를 못 물었으면 저장된 상태와 `lookupUnavailable` |
 | `POST /payments/callback` | 본문의 상태는 쓰지 않고 PG에 다시 물어 확인한 사실만 반영 |
 
