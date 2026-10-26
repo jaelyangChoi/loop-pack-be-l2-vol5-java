@@ -75,7 +75,7 @@ public class PgHttpClient {
     public PgPaymentRequestResult requestPayment(PgPaymentRequestCommand request) {
         RawResponse response;
         try {
-            response = send(createClient.post()
+            response = exchange(createClient.post()
                 .uri(PAYMENTS_PATH)
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.APPLICATION_JSON)
@@ -100,7 +100,7 @@ public class PgHttpClient {
     @Retry(name = LOOKUP_RESILIENCE)
     @CircuitBreaker(name = LOOKUP_RESILIENCE)
     public Optional<PgTransactionInfo> getTransactionByKey(String transactionKey) {
-        RawResponse response = sendForLookup(lookupClient.get()
+        RawResponse response = exchangeForLookup(lookupClient.get()
             .uri(PAYMENTS_PATH + "/{transactionKey}", transactionKey)
             .accept(MediaType.APPLICATION_JSON));
         if (response.is(HttpStatus.NOT_FOUND)) {
@@ -113,7 +113,7 @@ public class PgHttpClient {
     @Retry(name = LOOKUP_RESILIENCE)
     @CircuitBreaker(name = LOOKUP_RESILIENCE)
     public List<PgTransactionInfo> getTransactionsByOrder(String providerOrderId) {
-        RawResponse response = sendForLookup(lookupClient.get()
+        RawResponse response = exchangeForLookup(lookupClient.get()
             .uri(uriBuilder -> uriBuilder.path(PAYMENTS_PATH).queryParam("orderId", "{orderId}").build(providerOrderId))
             .accept(MediaType.APPLICATION_JSON));
         return parser.transactions(requireOkBody(response));
@@ -140,14 +140,19 @@ public class PgHttpClient {
         return PgPaymentRequestResult.unknown();
     }
 
-    private RawResponse sendForLookup(RestClient.RequestHeadersSpec<?> request) {
+    private RawResponse exchangeForLookup(RestClient.RequestHeadersSpec<?> request) {
         try {
-            return send(request);
+            return exchange(request);
         } catch (RestClientException e) {
             throw new PgStatusLookupFailedException("조회 중 I/O 오류: " + e.getClass().getSimpleName(), e);
         }
     }
-
+    private RawResponse exchange(RestClient.RequestHeadersSpec<?> request) {
+        return request.exchange((httpRequest, httpResponse) -> new RawResponse(
+                httpResponse.getStatusCode(),
+                new String(httpResponse.getBody().readNBytes(MAX_BODY_BYTES), StandardCharsets.UTF_8)
+        ));
+    }
     private String requireOkBody(RawResponse response) {
         if (!response.is(HttpStatus.OK)) {
             throw new PgStatusLookupFailedException("조회 응답 상태 " + response.status().value());
@@ -155,12 +160,7 @@ public class PgHttpClient {
         return response.body();
     }
 
-    private RawResponse send(RestClient.RequestHeadersSpec<?> request) {
-        return request.exchange((httpRequest, httpResponse) -> new RawResponse(
-            httpResponse.getStatusCode(),
-            new String(httpResponse.getBody().readNBytes(MAX_BODY_BYTES), StandardCharsets.UTF_8)
-        ));
-    }
+
 
     private record RawResponse(HttpStatusCode status, String body) {
         boolean is(HttpStatus expected) {
