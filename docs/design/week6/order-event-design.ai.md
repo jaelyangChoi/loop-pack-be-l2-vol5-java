@@ -129,7 +129,8 @@
 | 테스트 프로필 | `fetch.max.wait.ms`를 100ms로 줄이고(`kafka.yml` test 문서) 이유를 주석으로 적는다. 1MiB/5초는 `BATCH_LISTENER` 코드 안의 값이라 새 factory(공용 `consumerFactory`)에는 적용되지 않는다 |
 
 - `kafka.yml`의 `value-serializer` 오기는 `value-deserializer`로 고쳤다. 기존 `BATCH_LISTENER`의 `ByteArrayJsonMessageConverter`가 `byte[]` 값을 전제하므로 의도한 설정이 이제 적용된다.
-- 중단형 handler가 기본이다. 다른 handler를 쓰면 재시도 소진·recover·`ackAfterHandle`까지 설명한다. `commitRecovered=false`만으로 commit이 막힌다고 결론 내리지 않는다.
+- 중단형 handler가 기본이다(spring-kafka 3.3.4 소스 확인). `CommonContainerStoppingErrorHandler.handleRemaining`은 컨테이너를 별도 스레드로 멈춘 뒤 항상 `KafkaException`을 던지므로, "예외 없이 처리됐을 때 commit"하는 `ackAfterHandle`이 작동하지 않고 실패 record의 offset은 commit되지 않는다. 다른 handler를 쓰면 재시도 소진·recover·`ackAfterHandle`까지 설명한다. `commitRecovered=false`만으로 commit이 막힌다고 결론 내리지 않는다.
+- 이 factory의 `auto.offset.reset`은 코드에서 `earliest`로 명시한다. 새 group이 `latest`로 시작하면 구독 전에 쌓인 확정 주문의 구매 활동이 빠진다.
 - streamer의 `spring.application.name`을 `commerce-streamer`로 바로잡았다(client-id 중복 방지).
 
 ## 7. 테스트 인프라

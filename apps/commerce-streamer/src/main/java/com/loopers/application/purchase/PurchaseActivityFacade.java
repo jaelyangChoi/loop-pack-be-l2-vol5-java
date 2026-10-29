@@ -27,8 +27,9 @@ public class PurchaseActivityFacade {
 
     public PurchaseRecordResult record(RecordOrderConfirmationCommand command) {
         try {
-            boolean recorded = Boolean.TRUE.equals(transaction.execute(status -> purchaseActivityService.record(
-                command.eventId(), command.orderId(), command.confirmedAt(), command.lines()
+            boolean recorded = Boolean.TRUE.equals(transaction.execute(
+                    status -> purchaseActivityService.record(
+                    command.eventId(), command.orderId(), command.confirmedAt(), command.lines()
             )));
             return recorded ? PurchaseRecordResult.RECORDED : PurchaseRecordResult.DUPLICATE;
         } catch (DataIntegrityViolationException e) {
