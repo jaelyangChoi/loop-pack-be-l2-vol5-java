@@ -1,7 +1,8 @@
 package com.loopers.application.purchase;
 
-import com.loopers.application.purchase.dto.PurchaseRecordResult;
-import com.loopers.application.purchase.dto.RecordOrderConfirmationCommand;
+import com.loopers.application.purchase.dto.PurchaseSaveResult;
+import com.loopers.application.purchase.dto.SavePurchaseActivityCommand;
+import com.loopers.domain.purchase.OrderConfirmation;
 import com.loopers.domain.purchase.PurchaseActivityService;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
@@ -25,17 +26,15 @@ public class PurchaseActivityFacade {
         this.transaction = new TransactionTemplate(transactionManager);
     }
 
-    public PurchaseRecordResult record(RecordOrderConfirmationCommand command) {
+    public PurchaseSaveResult save(SavePurchaseActivityCommand command) {
+        OrderConfirmation confirmation = command.toConfirmation();
         try {
-            boolean recorded = Boolean.TRUE.equals(transaction.execute(
-                    status -> purchaseActivityService.record(
-                    command.eventId(), command.orderId(), command.confirmedAt(), command.lines()
-            )));
-            return recorded ? PurchaseRecordResult.RECORDED : PurchaseRecordResult.DUPLICATE;
+            boolean saved = Boolean.TRUE.equals(transaction.execute(status -> purchaseActivityService.save(confirmation)));
+            return saved ? PurchaseSaveResult.SAVED : PurchaseSaveResult.DUPLICATE;
         } catch (DataIntegrityViolationException e) {
             // 중복 때문이 아닌 제약 오류를 중복으로 바꾸지 않도록, 같은 사실이 실제로 저장돼 있을 때만 정상으로 본다.
-            if (purchaseActivityService.isRecorded(command.eventId(), command.orderId(), command.confirmedAt(), command.lines())) {
-                return PurchaseRecordResult.DUPLICATE;
+            if (purchaseActivityService.isAlreadySaved(confirmation)) {
+                return PurchaseSaveResult.DUPLICATE;
             }
             throw e;
         }

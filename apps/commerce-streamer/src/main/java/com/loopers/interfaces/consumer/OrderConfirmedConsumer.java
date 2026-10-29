@@ -24,7 +24,7 @@ public class OrderConfirmedConsumer {
         containerFactory = OrderActivityKafkaConfig.ORDER_ACTIVITY_LISTENER
     )
     public void listen(ConsumerRecord<String, byte[]> record, Acknowledgment acknowledgment) {
-        purchaseActivityFacade.record(parser.parse(record.key(), record.value()));
+        purchaseActivityFacade.save(parser.parse(record));
         acknowledgment.acknowledge();
     }
 }

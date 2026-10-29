@@ -2,9 +2,10 @@ package com.loopers.interfaces.consumer;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.loopers.application.purchase.dto.RecordOrderConfirmationCommand;
+import com.loopers.application.purchase.dto.SavePurchaseActivityCommand;
 import com.loopers.domain.purchase.PurchaseLine;
 import lombok.RequiredArgsConstructor;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -28,25 +29,32 @@ public class OrderConfirmedMessageParser {
 
     private final ObjectMapper objectMapper;
 
-    public RecordOrderConfirmationCommand parse(String key, byte[] value) {
+    public SavePurchaseActivityCommand parse(ConsumerRecord<String, byte[]> record) {
         try {
-            if (value == null) {
-                throw new InvalidOrderEventException("record 의 값이 없습니다.");
-            }
-            JsonNode root = objectMapper.readTree(value);
-            require(EVENT_TYPE.equals(text(root, "eventType")), "eventType 이 OrderConfirmed 가 아닙니다.");
-            require(integer(root, "schemaVersion") == SCHEMA_VERSION, "지원하지 않는 schemaVersion 입니다.");
-            long orderId = integer(root, "orderId");
-            require(String.valueOf(orderId).equals(key), "record key 와 orderId 가 다릅니다.");
-            String eventId = text(root, "eventId");
-            require((EVENT_ID_PREFIX + orderId).equals(eventId), "eventId 가 orderId 에서 유도한 값과 다릅니다.");
-            ZonedDateTime confirmedAt = ZonedDateTime.ofInstant(Instant.parse(text(root, "confirmedAt")), ZoneOffset.UTC);
-            return new RecordOrderConfirmationCommand(eventId, orderId, confirmedAt, lines(root));
+            return parse(record.key(), record.value());
         } catch (InvalidOrderEventException e) {
-            throw e;
+            throw new InvalidOrderEventException(position(record) + e.getMessage(), e);
         } catch (IOException | RuntimeException e) {
-            throw new InvalidOrderEventException("OrderConfirmed record 를 해석하지 못했습니다: " + e.getMessage(), e);
+            throw new InvalidOrderEventException(position(record) + "OrderConfirmed record 를 해석하지 못했습니다: " + e.getMessage(), e);
         }
+    }
+
+    // 컨테이너가 멈췄을 때 어느 record 가 원인인지 바로 알 수 있게 위치를 메시지에 남긴다.
+    private String position(ConsumerRecord<String, byte[]> record) {
+        return "[" + record.topic() + "-" + record.partition() + "@" + record.offset() + "] ";
+    }
+
+    private SavePurchaseActivityCommand parse(String key, byte[] value) throws IOException {
+        require(value != null, "record 의 값이 없습니다.");
+        JsonNode root = objectMapper.readTree(value);
+        require(EVENT_TYPE.equals(text(root, "eventType")), "eventType 이 OrderConfirmed 가 아닙니다.");
+        require(integer(root, "schemaVersion") == SCHEMA_VERSION, "지원하지 않는 schemaVersion 입니다.");
+        long orderId = integer(root, "orderId");
+        require(String.valueOf(orderId).equals(key), "record key 와 orderId 가 다릅니다.");
+        String eventId = text(root, "eventId");
+        require((EVENT_ID_PREFIX + orderId).equals(eventId), "eventId 가 orderId 에서 유도한 값과 다릅니다.");
+        ZonedDateTime confirmedAt = ZonedDateTime.ofInstant(Instant.parse(text(root, "confirmedAt")), ZoneOffset.UTC);
+        return new SavePurchaseActivityCommand(eventId, orderId, confirmedAt, lines(root));
     }
 
     private List<PurchaseLine> lines(JsonNode root) {

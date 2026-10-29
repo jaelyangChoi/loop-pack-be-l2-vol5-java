@@ -1,7 +1,7 @@
 package com.loopers.application.purchase;
 
-import com.loopers.application.purchase.dto.PurchaseRecordResult;
-import com.loopers.application.purchase.dto.RecordOrderConfirmationCommand;
+import com.loopers.application.purchase.dto.PurchaseSaveResult;
+import com.loopers.application.purchase.dto.SavePurchaseActivityCommand;
 import com.loopers.domain.purchase.OrderConfirmationConflictException;
 import com.loopers.domain.purchase.ProductPurchaseActivity;
 import com.loopers.domain.purchase.ProductPurchaseActivityRepository;
@@ -52,12 +52,12 @@ class PurchaseActivityIntegrationTest {
         databaseCleanUp.truncateAllTables();
     }
 
-    private RecordOrderConfirmationCommand confirmation(long orderId, PurchaseLine... lines) {
+    private SavePurchaseActivityCommand confirmation(long orderId, PurchaseLine... lines) {
         return confirmation("order-confirmed:v1:" + orderId, orderId, CONFIRMED_AT, lines);
     }
 
-    private RecordOrderConfirmationCommand confirmation(String eventId, long orderId, ZonedDateTime confirmedAt, PurchaseLine... lines) {
-        return new RecordOrderConfirmationCommand(eventId, orderId, confirmedAt, List.of(lines));
+    private SavePurchaseActivityCommand confirmation(String eventId, long orderId, ZonedDateTime confirmedAt, PurchaseLine... lines) {
+        return new SavePurchaseActivityCommand(eventId, orderId, confirmedAt, List.of(lines));
     }
 
     private long activityRows() {
@@ -76,20 +76,20 @@ class PurchaseActivityIntegrationTest {
 
     @DisplayName("주문 하나는 상품별 활동 한 행씩이고, 같은 이벤트를 다시 받아도 늘지 않으며, 다른 주문의 구매는 합산해 읽힌다.")
     @Test
-    void recordsOncePerProduct_andSumsAcrossOrders() {
+    void savesOncePerProduct_andSumsAcrossOrders() {
         // arrange
-        RecordOrderConfirmationCommand order42 = confirmation(42, new PurchaseLine(7L, 2), new PurchaseLine(8L, 1));
+        SavePurchaseActivityCommand order42 = confirmation(42, new PurchaseLine(7L, 2), new PurchaseLine(8L, 1));
 
         // act & assert: 주문 42
-        assertThat(facade.record(order42)).isEqualTo(PurchaseRecordResult.RECORDED);
+        assertThat(facade.save(order42)).isEqualTo(PurchaseSaveResult.SAVED);
         assertThat(activityRows()).isEqualTo(2);
 
         // act & assert: 같은 이벤트 재수신
-        assertThat(facade.record(order42)).isEqualTo(PurchaseRecordResult.DUPLICATE);
+        assertThat(facade.save(order42)).isEqualTo(PurchaseSaveResult.DUPLICATE);
         assertThat(activityRows()).isEqualTo(2);
 
         // act & assert: 별도 주문 43
-        assertThat(facade.record(confirmation(43, new PurchaseLine(7L, 3)))).isEqualTo(PurchaseRecordResult.RECORDED);
+        assertThat(facade.save(confirmation(43, new PurchaseLine(7L, 3)))).isEqualTo(PurchaseSaveResult.SAVED);
         assertThat(activityRows()).isEqualTo(3);
         assertThat(quantityOf(7L)).isEqualTo(5);
     }
@@ -99,10 +99,10 @@ class PurchaseActivityIntegrationTest {
     @EnumSource(Conflict.class)
     void rejectsConflictingFact(Conflict conflict) {
         // arrange
-        facade.record(confirmation(42, new PurchaseLine(7L, 2), new PurchaseLine(8L, 1)));
+        facade.save(confirmation(42, new PurchaseLine(7L, 2), new PurchaseLine(8L, 1)));
 
         // act & assert
-        assertThatThrownBy(() -> facade.record(conflict.command()))
+        assertThatThrownBy(() -> facade.save(conflict.command()))
             .isInstanceOf(OrderConfirmationConflictException.class);
         assertThat(activityRows()).isEqualTo(2);
         assertThat(confirmationRows()).isEqualTo(1);
@@ -126,8 +126,8 @@ class PurchaseActivityIntegrationTest {
             this.quantityOfProduct7 = quantityOfProduct7;
         }
 
-        RecordOrderConfirmationCommand command() {
-            return new RecordOrderConfirmationCommand(
+        SavePurchaseActivityCommand command() {
+            return new SavePurchaseActivityCommand(
                 eventId, orderId, confirmedAt, List.of(new PurchaseLine(7L, quantityOfProduct7), new PurchaseLine(8L, 1))
             );
         }
@@ -135,30 +135,30 @@ class PurchaseActivityIntegrationTest {
 
     @DisplayName("같은 이벤트를 동시에 소비해도 한 번만 저장하고, 나머지는 오류 없이 중복으로 끝난다.")
     @Test
-    void recordsOnce_whenConsumedConcurrently() throws Exception {
+    void savesOnce_whenConsumedConcurrently() throws Exception {
         // arrange
         int threads = 6;
-        RecordOrderConfirmationCommand command = confirmation(42, new PurchaseLine(7L, 2), new PurchaseLine(8L, 1));
+        SavePurchaseActivityCommand command = confirmation(42, new PurchaseLine(7L, 2), new PurchaseLine(8L, 1));
         CyclicBarrier start = new CyclicBarrier(threads);
         ExecutorService executor = Executors.newFixedThreadPool(threads);
 
         // act
-        List<Future<PurchaseRecordResult>> futures = new ArrayList<>();
+        List<Future<PurchaseSaveResult>> futures = new ArrayList<>();
         for (int i = 0; i < threads; i++) {
             futures.add(executor.submit(() -> {
                 start.await(10, TimeUnit.SECONDS);
-                return facade.record(command);
+                return facade.save(command);
             }));
         }
-        List<PurchaseRecordResult> results = new ArrayList<>();
-        for (Future<PurchaseRecordResult> future : futures) {
+        List<PurchaseSaveResult> results = new ArrayList<>();
+        for (Future<PurchaseSaveResult> future : futures) {
             results.add(future.get(30, TimeUnit.SECONDS));
         }
         executor.shutdown();
 
         // assert
-        assertThat(results).filteredOn(PurchaseRecordResult.RECORDED::equals).hasSize(1);
-        assertThat(results).filteredOn(PurchaseRecordResult.DUPLICATE::equals).hasSize(threads - 1);
+        assertThat(results).filteredOn(PurchaseSaveResult.SAVED::equals).hasSize(1);
+        assertThat(results).filteredOn(PurchaseSaveResult.DUPLICATE::equals).hasSize(threads - 1);
         assertThat(activityRows()).isEqualTo(2);
         assertThat(confirmationRows()).isEqualTo(1);
     }
@@ -170,7 +170,7 @@ class PurchaseActivityIntegrationTest {
         activityRepository.saveAllAndFlush(List.of(new ProductPurchaseActivity(42L, new PurchaseLine(8L, 1), CONFIRMED_AT)));
 
         // act & assert
-        assertThatThrownBy(() -> facade.record(confirmation(42, new PurchaseLine(7L, 2), new PurchaseLine(8L, 1))))
+        assertThatThrownBy(() -> facade.save(confirmation(42, new PurchaseLine(7L, 2), new PurchaseLine(8L, 1))))
             .isInstanceOf(DataIntegrityViolationException.class);
         assertThat(confirmationRows()).isZero();
         assertThat(activityRows()).isEqualTo(1);

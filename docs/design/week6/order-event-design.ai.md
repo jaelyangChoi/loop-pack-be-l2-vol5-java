@@ -110,7 +110,8 @@
 | 품목 저장 중 오류 | 전체 rollback, ack 없음 |
 
 - handler는 listener와 **다른 Bean**에 둔다(자기 호출로 트랜잭션을 우회하지 않는다). 트랜잭션 경계는 Facade의 `TransactionTemplate`이다. 유일 제약 위반을 트랜잭션 **밖에서** 잡아 비교해야 해서 `@Transactional`을 쓰지 않는다.
-- 입력 `RecordOrderConfirmationCommand`가 품목 합산·정렬과 `confirmedAt`의 마이크로초 정규화를 맡는다. 결과는 `PurchaseRecordResult`(`RECORDED`, `DUPLICATE`)다. 충돌은 도메인 예외 `OrderConfirmationConflictException`이다.
+- 입력 `SavePurchaseActivityCommand`는 값을 나르기만 하고, 도메인 값 객체 `OrderConfirmation`이 품목 합산·정렬, 수량 검증, `confirmedAt`의 마이크로초 정규화를 맡는다. Service는 `OrderConfirmation` 하나만 받는다(도메인이 application의 Command를 참조하지 않는다). 결과는 `PurchaseSaveResult`(`SAVED`, `DUPLICATE`)다. 충돌은 도메인 예외 `OrderConfirmationConflictException`이다.
+- 파서는 `ConsumerRecord`를 받아 위반 메시지에 `topic-partition@offset`을 넣는다. 컨테이너가 멈췄을 때 원인 record를 바로 찾기 위해서다.
 - 완료 기록을 먼저 `saveAndFlush`하고 품목을 `saveAllAndFlush`해, 제약 위반이 항상 트랜잭션 안(Facade 의 `execute` 안)에서 드러나게 한다.
 
 ## 6. Kafka 설정

@@ -1,8 +1,9 @@
 package com.loopers.interfaces.consumer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.loopers.application.purchase.dto.RecordOrderConfirmationCommand;
+import com.loopers.application.purchase.dto.SavePurchaseActivityCommand;
 import com.loopers.domain.purchase.PurchaseLine;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -25,28 +26,30 @@ class OrderConfirmedMessageParserTest {
 
     private final OrderConfirmedMessageParser parser = new OrderConfirmedMessageParser(new ObjectMapper());
 
-    private static byte[] bytes(String json) {
-        return json.getBytes(StandardCharsets.UTF_8);
+    private static ConsumerRecord<String, byte[]> record(String key, String json) {
+        return new ConsumerRecord<>("order-events", 0, 5L, key, json.getBytes(StandardCharsets.UTF_8));
     }
 
-    @DisplayName("계약대로 온 record 는 eventId·orderId·확정 시각·품목(상품 ID 순)으로 해석한다.")
+    @DisplayName("계약대로 온 record 는 eventId·orderId·확정 시각·품목으로 해석한다.")
     @Test
     void parsesValidRecord() {
         // act
-        RecordOrderConfirmationCommand command = parser.parse("42", bytes(VALID));
+        SavePurchaseActivityCommand command = parser.parse(record("42", VALID));
 
         // assert
         assertThat(command.eventId()).isEqualTo("order-confirmed:v1:42");
         assertThat(command.orderId()).isEqualTo(42L);
         assertThat(command.confirmedAt().toInstant()).isEqualTo(ZonedDateTime.parse("2026-09-07T01:00:00Z").toInstant());
-        assertThat(command.lines()).containsExactly(new PurchaseLine(7L, 2), new PurchaseLine(8L, 1));
+        assertThat(command.lines()).containsExactlyInAnyOrder(new PurchaseLine(7L, 2), new PurchaseLine(8L, 1));
     }
 
-    @DisplayName("계약을 어긴 record 는 건너뛰지 않고 InvalidOrderEventException 으로 거절한다.")
+    @DisplayName("계약을 어긴 record 는 건너뛰지 않고, 위치(topic-partition@offset)를 담은 InvalidOrderEventException 으로 거절한다.")
     @ParameterizedTest(name = "{0}")
     @MethodSource("violations")
     void rejectsContractViolation(String name, String key, String json) {
-        assertThatThrownBy(() -> parser.parse(key, bytes(json))).isInstanceOf(InvalidOrderEventException.class);
+        assertThatThrownBy(() -> parser.parse(record(key, json)))
+            .isInstanceOf(InvalidOrderEventException.class)
+            .hasMessageContaining("order-events-0@5");
     }
 
     static Stream<Arguments> violations() {

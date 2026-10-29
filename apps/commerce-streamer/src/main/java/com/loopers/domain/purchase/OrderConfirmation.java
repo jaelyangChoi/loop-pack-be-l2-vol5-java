@@ -1,26 +1,18 @@
-package com.loopers.application.purchase.dto;
-
-import com.loopers.domain.purchase.PurchaseLine;
+package com.loopers.domain.purchase;
 
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * 주문 확정 사실을 구매 활동으로 기록하라는 입력. 같은 상품은 합산하고 상품 ID 순으로 정렬하며, 확정 시각은 DB 가
- * 저장하는 마이크로초로 맞춘다. 저장된 사실과 비교할 때 표현 차이가 충돌로 보이지 않게 하려는 것이다.
+ * 확정된 주문 하나의 구매 사실. 같은 상품은 합산하고 상품 ID 순으로 정렬하며, 확정 시각은 DB 가 저장하는 마이크로초로
+ * 맞춘다. 저장된 사실과 비교할 때 표현 차이가 충돌로 보이지 않게 하려는 것이다.
  */
-public record RecordOrderConfirmationCommand(
-    String eventId,
-    Long orderId,
-    ZonedDateTime confirmedAt,
-    List<PurchaseLine> lines
-) {
+public record OrderConfirmation(String eventId, Long orderId, ZonedDateTime confirmedAt, List<PurchaseLine> lines) {
 
-    public RecordOrderConfirmationCommand {
+    public OrderConfirmation {
         if (eventId == null || eventId.isBlank() || orderId == null || confirmedAt == null) {
             throw new IllegalArgumentException("eventId, orderId, confirmedAt 은 필수입니다.");
         }
@@ -31,7 +23,7 @@ public record RecordOrderConfirmationCommand(
         lines = normalize(lines);
     }
 
-    private static List<PurchaseLine> normalize(Collection<PurchaseLine> lines) {
+    private static List<PurchaseLine> normalize(List<PurchaseLine> lines) {
         Map<Long, Integer> quantities = new TreeMap<>();
         lines.forEach(line -> quantities.merge(line.productId(), line.quantity(), Integer::sum));
         return quantities.entrySet().stream().map(entry -> new PurchaseLine(entry.getKey(), entry.getValue())).toList();
