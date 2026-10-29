@@ -121,9 +121,9 @@
 | `enable.auto.commit` | 실제 `ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG` 값 false를 테스트로 확인 |
 | `auto.offset.reset` | 실험 topic은 `earliest`로 시작 위치를 명시한다 |
 | group | `purchase-activity` |
-| bootstrap | producer·consumer·admin이 같은 주소 (컨테이너 내부 `kafka:9092`와 호스트 `localhost:19092`를 섞지 않는다) |
+| bootstrap | producer·consumer·admin이 같은 주소. `kafka.yml`의 admin `kafka:9092` 고정은 제거했고, 테스트는 `KafkaTestContainersConfig`가 실제 주소를 주입한다 |
 | producer | `acks=all`, `enable.idempotence=true`를 명시한다. `retries`와의 호환을 확인한다 |
-| 테스트 프로필 | `fetch.min.bytes=1`, `fetch.max.wait.ms`를 작게(예 100ms). 작은 메시지가 5초 늦게 보이는 것을 피하는 이유를 설정 옆에 적는다 |
+| 테스트 프로필 | `fetch.max.wait.ms`를 100ms로 줄이고(`kafka.yml` test 문서) 이유를 주석으로 적는다. 1MiB/5초는 `BATCH_LISTENER` 코드 안의 값이라 새 factory(공용 `consumerFactory`)에는 적용되지 않는다 |
 
 - `kafka.yml`의 `value-serializer` 오기는 `value-deserializer`로 고쳤다. 기존 `BATCH_LISTENER`의 `ByteArrayJsonMessageConverter`가 `byte[]` 값을 전제하므로 의도한 설정이 이제 적용된다.
 - 중단형 handler가 기본이다. 다른 handler를 쓰면 재시도 소진·recover·`ackAfterHandle`까지 설명한다. `commitRecovered=false`만으로 commit이 막힌다고 결론 내리지 않는다.
