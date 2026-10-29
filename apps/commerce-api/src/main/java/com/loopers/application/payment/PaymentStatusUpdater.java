@@ -16,6 +16,8 @@ import com.loopers.domain.payment.PaymentAttemptStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.time.Clock;
+import java.time.ZonedDateTime;
 import java.util.List;
 
 /**
@@ -30,6 +32,7 @@ public class PaymentStatusUpdater {
     private final OrderService orderService;
     private final PaymentAttemptService paymentAttemptService;
     private final OrderStockService orderStockService;
+    private final Clock clock;
 
     /** 결제 생성 요청의 결과를 반영한다. */
     public PaymentAttemptInfo updateByPaymentRequestResult(Long orderId, PgPaymentRequestResult result) {
@@ -158,7 +161,7 @@ public class PaymentStatusUpdater {
     // 재고는 시작할 때 이미 차감했다. 다시 차감하지 않는다.
     private void succeed(Order order, PaymentAttempt attempt, String transactionKey) {
         attempt.markSucceeded(transactionKey);
-        order.completePayment(new PaymentResult(order.getTotalAmount()));
+        order.completePayment(new PaymentResult(order.getTotalAmount()), ZonedDateTime.now(clock));
     }
 
     // 시도 FAILED 와 주문 PAYMENT_FAILED 전이가 같이 일어나는 한 곳에서만 재고를 한 번 돌려준다.
