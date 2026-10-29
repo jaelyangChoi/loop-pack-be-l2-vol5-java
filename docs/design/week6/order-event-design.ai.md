@@ -203,8 +203,16 @@
 | 중간 품목 저장 실패 | 완료 기록·앞선 품목 모두 rollback |
 | 스키마 위반 (수량 0, key 불일치) | 예외, 저장 없음 |
 
-### 전달 `KafkaDeliveryTest` (commerce-streamer)
-8-2, 8-3, 8-4를 각각 한 테스트로 둔다. 전체 흐름은 "실제 PG 확정 → Kafka → streamer"를 한 건 확인한다.
+### 전달 실험 (commerce-streamer) — 목적별로 클래스를 나눈다
+| 클래스 | 목적 | 테스트 |
+|---|---|---|
+| `PartitionDistributionTest` | 일이 어떻게 나뉘는가 (8-2) | 배정 1→2→3과 명시 partition 수신, 같은 key의 partition |
+| `OffsetRedeliveryTest` | 읽은 위치와 끝낸 위치는 다르다 (8-3) | DB 반영 뒤 offset 미커밋 → 재전달 → 효과 한 번 → n+1 commit |
+
+- 8-4(실제 listener 실패·재시작)는 `OrderConfirmedConsumerFailureTest`가 맡는다.
+- 재전달 실험은 앱의 listener가 아니라 통제된 `KafkaConsumer`가 같은 파서·`PurchaseActivityFacade.save`를 호출한다.
+- 실험 도구(고유 topic·group, member, 통제된 consumer, 배정 조회)는 `test/.../support/kafka`에 둔다. 테스트 본문에는 시나리오만 남긴다.
+- 두 앱은 서로 의존하지 않으므로 "실제 PG 확정 → Kafka → streamer" 전체 흐름은 한 테스트로 묶지 않고 T8에서 다룬다.
 
 ### 회귀
 `./gradlew :apps:commerce-api:check :apps:commerce-streamer:check`(Checkstyle, ArchUnit 포함). PG·재고·이전 POINT 사실·소유권·삭제 비노출이 그대로인지 기존 테스트로 확인한다.

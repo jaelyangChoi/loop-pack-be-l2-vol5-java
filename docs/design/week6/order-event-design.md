@@ -80,6 +80,30 @@ PG로 확정된 주문을 `OrderConfirmed` 이벤트로 `commerce-streamer`에 �
 | Error handler | 예외 뒤 offset을 어떻게 할지 정한다 | `CommonContainerStoppingErrorHandler`: 건너뛰지 않고 중단 |
 
 
+## 관찰한 전달 결과
+
+단일 broker에서 두 실험이 실제로 관찰한 값이다. 일이 어떻게 나뉘는가는 `PartitionDistributionTest`, 읽은 위치와 끝낸 위치의 차이는 `OffsetRedeliveryTest`가 본다.
+
+**같은 group의 consumer를 늘렸을 때 (partition 2개)**
+
+| consumer 수 | member-1 | member-2 | member-3 |
+|---|---|---|---|
+| 1 | partition 0, 1 | - | - |
+| 2 | partition 0 | partition 1 | - |
+| 3 | partition 0 | partition 1 | 배정 없음 (받은 record도 없음) |
+
+consumer를 3개로 늘려도 일하는 member는 partition 수인 2개다. 같은 key로 5번 보낸 record는 매번 같은 partition으로 갔다(key `42`, `43` 모두 partition 0이었고, 서로 다른 key가 다른 partition으로 간다는 증거는 아니다).
+
+**DB에는 반영했지만 offset을 commit하지 못한 채 끝난 consumer (target의 offset n=2)**
+
+| 시점 | committed offset | 구매 활동 |
+|---|---|---|
+| 첫 consumer가 DB에 반영한 직후 | 2 (n) | 2행 |
+| 첫 consumer 종료 뒤 | 2 (n) | 2행 |
+| 새 consumer가 같은 record(같은 partition, offset 2)를 다시 받아 no-op 처리하고 commit한 뒤 | 3 (n+1) | 2행 |
+
+전달은 2번이었지만 구매 활동은 한 번만 남았다.
+
 ## 알려진 한계
 
 - DB commit과 broker 기록이 원자적이지 않아 ② 구간이 남는다. 다음 주 Outbox로 개선한다.
