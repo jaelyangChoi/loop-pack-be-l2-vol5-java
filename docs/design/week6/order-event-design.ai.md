@@ -109,7 +109,9 @@
 | 같은 orderId, 다른 eventId | 충돌 (추가 구매 없음) |
 | 품목 저장 중 오류 | 전체 rollback, ack 없음 |
 
-- handler는 listener와 **다른 Bean**에 둔다(자기 호출로 트랜잭션을 우회하지 않는다). 트랜잭션 경계는 Facade의 `@Transactional`이다.
+- handler는 listener와 **다른 Bean**에 둔다(자기 호출로 트랜잭션을 우회하지 않는다). 트랜잭션 경계는 Facade의 `TransactionTemplate`이다. 유일 제약 위반을 트랜잭션 **밖에서** 잡아 비교해야 해서 `@Transactional`을 쓰지 않는다.
+- 입력 `RecordOrderConfirmationCommand`가 품목 합산·정렬과 `confirmedAt`의 마이크로초 정규화를 맡는다. 결과는 `PurchaseRecordResult`(`RECORDED`, `DUPLICATE`)다. 충돌은 도메인 예외 `OrderConfirmationConflictException`이다.
+- 완료 기록을 먼저 `saveAndFlush`하고 품목을 `saveAllAndFlush`해, 제약 위반이 항상 트랜잭션 안(Facade 의 `execute` 안)에서 드러나게 한다.
 
 ## 6. Kafka 설정
 
