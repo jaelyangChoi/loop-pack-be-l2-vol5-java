@@ -2,6 +2,7 @@ package com.loopers.application.payment;
 
 import com.loopers.application.payment.dto.PaymentAttemptInfo;
 import com.loopers.application.payment.dto.PaymentLookupInfo;
+import com.loopers.application.payment.dto.PaymentStatusUpdateResult;
 import com.loopers.application.payment.pg.PgPaymentStatusLookupResult;
 import com.loopers.domain.order.Order;
 import com.loopers.domain.order.OrderService;
@@ -68,10 +69,10 @@ public class PaymentResultLookupFacade {
         if (lookupResult.outcome() == PgPaymentStatusLookupResult.Outcome.LOOKUP_UNAVAILABLE) {
             return new PaymentLookupInfo(target, true);
         }
-        PaymentAttemptInfo updated = writeTransaction.execute(
+        PaymentStatusUpdateResult updated = writeTransaction.execute(
             status -> paymentStatusUpdater.updateByStatusLookupResult(target.orderId(), lookupResult)
         );
-        return new PaymentLookupInfo(updated, false);
+        return new PaymentLookupInfo(updated.attempt(), false);
     }
 
     // 없는 주문과 타인의 주문은 NOT_FOUND, 결제를 시작하지 않은 주문은 CONFLICT 다.

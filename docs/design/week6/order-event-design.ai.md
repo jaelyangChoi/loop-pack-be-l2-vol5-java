@@ -55,7 +55,7 @@
 | 종결된 시도에 다른 결과 (`CONFLICTING_RESULT`) | 안 함 |
 | 이전 POINT 확정 주문 | 안 함 (소급 없음) |
 
-- 발행 흐름: `succeed`가 최초 확정일 때 payload를 만들고 → `updateByStatusLookupResult`가 `PaymentAttemptInfo`와 payload(없을 수 있음)를 결과로 돌려주고 → Facade가 `writeTransaction.execute` 반환 뒤 payload가 있으면 `OrderEventPublisher.publish`를 부른다.
+- 발행 흐름: `updateByStatusLookupResult`가 호출 전후 주문 상태를 비교해 최초 확정일 때 TX 안에서 payload를 만들고 `PaymentAttemptInfo`와 함께(없을 수 있음) 돌려주고 → Facade가 `writeTransaction.execute` 반환 뒤 payload가 있으면 `OrderEventPublisher.publish`를 부른다.
 - Spring 이벤트·`@TransactionalEventListener`는 쓰지 않는다. 재조회 없이 트랜잭션 안에서 만든 payload만 쓴다.
 - send 실패(동기 예외, 비동기 콜백 오류)는 로그로 남기고 삼킨다. 주문 상태를 바꾸지 않고 PG create를 다시 부르지 않는다. 성공 콜백에서는 topic·partition·offset을 로그로 남긴다.
 
@@ -67,7 +67,7 @@
 | 설정 | kafka 설정 import. producer value는 JSON bytes로 직렬화(같은 직렬화·key 사용) |
 | `Clock` 빈 | `config`에 `Clock.systemUTC()`. 테스트는 고정 clock으로 교체 |
 | `Order.confirmedAt` | `completePayment`에서 최초 전이 때만 설정. DDL은 `ddl-auto` 따름 |
-| `PaymentStatusUpdater` | `succeed`가 `confirmedAt` 설정과 payload 생성. `updateByStatusLookupResult`는 `PaymentAttemptInfo`와 payload를 담은 `Result` 타입(`application.payment.dto`)을 반환 |
+| `PaymentStatusUpdater` | `succeed`가 `Clock`으로 `confirmedAt`을 설정(마이크로초로 맞춤). `updateByStatusLookupResult`는 `PaymentAttemptInfo`와 payload를 담은 `PaymentStatusUpdateResult`(`application.payment.dto`)를 반환 |
 | `PaymentResultLookupFacade` | `syncWithPg`가 `execute` 반환 뒤 payload가 있으면 포트를 호출. callback·reconcile이 모두 이 메서드를 지난다 |
 | application | payload 타입 `OrderConfirmedInfo`(`application.order.dto`), 포트 `OrderEventPublisher` |
 | infrastructure | `OrderEventKafkaPublisher`(포트 구현. 직렬화·key·결과 콜백을 숨긴다) |
