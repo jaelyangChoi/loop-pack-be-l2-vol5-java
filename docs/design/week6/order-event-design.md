@@ -104,6 +104,26 @@ consumer를 3개로 늘려도 일하는 member는 partition 수인 2개다. 같�
 
 전달은 2번이었지만 구매 활동은 한 번만 남았다.
 
+## 누락 구간 관찰 (commit 뒤, 전송 전)
+
+`OrderConfirmedPublicationGapTest`가 W6의 직접 발행 경로에서 두 사례를 재현한다. 값은 이번 실행의 관찰값이며, W7에서 다시 실행하면 주문·거래 ID는 새로 생긴다.
+
+| | 사례 A (미발행) | 사례 B (정상) |
+|---|---|---|
+| 역할 | commit 뒤 전송 호출 직전의 hook에서 전송을 건너뜀 | 같은 경로에서 전송이 진행됨 |
+| orderId / providerOrderId | 1 / `LP-ORD-0000000001` | 2 / `LP-ORD-0000000002` |
+| transactionKey | `TEST-TX-0001` | `TEST-TX-0002` |
+| eventId | `order-confirmed:v1:1` | `order-confirmed:v1:2` |
+| confirmedAt (고정 시계) | `2026-09-07T01:00:00Z` | `2026-09-07T01:00:00Z` |
+| items | 러닝화×2, 양말×1 | 러닝화×1 |
+| 주문 상태 | CONFIRMED (재고 차감 유지) | CONFIRMED |
+| broker의 이 eventId record | **0건** | 1건 |
+| 구매 활동 | 소비할 record가 없어 생길 수 없음 | streamer `OrderConfirmedConsumerTest`가 같은 계약의 record를 소비해 저장함을 확인 |
+
+- hook 시점(commit 뒤, send 전)에 DB를 새로 읽으면 이미 `CONFIRMED`이고 재고도 차감돼 있다(`CONFIRMED/shoes=7/socks=9`, 두 주문의 차감 합). 그래도 broker에는 A의 이벤트가 없다. DB와 broker가 원자적으로 연결되지 않았다는 관찰이다.
+- 실행: `./gradlew :apps:commerce-api:test --tests '*OrderConfirmedPublicationGapTest'`. W6 revision은 이 테스트가 처음 추가된 커밋이다(`git log --diff-filter=A --format=%h -1 -- apps/commerce-api/src/test/java/com/loopers/application/payment/OrderConfirmedPublicationGapTest.java`).
+- hook은 전송 호출을 건너뛴 것이지 프로세스를 강제 종료한 것이 아니다. 두 앱은 서로 의존하지 않아, A의 "구매 활동 없음"은 DB 관찰이 아니라 "record가 없다"는 사실에서 설명하고, api에서 streamer까지를 한 번의 실행으로 잇지는 않는다.
+
 ## 알려진 한계
 
 - DB commit과 broker 기록이 원자적이지 않아 ② 구간이 남는다. 다음 주 Outbox로 개선한다.

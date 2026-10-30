@@ -151,6 +151,7 @@
 - 확인: 사례 A는 주문 CONFIRMED·재고 차감은 남고, 해당 eventId의 broker record와 구매 활동이 없다. 사례 B는 활동이 있다.
 - 고정 clock·품목·수량을 쓰고, 실제 `orderId, providerOrderId, transactionKey, eventId, confirmedAt, items`와 주문·재고·broker·활동 상태를 기록한다. 카드 값·비밀은 제외한다.
 - W6 직접 발행 경로를 다시 실행할 수 있게 재현 코드를 보존한다. 실패 주입을 OS 강제 종료라고 표현하지 않는다.
+- 구현: `OrderConfirmedPublicationGapTest`. 고정 시계(`@TestConfiguration`의 `@Primary Clock`)와 `@MockitoSpyBean`으로 실제 `OrderEventKafkaPublisher`를 감싸 A의 주문에서만 전송을 건너뛴다. hook 안에서 DB를 새로 읽어 commit 뒤 상태(`CONFIRMED`, 재고 차감)를 기록한다. B의 소비는 streamer의 `OrderConfirmedConsumerTest`가 증명한다.
 
 ### 8-2. partition·group (partition 2개 격리 topic)
 1. 같은 group의 consumer를 1 → 2 → 3개로 바꾸며 실제 assignment가 목표에 도달할 때까지 유한하게 poll하며 기다린다.
